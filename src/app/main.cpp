@@ -6,6 +6,7 @@
 #include "controllers/presetcontroller.h"
 #include "controllers/recoverycontroller.h"
 #include "mainwindow.h"
+#include "startup.h"
 #include "theme/icons.h"
 #include "version.h"
 
@@ -37,10 +38,10 @@ int main(int argc, char *argv[])
     ctrm::app::PresetController presets(window, context, &window);
     ctrm::app::PreferencesController preferences(window, context, &window);
     window.show();
-    // Before the user can use the window (ui-design 9.10). History retention (Task 18) runs
-    // after the recovery.
-    QMetaObject::invokeMethod(&recovery, &ctrm::app::RecoveryController::checkAtStart,
-                              Qt::QueuedConnection);
+    // Before the user can use the window (ui-design 9.10): recovery, then history retention.
+    QMetaObject::invokeMethod(
+            &window, [&] { ctrm::app::runStartChecks(recovery, preferences); },
+            Qt::QueuedConnection);
 
     return QApplication::exec();
 }
