@@ -143,7 +143,8 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     , m_editors(new QStackedWidget)
     , m_noRulePage(new QWidget)
     , m_unsupportedPage(new QWidget)
-    , m_chainOptions(new ChainOptionsWidget(this))
+    , m_chainOptions(new ChainOptionsWidget(nullptr)) // the layout adds it last: tab order
+
     , m_labelSync(new LabelColumnSync(this))
 {
     m_addRule->setObjectName(QStringLiteral("addRuleButton"));

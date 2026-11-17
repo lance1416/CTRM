@@ -10,13 +10,16 @@
 class QSettings;
 
 namespace ctrm {
+class BatchService;
 class FileSystem;
-}
+class HistoryStore;
+class PresetStore;
+struct AppInfo;
+} // namespace ctrm
 
 namespace ctrm::app {
 
-// The services that the windows share. Task 13 adds the batch service, history, presets and
-// app information.
+// The services that the windows share.
 class AppContext
 {
 public:
@@ -34,12 +37,20 @@ public:
     QString historyDir() const;
     QString presetsDir() const;
     Settings &settings();
+    ctrm::HistoryStore &history();
+    ctrm::PresetStore &presets();
+    ctrm::BatchService &batchService();
+    const ctrm::AppInfo &appInfo() const;
 
 private:
     std::unique_ptr<ctrm::FileSystem> m_fs;
     QString m_historyDir;
     QString m_presetsDir;
     Settings m_settings;
+    std::unique_ptr<ctrm::HistoryStore> m_history;
+    std::unique_ptr<ctrm::PresetStore> m_presets;
+    std::unique_ptr<ctrm::AppInfo> m_appInfo;
+    std::unique_ptr<ctrm::BatchService> m_batchService;
 };
 
 } // namespace ctrm::app

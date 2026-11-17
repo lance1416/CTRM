@@ -277,7 +277,7 @@ void ActionBar::updateReasonIcon()
 
 void ActionBar::updateAccent()
 {
-    setPrimary(m_rename, m_info.state == WindowState::Ready);
+    setPrimary(m_rename, m_info.state == WindowState::Ready && m_info.renameEnabled);
 }
 
 void ActionBar::changeEvent(QEvent *event)

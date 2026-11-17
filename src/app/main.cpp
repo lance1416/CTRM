@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "appcontext.h"
+#include "controllers/batchcontroller.h"
+#include "controllers/historycontroller.h"
+#include "controllers/preferencescontroller.h"
+#include "controllers/presetcontroller.h"
+#include "controllers/recoverycontroller.h"
 #include "mainwindow.h"
 #include "theme/icons.h"
 #include "version.h"
@@ -26,6 +31,11 @@ int main(int argc, char *argv[])
 
     ctrm::app::AppContext context;
     ctrm::app::MainWindow window(context);
+    ctrm::app::BatchController batch(window, context, &window);
+    ctrm::app::HistoryController history(window, context, &window);
+    ctrm::app::RecoveryController recovery(window, context, &window);
+    ctrm::app::PresetController presets(window, context, &window);
+    ctrm::app::PreferencesController preferences(window, context, &window);
     window.show();
 
     return QApplication::exec();
