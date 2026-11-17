@@ -41,13 +41,14 @@ signals:
 protected:
     void changeEvent(QEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
+    void showEvent(QShowEvent *event) override;
 
 private:
     void updateSummary(const ctrm::PreviewSummary &summary);
     void updateAccent();
     void updateReasonIcon();
     void revealProgress();
-    void updateTip();
+    void updateTip(); // also fits the bar to its width (R2-01)
     void updateLinkColor();
     void updateFixedLook(); // R1-03 and R1-04: one bar height, the body font for the link
     void announce(const QString &summaryText);
@@ -68,6 +69,7 @@ private:
     QLabel *m_tipText;
     QToolButton *m_addNumbering;
     bool m_tipWanted = false;
+    QString m_fullReason; // the reason text; the label can show it elided (R2-01)
     QPushButton *m_skip;
     QPushButton *m_rename;
     QLabel *m_progressLabel;

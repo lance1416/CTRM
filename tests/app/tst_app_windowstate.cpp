@@ -95,6 +95,8 @@ private slots:
     void flowStripClick();
     void oneDefaultButton();
     void actionBarHeightStays();
+    void blockedBarNotCut_data();
+    void blockedBarNotCut();
     void tipLinkHasBodyFont();
     void resultSummary();
     void fusionAccent();
@@ -340,6 +342,64 @@ void TestAppWindowState::actionBarHeightStays()
     bar->setState(computeWindowState(input(0, 0, summary(0))), summary(0));
     QCoreApplication::processEvents();
     QCOMPARE(bar->height(), ready);
+}
+
+void TestAppWindowState::blockedBarNotCut_data()
+{
+    QTest::addColumn<int>("width");
+    QTest::newRow("1200") << 1200;
+    QTest::newRow("900") << 900;
+}
+
+void TestAppWindowState::blockedBarNotCut()
+{
+    // R2-01 (5.2, 9.3): with conflicts and errors the count summary, Skip and Rename are never
+    // cut. The bar gives up space in this order: "Same names:", then the reason text (elided,
+    // then hidden), then the reason icon.
+    QFETCH(int, width);
+    QWidget parent;
+    parent.resize(width + 100, 200);
+    const Actions actions = createActions(&parent);
+    auto *bar = new ActionBar(actions, &parent);
+    const PreviewSummary blocked = summary(2, 6, 1, 0, 0, 1);
+    bar->setState(computeWindowState(input(10, 1, blocked)), blocked);
+    bar->setConflictTip(true);
+    bar->setGeometry(0, 0, width, bar->sizeHint().height());
+    parent.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&parent));
+    QCoreApplication::processEvents();
+
+    auto *summaryWidget = bar->findChild<QWidget *>(QStringLiteral("countSummary"));
+    QStringList cut;
+    for (QLabel *label : summaryWidget->findChildren<QLabel *>()) {
+        if (label->isVisible() && label->width() < label->sizeHint().width())
+            cut.append(label->text());
+    }
+    QVERIFY2(cut.isEmpty(), qPrintable(cut.join(u", ")));
+    QVERIFY(summaryWidget->geometry().right() <
+            bar->findChild<QWidget *>(QStringLiteral("previousProblemButton"))->geometry().left());
+    for (const char *name : {"skipButton", "renameButton"}) {
+        auto *button = bar->findChild<QPushButton *>(QLatin1StringView(name));
+        QVERIFY(button->isVisible());
+        QVERIFY2(button->width() >= button->sizeHint().width(), name);
+        QVERIFY(button->mapTo(bar, QPoint(button->width(), 0)).x() <= bar->width());
+    }
+    auto *link = bar->findChild<QToolButton *>(QStringLiteral("addNumberingButton"));
+    QVERIFY(link->isVisible());
+    QVERIFY(link->width() >= link->sizeHint().width());
+
+    // The order: the reason text gives up space only when "Same names:" is hidden.
+    auto *reason = bar->findChild<QLabel *>(QStringLiteral("renameReason"));
+    auto *tip = bar->findChild<QLabel *>(QStringLiteral("conflictTipText"));
+    const QString full = computeWindowState(input(10, 1, blocked)).reason;
+    const bool reasonShort = !reason->isVisible() || reason->text() != full;
+    if (reasonShort)
+        QVERIFY(!tip->isVisible());
+    if (!bar->findChild<QLabel *>(QStringLiteral("renameReasonIcon"))->isVisible())
+        QVERIFY(!reason->isVisible());
+    if (reason->isVisible())
+        QVERIFY(reason->width() >= reason->sizeHint().width());
+    QCOMPARE(bar->findChild<QPushButton *>(QStringLiteral("renameButton"))->toolTip(), full);
 }
 
 void TestAppWindowState::tipLinkHasBodyFont()

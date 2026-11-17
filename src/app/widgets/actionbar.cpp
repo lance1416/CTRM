@@ -10,6 +10,7 @@
 #include <QAccessible>
 #include <QAction>
 #include <QEvent>
+#include <QFontMetrics>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLocale>
@@ -83,6 +84,8 @@ ActionBar::ActionBar(const Actions &actions, QWidget *parent)
 
     // Normal page: summary on the left, reason, Skip and Rename on the right.
     m_summaryWidget->setObjectName(QStringLiteral("countSummary"));
+    // R2-01: the counts never shrink below their size.
+    m_summaryWidget->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Preferred);
     m_summaryLayout->setContentsMargins(0, 0, 0, 0);
     m_reasonIcon->setObjectName(QStringLiteral("renameReasonIcon"));
     m_reason->setObjectName(QStringLiteral("renameReason"));
@@ -186,14 +189,13 @@ void ActionBar::setState(const WindowStateInfo &info, const ctrm::PreviewSummary
     m_actions.skipAndRename->setEnabled(info.skipVisible && !running);
 
     const bool showReason = !running && !info.renameEnabled && !info.reason.isEmpty();
-    m_reason->setText(info.reason);
-    m_reason->setVisible(showReason);
+    m_fullReason = showReason ? info.reason : QString();
     m_reasonIcon->setVisible(showReason);
 
-    updateTip();
     updateSummary(summary); // sets m_summary, which the reason icon uses
     updateReasonIcon();
     updateAccent();
+    updateTip();
 }
 
 void ActionBar::setConflictTip(bool shown, int offNumberingRule)
@@ -209,10 +211,46 @@ void ActionBar::updateTip()
     const bool shown = m_tipWanted && m_info.state == WindowState::Blocked;
     m_addNumbering->setVisible(shown);
     m_tipText->setVisible(shown);
-    // ui-design 9.3: when the bar is too narrow, the tip text hides first; the link stays.
-    if (shown && m_normalPage->layout()->minimumSize().width() > m_normalPage->width() &&
-        isVisible())
+    m_reason->setText(m_fullReason);
+    m_reason->setVisible(!m_fullReason.isEmpty());
+    m_reasonIcon->setVisible(!m_fullReason.isEmpty());
+    m_reason->setToolTip(QString());
+    m_reasonIcon->setToolTip(QString());
+    if (!isVisible())
+        return; // the width is not final yet; showEvent fits the bar
+
+    // R2-01 (5.2, 9.3): when the bar is too narrow, it gives up space in this order: the tip
+    // text ("Same names:"; the link stays), then the reason text (elided, then hidden), then the
+    // reason icon. The count summary, the problem buttons, Skip and Rename keep their size.
+    QLayout *page = m_normalPage->layout();
+    const QMargins margins = layout()->contentsMargins();
+    const int available = width() - margins.left() - margins.right();
+    const auto over = [&] {
+        page->invalidate();
+        return page->sizeHint().width() - available;
+    };
+    if (over() <= 0)
+        return;
+    if (shown) {
         m_tipText->setVisible(false);
+        if (over() <= 0)
+            return;
+    }
+    if (m_fullReason.isEmpty())
+        return;
+    m_reason->setToolTip(m_fullReason);
+    m_reasonIcon->setToolTip(m_fullReason);
+    const QFontMetrics metrics(m_reason->font());
+    const int room = metrics.horizontalAdvance(m_fullReason) - over();
+    if (room >= 6 * metrics.averageCharWidth()) {
+        m_reason->setText(metrics.elidedText(m_fullReason, Qt::ElideRight, room));
+        if (over() <= 0)
+            return;
+    }
+    m_reason->setVisible(false);
+    // Last: the icon. The Rename tooltip and the summary icons still give the reason.
+    if (over() > 0)
+        m_reasonIcon->setVisible(false);
 }
 
 void ActionBar::updateLinkColor()
@@ -251,6 +289,12 @@ void ActionBar::updateFixedLook()
     for (QWidget *child : std::as_const(hidden))
         child->setHidden(true);
     m_normalPage->setMinimumHeight(height);
+}
+
+void ActionBar::showEvent(QShowEvent *event)
+{
+    QWidget::showEvent(event);
+    updateTip();
 }
 
 void ActionBar::resizeEvent(QResizeEvent *event)
@@ -391,6 +435,7 @@ void ActionBar::changeEvent(QEvent *event)
         updateReasonIcon();
         updateSummary(m_summary);
         updateAccent();
+        updateTip();
         break;
     default:
         break;
