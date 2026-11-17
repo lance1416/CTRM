@@ -184,6 +184,9 @@ public:
         setWidgetResizable(true);
         setFrameShape(QFrame::NoFrame);
         setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        // No focus stop of its own: it shows no focus ring. Its fields take the focus and
+        // ensureWidgetVisible scrolls to them (M09, ui-design 14).
+        setFocusPolicy(Qt::NoFocus);
     }
 
     QSize minimumSizeHint() const override

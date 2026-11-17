@@ -496,6 +496,8 @@ void TestMainWindow::tabOrder()
         QVERIFY2(at > last, qPrintable(e->objectName()));
         last = at;
     }
+    // M09: the editor scroll area is no focus stop (it shows no focus); its fields are.
+    QVERIFY(!chain.contains(f.child<QWidget>("editorScroll")));
     // Toolbar widgets come before the flow strip.
     for (QWidget *t : f.child<QToolBar>("mainToolBar")->findChildren<QWidget *>()) {
         const qsizetype at = chain.indexOf(t);
