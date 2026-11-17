@@ -126,7 +126,7 @@ QString postRunText(const PostRunState &s)
     case PostRun::Failed:
         return Messages::tr("Failed: %1").arg(s.text);
     case PostRun::Skipped:
-        return Messages::tr("Skipped: %1").arg(s.text);
+        return Messages::tr("Skipped: %1").arg(s.fullText.isEmpty() ? s.text : s.fullText);
     case PostRun::RolledBack:
         return Messages::tr("Rolled back to the old name");
     case PostRun::None:
@@ -213,6 +213,8 @@ QString shortPostRunText(const PostRunState &s)
 {
     if (s.state == PostRun::RolledBack)
         return Messages::tr("Rolled back");
+    if (s.state == PostRun::Skipped)
+        return Messages::tr("Skipped: %1").arg(s.text);
     return postRunText(s);
 }
 

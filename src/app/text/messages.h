@@ -7,6 +7,8 @@
 #include <QString>
 #include <QStringList>
 
+#include <utility>
+
 namespace ctrm::app {
 
 // States of an item after a batch (ui-design 7.2).
@@ -14,8 +16,16 @@ enum class PostRun { None, Renamed, Failed, Skipped, RolledBack };
 
 struct PostRunState
 {
+    PostRunState() = default;
+    PostRunState(PostRun state, QString text, QString fullText = {})
+        : state(state)
+        , text(std::move(text))
+        , fullText(std::move(fullText))
+    {}
+
     PostRun state = PostRun::None;
-    QString text; // Failed: OS error text. Skipped: the blocking reason.
+    QString text;     // Failed: OS error text. Skipped: the short blocking reason.
+    QString fullText; // Skipped: the full blocking reason; when empty, text
 };
 
 // The text of one diagnostic (ui-design 7.2). ruleNames: display name of each rule of the

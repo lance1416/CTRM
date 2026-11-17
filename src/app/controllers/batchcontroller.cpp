@@ -171,7 +171,12 @@ void BatchController::prepareAndRun(bool skip)
             if (!s.skipped.contains(id))
                 continue;
             const Status status = shown.items.at(i).status;
-            m_skipReasons.insert(id, skipReason(status));
+            // The full reason is the message of the blocked row (ui-design 7.2).
+            const ItemTableModel &model = m_w.itemModel();
+            const QString full = model.index(int(i), ItemTableModel::Message)
+                                         .data(ItemTableModel::MessageRole)
+                                         .toString();
+            m_skipReasons.insert(id, PostRunState{PostRun::Skipped, skipReason(status), full});
             if (status == Status::Conflict)
                 ++q.conflicts;
             else if (status == Status::Invalid)
@@ -411,7 +416,7 @@ void BatchController::finished(const FinishResult &result)
         states.insert(*id, s);
     }
     for (auto it = m_skipReasons.cbegin(); it != m_skipReasons.cend(); ++it)
-        states.insert(it.key(), PostRunState{PostRun::Skipped, it.value()});
+        states.insert(it.key(), it.value());
     m_skipReasons.clear();
     m_w.itemModel().setPostRun(states);
 

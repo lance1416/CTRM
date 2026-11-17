@@ -4,6 +4,7 @@
 #include "exec/batchservice.h"
 #include "exec/plan.h"
 #include "model/item.h"
+#include "text/messages.h"
 
 #include <QDateTime>
 #include <QHash>
@@ -98,7 +99,7 @@ private:
     std::unique_ptr<ctrm::BatchSession> m_session;
     QString m_undoOf;
     QDateTime m_startTime;
-    QHash<ctrm::ItemId, QString> m_skipReasons;
+    QHash<ctrm::ItemId, PostRunState> m_skipReasons; // PostRun::Skipped, short and full reason
     ctrm::FinishResult m_lastResult;
     QPointer<QWidget> m_focusBeforeRun;
     QDateTime m_lastResultTime;

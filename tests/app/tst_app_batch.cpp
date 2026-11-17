@@ -97,6 +97,12 @@ struct Fixture
                 .toString();
     }
 
+    QString shortMessage(int row) const
+    {
+        const ItemTableModel &m = const_cast<Fixture *>(this)->window.itemModel();
+        return m.data(m.index(row, ItemTableModel::Message)).toString();
+    }
+
     QString resultText() const
     {
         auto *bar = const_cast<Fixture *>(this)->window.messageBar();
@@ -223,6 +229,8 @@ void TestBatch::skipRenamesOthers()
     f.add({QStringLiteral("a1.txt"), QStringLiteral("a2.txt"), QStringLiteral("7"),
            QStringLiteral("b5.txt"), QStringLiteral("c6.txt")});
     f.replace(QStringLiteral("\\d"), QString(), true);
+    QTRY_VERIFY(f.window.previewIsCurrent());
+    const QStringList blocked = {f.message(0), f.message(1), f.message(2)};
 
     f.window.actions().skipAndRename->trigger();
     QVERIFY(f.waitForBatch());
@@ -231,9 +239,15 @@ void TestBatch::skipRenamesOthers()
     QVERIFY(f.exists(QStringLiteral("a1.txt")));
     QVERIFY(f.exists(QStringLiteral("a2.txt")));
     QVERIFY(f.exists(QStringLiteral("7")));
-    QCOMPARE(f.message(0), QStringLiteral("Skipped: conflict"));
-    QCOMPARE(f.message(1), QStringLiteral("Skipped: conflict"));
-    QCOMPARE(f.message(2), QStringLiteral("Skipped: invalid name"));
+    // The cell has the short reason; the full text (tooltip, accessible name) has the full
+    // blocking reason (ui-design 7.2).
+    QCOMPARE(f.shortMessage(0), QStringLiteral("Skipped: conflict"));
+    QCOMPARE(f.shortMessage(1), QStringLiteral("Skipped: conflict"));
+    QCOMPARE(f.shortMessage(2), QStringLiteral("Skipped: invalid name"));
+    for (int row = 0; row < 3; ++row) {
+        QVERIFY(blocked.at(row).size() > 20);
+        QCOMPARE(f.message(row), QStringLiteral("Skipped: ") + blocked.at(row));
+    }
     QCOMPARE(f.message(3), QStringLiteral("Renamed"));
     QCOMPARE(f.resultText(), QStringLiteral("Renamed 2 items."));
 }
