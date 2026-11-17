@@ -10,6 +10,7 @@
 #include <QLabel>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QScopeGuard>
 #include <QSignalSpy>
 #include <QStyle>
 #include <QToolButton>
@@ -93,6 +94,8 @@ private slots:
     void flowStripLooks();
     void flowStripClick();
     void oneDefaultButton();
+    void actionBarHeightStays();
+    void tipLinkHasBodyFont();
     void resultSummary();
     void fusionAccent();
     void disabledHasReason();
@@ -310,6 +313,53 @@ void TestAppWindowState::resultSummary()
         if (!label->isHidden())
             texts.append(label->text());
     QCOMPARE(texts, QStringList{QStringLiteral("6 renamed")});
+}
+
+void TestAppWindowState::actionBarHeightStays()
+{
+    // R1-03 (5.5, 9.3): the action bar has one height in all states. The problem buttons and
+    // the conflict tip do not move the table.
+    QWidget parent;
+    auto *layout = new QVBoxLayout(&parent);
+    const Actions actions = createActions(&parent);
+    auto *bar = new ActionBar(actions, &parent);
+    layout->addWidget(new QWidget(&parent), 1);
+    layout->addWidget(bar);
+    parent.resize(1200, 600);
+    bar->setState(computeWindowState(input(12, 1, summary(12))), summary(12));
+    parent.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&parent));
+    const int ready = bar->height();
+
+    const PreviewSummary blocked = summary(2, 3, 1);
+    bar->setState(computeWindowState(input(6, 1, blocked)), blocked);
+    bar->setConflictTip(true);
+    QCoreApplication::processEvents();
+    QCOMPARE(bar->height(), ready);
+
+    bar->setState(computeWindowState(input(0, 0, summary(0))), summary(0));
+    QCoreApplication::processEvents();
+    QCOMPARE(bar->height(), ready);
+}
+
+void TestAppWindowState::tipLinkHasBodyFont()
+{
+    // R1-04 (9.3): "Add Numbering" has the body font, also when the style gives tool buttons a
+    // smaller font (macOS).
+    const QFont toolFont = QApplication::font("QToolButton");
+    QFont small = QApplication::font();
+    small.setPointSizeF(QApplication::font().pointSizeF() * 0.75);
+    QApplication::setFont(small, "QToolButton");
+    const auto restore = qScopeGuard([&] { QApplication::setFont(toolFont, "QToolButton"); });
+
+    QWidget parent;
+    const Actions actions = createActions(&parent);
+    ActionBar bar(actions, &parent);
+    const auto *tip = bar.findChild<QLabel *>(QStringLiteral("conflictTipText"));
+    const auto *link = bar.findChild<QToolButton *>(QStringLiteral("addNumberingButton"));
+    QVERIFY(tip && link);
+    QCOMPARE(link->font().pointSizeF(), tip->font().pointSizeF());
+    QCOMPARE(tip->font().pointSizeF(), QApplication::font().pointSizeF());
 }
 
 void TestAppWindowState::oneDefaultButton()

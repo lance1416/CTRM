@@ -49,6 +49,7 @@ private:
     void revealProgress();
     void updateTip();
     void updateLinkColor();
+    void updateFixedLook(); // R1-03 and R1-04: one bar height, the body font for the link
     void announce(const QString &summaryText);
 
     Actions m_actions;

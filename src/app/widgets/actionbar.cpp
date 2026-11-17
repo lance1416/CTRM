@@ -20,6 +20,7 @@
 #include <QTimer>
 #include <QToolButton>
 
+#include <algorithm>
 #include <optional>
 
 namespace ctrm::app {
@@ -131,6 +132,7 @@ ActionBar::ActionBar(const Actions &actions, QWidget *parent)
     m_pages->addWidget(m_progressPage);
     auto *layout = new QHBoxLayout(this);
     layout->addWidget(m_pages);
+    updateFixedLook();
 
     m_progressTimer->setObjectName(QStringLiteral("progressTimer"));
     m_progressTimer->setSingleShot(true);
@@ -218,6 +220,37 @@ void ActionBar::updateLinkColor()
     QPalette link;
     link.setColor(QPalette::ButtonText, palette().color(QPalette::Link));
     m_addNumbering->setPalette(link);
+}
+
+void ActionBar::updateFixedLook()
+{
+    // R1-04: the link is on one line with "Same names:", so it has the body font, not the
+    // smaller tool button font of some styles (macOS).
+    const QFont body = m_tipText->font();
+    QFont linkFont = m_addNumbering->font();
+    linkFont.setFamilies(body.families());
+    if (body.pointSizeF() > 0)
+        linkFont.setPointSizeF(body.pointSizeF());
+    else
+        linkFont.setPixelSize(body.pixelSize());
+    m_addNumbering->setFont(linkFont);
+
+    // R1-03: the height of the page with all its controls, also the ones that only some states
+    // show (the problem buttons, the tip, Skip). The layout adds the style margins of each
+    // control (macOS), so measure the layout with all controls not hidden for a moment.
+    QList<QWidget *> hidden;
+    for (QWidget *child : m_normalPage->findChildren<QWidget *>(Qt::FindDirectChildrenOnly)) {
+        if (child->isHidden()) {
+            hidden.append(child);
+            child->setHidden(false);
+        }
+    }
+    m_normalPage->setMinimumHeight(0);
+    m_normalPage->layout()->invalidate();
+    const int height = m_normalPage->layout()->minimumSize().height();
+    for (QWidget *child : std::as_const(hidden))
+        child->setHidden(true);
+    m_normalPage->setMinimumHeight(height);
 }
 
 void ActionBar::resizeEvent(QResizeEvent *event)
@@ -354,6 +387,7 @@ void ActionBar::changeEvent(QEvent *event)
     case QEvent::StyleChange:
     case QEvent::FontChange:
         updateLinkColor();
+        updateFixedLook();
         updateReasonIcon();
         updateSummary(m_summary);
         updateAccent();
