@@ -119,6 +119,7 @@ private slots:
     void cleanupNoteFollowsPortable();
     void cleanupReplacementFits();
     void cleanupFieldFollowsCheckBox();
+    void cleanupTopChecksOneGroup();
     void applyToWritesTarget();
     void setRuleFlushesPendingEdit();
     void wrongRuleTypeDisables();
@@ -547,6 +548,26 @@ void TestAppEditors1::cleanupReplacementFits()
     const QRect fieldRect = ctrm::test::visualRect(field, f.editor.get());
     QVERIFY(fieldRect.left() > boxRect.right());
     QVERIFY(std::abs(fieldRect.center().y() - boxRect.center().y()) <= 2);
+}
+
+void TestAppEditors1::cleanupTopChecksOneGroup()
+{
+    // M23 (ui-design 6.1 rule 6): the two top check boxes are one field group in one row.
+    Fixture<CleanUpEditor, CleanUpRule> f;
+    QFormLayout *form = f.editor->form();
+    auto *trim = child<QCheckBox>(f.editor.get(), "trim");
+    auto *collapse = child<QCheckBox>(f.editor.get(), "collapseSpaces");
+    int trimRow = -1;
+    int collapseRow = -1;
+    for (int row = 0; row < form->rowCount(); ++row) {
+        QLayoutItem *item = form->itemAt(row, QFormLayout::FieldRole);
+        if (ctrm::test::itemHolds(item, trim))
+            trimRow = row;
+        if (ctrm::test::itemHolds(item, collapse))
+            collapseRow = row;
+    }
+    QVERIFY(trimRow >= 0);
+    QCOMPARE(collapseRow, trimRow);
 }
 
 void TestAppEditors1::cleanupFieldFollowsCheckBox()

@@ -46,8 +46,8 @@ CleanUpEditor::CleanUpEditor(QWidget *parent)
     makeDimCaption(m_portableNote, this);
 
     QFormLayout *f = form();
-    f->addRow(QString(), m_trim);
-    f->addRow(QString(), m_collapseSpaces);
+    // The two check boxes are one field group (ui-design 6.1 rule 6).
+    f->addRow(QString(), makeFieldGroup({m_trim, m_collapseSpaces}));
     f->addRow(tr("&Spaces:"), m_spacesTo);
     // "[ ] Replace invalid characters with [ _ ]" on one line (ui-design 8.8). A field group
     // keeps the check box on the field edge (6.1 rule 2). The fixed width keeps the field small.
