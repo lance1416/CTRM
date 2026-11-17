@@ -2,8 +2,8 @@
 #include "rules/replacerule.h"
 
 #include "rules/graphemes.h"
+#include "rules/ruleoptions.h"
 
-#include <QJsonValue>
 #include <QList>
 #include <QRegularExpression>
 #include <QRegularExpressionMatch>
@@ -27,64 +27,6 @@ constexpr std::array<std::pair<ReplaceRule::Occurrence, const char *>, 3> kOccur
         {ReplaceRule::Occurrence::First, "first"},
         {ReplaceRule::Occurrence::Last, "last"},
 }};
-
-template <typename Enum, size_t N>
-QString enumToString(const std::array<std::pair<Enum, const char *>, N> &table, Enum value)
-{
-    for (const auto &[e, text] : table) {
-        if (e == value)
-            return QString::fromLatin1(text);
-    }
-    return QString();
-}
-
-void warnBadValue(QStringList *warnings, const QString &key)
-{
-    if (warnings)
-        warnings->append(QStringLiteral("Bad value for '%1' in rule replace").arg(key));
-}
-
-template <typename Enum, size_t N>
-Enum readEnum(const QJsonObject &o, const QString &key,
-              const std::array<std::pair<Enum, const char *>, N> &table, Enum fallback,
-              QStringList *warnings)
-{
-    const QJsonValue v = o.value(key);
-    if (v.isUndefined())
-        return fallback;
-    if (v.isString()) {
-        for (const auto &[e, text] : table) {
-            if (v.toString() == QLatin1String(text))
-                return e;
-        }
-    }
-    warnBadValue(warnings, key);
-    return fallback;
-}
-
-QString readString(const QJsonObject &o, const QString &key, QStringList *warnings)
-{
-    const QJsonValue v = o.value(key);
-    if (v.isUndefined())
-        return QString();
-    if (!v.isString()) {
-        warnBadValue(warnings, key);
-        return QString();
-    }
-    return v.toString();
-}
-
-bool readBool(const QJsonObject &o, const QString &key, bool fallback, QStringList *warnings)
-{
-    const QJsonValue v = o.value(key);
-    if (v.isUndefined())
-        return fallback;
-    if (!v.isBool()) {
-        warnBadValue(warnings, key);
-        return fallback;
-    }
-    return v.toBool();
-}
 
 // Wildcard: '*' = any text, '?' = one grapheme cluster. All other characters are literal.
 QString wildcardToPattern(const QString &find)
@@ -234,21 +176,27 @@ QJsonObject ReplaceRule::optionsToJson() const
     return {
             {QStringLiteral("find"), find},
             {QStringLiteral("replace"), replace},
-            {QStringLiteral("mode"), enumToString(kModes, mode)},
+            {QStringLiteral("mode"), ruleoptions::enumText(mode, kModes)},
             {QStringLiteral("caseSensitive"), caseSensitive},
-            {QStringLiteral("occurrence"), enumToString(kOccurrences, occurrence)},
+            {QStringLiteral("occurrence"), ruleoptions::enumText(occurrence, kOccurrences)},
             {QStringLiteral("wholeWord"), wholeWord},
     };
 }
 
 void ReplaceRule::optionsFromJson(const QJsonObject &o, QStringList *warnings)
 {
-    find = readString(o, QStringLiteral("find"), warnings);
-    replace = readString(o, QStringLiteral("replace"), warnings);
-    mode = readEnum(o, QStringLiteral("mode"), kModes, Mode::Literal, warnings);
-    caseSensitive = readBool(o, QStringLiteral("caseSensitive"), true, warnings);
-    occurrence = readEnum(o, QStringLiteral("occurrence"), kOccurrences, Occurrence::All, warnings);
-    wholeWord = readBool(o, QStringLiteral("wholeWord"), false, warnings);
+    const QString t = type();
+    find = ruleoptions::readString(o, QStringLiteral("find"), t, warnings).value_or(QString());
+    replace =
+            ruleoptions::readString(o, QStringLiteral("replace"), t, warnings).value_or(QString());
+    mode = ruleoptions::readEnum<Mode>(o, QStringLiteral("mode"), kModes, t, warnings)
+                   .value_or(Mode::Literal);
+    caseSensitive =
+            ruleoptions::readBool(o, QStringLiteral("caseSensitive"), t, warnings).value_or(true);
+    occurrence = ruleoptions::readEnum<Occurrence>(o, QStringLiteral("occurrence"), kOccurrences, t,
+                                                   warnings)
+                         .value_or(Occurrence::All);
+    wholeWord = ruleoptions::readBool(o, QStringLiteral("wholeWord"), t, warnings).value_or(false);
 }
 
 QString ReplaceRule::transform(const QString &text, const RuleContext &) const
