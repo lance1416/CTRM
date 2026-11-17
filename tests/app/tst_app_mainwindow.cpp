@@ -37,6 +37,7 @@
 #include <QMenuBar>
 #include <QMouseEvent>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSettings>
 #include <QStatusBar>
 #include <QTableView>
@@ -128,6 +129,7 @@ class TestMainWindow : public QObject
     Q_OBJECT
 private slots:
     void contextStores();
+    void editorGetsHeightAtMinimum();
     void emptyStateShown();
     void addRulePrimaryWithItems();
     void prefixFlowUnder60s();
@@ -822,6 +824,36 @@ void TestMainWindow::filterBarSameHeight()
     if (!visible.isValid())
         visible = combo->rect();
     QCOMPARE(field->height(), visible.height());
+}
+
+void TestMainWindow::editorGetsHeightAtMinimum()
+{
+    // M06: at the minimum window the rule list gives its empty rows to the editor, and the
+    // editor scrolls only over the current page.
+    Fixture f;
+    f.window.show();
+    f.window.resize(f.window.minimumSize());
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    f.addRuleAction(QStringLiteral("replace"))->trigger();
+    QApplication::processEvents();
+    auto *scroll = f.child<QScrollArea>("editorScroll");
+    auto *list = f.child<QListView>("ruleList");
+    QVERIFY(scroll && list);
+    const int oneRow = list->sizeHintForRow(0) + 2 * list->frameWidth();
+    const int page = scroll->widget()->sizeHint().height();
+    QVERIFY2(page < 300, qPrintable(QString::number(page))); // the Replace page, not Numbering
+    // The editor fits, or the list has no empty row.
+    QTRY_VERIFY2(scroll->viewport()->height() >= page || list->height() == oneRow,
+                 qPrintable(QStringLiteral("list %1, editor %2 of %3")
+                                    .arg(list->height())
+                                    .arg(scroll->viewport()->height())
+                                    .arg(page)));
+    QCOMPARE(scroll->widget()->height(), std::max(page, scroll->viewport()->height()));
+
+    // A high window: the list has its 3 rows again.
+    f.window.resize(f.window.width(), 1000);
+    QTRY_COMPARE(list->height(), list->sizeHint().height());
+    QCOMPARE(list->height(), 3 * list->sizeHintForRow(0) + 2 * list->frameWidth());
 }
 
 void TestMainWindow::namesShownAtMinimumWidth()

@@ -36,6 +36,7 @@
 #include <QPainter>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QResizeEvent>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSplitter>
@@ -131,15 +132,19 @@ public:
     using QListView::QListView;
 
     QSize sizeHint() const override { return {QListView::sizeHint().width(), heightFor(rows())}; }
+    // When the panel is low (the minimum window), the list can shrink to its rules: it keeps
+    // no empty rows that the editor needs (M06).
     QSize minimumSizeHint() const override
     {
-        return {QListView::minimumSizeHint().width(), heightFor(kMinListRows)};
+        return {QListView::minimumSizeHint().width(),
+                heightFor(std::clamp(rowCount(), 1, kMinListRows))};
     }
 
 private:
     static constexpr int kMinListRows = 3;
 
-    int rows() const { return std::max(kMinListRows, model() ? model()->rowCount() : 0); }
+    int rowCount() const { return model() ? model()->rowCount() : 0; }
+    int rows() const { return std::max(kMinListRows, rowCount()); }
 
     int heightFor(int rows) const
     {
@@ -193,7 +198,7 @@ public:
     {
         QSize size = QScrollArea::minimumSizeHint();
         if (widget()) {
-            // QStackedWidget gives the largest minimum of all its pages.
+            // EditorStack gives the minimum width of its widest page.
             int width = widget()->minimumSizeHint().width() + 2 * frameWidth();
             if (!style()->styleHint(QStyle::SH_ScrollBar_Transient, nullptr, this))
                 width += verticalScrollBar()->sizeHint().width();
@@ -212,6 +217,98 @@ protected:
     }
 };
 
+// The editor pages. The width is that of the widest page, so the panel width does not change
+// with the rule type (ui-design 4.4). The height is that of the current page: a short page does
+// not scroll over the empty space of a tall page (M06).
+class EditorStack : public QStackedWidget
+{
+public:
+    EditorStack()
+    {
+        // QStackedLayout would set the minimum size of the largest page on this widget.
+        layout()->setSizeConstraint(QLayout::SetNoConstraint);
+        connect(this, &QStackedWidget::currentChanged, this, [this] { updateGeometry(); });
+    }
+
+    QSize sizeHint() const override
+    {
+        return pageSize([](const QWidget *w) { return w->sizeHint(); });
+    }
+    QSize minimumSizeHint() const override
+    {
+        return pageSize([](const QWidget *w) { return w->minimumSizeHint(); });
+    }
+
+private:
+    template <typename Hint>
+    QSize pageSize(Hint hint) const
+    {
+        int width = 0;
+        for (int i = 0; i < count(); ++i) {
+            const QWidget *page = widget(i);
+            width = std::max(width, hint(page).expandedTo(page->minimumSize()).width());
+        }
+        const QWidget *current = currentWidget();
+        const int height = current ? hint(current).expandedTo(current->minimumSize()).height() : 0;
+        return {width, height};
+    }
+};
+
+// The rule list over the editor (ui-design 4.4). The list is as high as its rows (at least 3)
+// and the editor gets the rest. When the editor page does not fit, the list gives its empty rows
+// to the editor first (M06). After the user moves the handle, the splitter keeps the sizes.
+class RuleSplitter : public QSplitter
+{
+public:
+    // editor is a scroll area with pages: QScrollArea keeps an old size hint of its widget, so
+    // the splitter asks the pages.
+    RuleSplitter(QWidget *list, QScrollArea *editor)
+        : QSplitter(Qt::Vertical)
+        , m_editor(editor)
+    {
+        setChildrenCollapsible(false);
+        addWidget(list);
+        addWidget(editor);
+        setStretchFactor(0, 0);
+        setStretchFactor(1, 1);
+        connect(this, &QSplitter::splitterMoved, this, [this] { m_userSizes = true; });
+    }
+
+protected:
+    bool event(QEvent *e) override
+    {
+        const bool result = QSplitter::event(e);
+        if (e->type() == QEvent::LayoutRequest)
+            fit(); // a hint changed: rows added or removed, another editor page
+        return result;
+    }
+
+    void resizeEvent(QResizeEvent *e) override
+    {
+        QSplitter::resizeEvent(e);
+        fit();
+    }
+
+private:
+    void fit()
+    {
+        if (m_userSizes || count() != 2)
+            return;
+        const int total = height() - handleWidth();
+        QWidget *list = widget(0);
+        const int listMin = list->minimumSizeHint().height();
+        const int listHint = std::max(listMin, list->sizeHint().height());
+        const int editorHint = m_editor->widget()->sizeHint().height() + 2 * m_editor->frameWidth();
+        const int listHeight = std::clamp(total - editorHint, listMin, listHint);
+        const QList<int> wanted{listHeight, std::max(0, total - listHeight)};
+        if (sizes() != wanted)
+            setSizes(wanted);
+    }
+
+    QScrollArea *m_editor;
+    bool m_userSizes = false;
+};
+
 } // namespace
 
 RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *parent)
@@ -222,7 +319,7 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     , m_emptyPage(new QWidget)
     , m_emptyText(new QLabel)
     , m_list(new RuleListView)
-    , m_editors(new QStackedWidget)
+    , m_editors(new EditorStack)
     , m_noRulePage(new QWidget)
     , m_unsupportedPage(new QWidget)
     , m_chainOptions(new ChainOptionsWidget(nullptr)) // the layout adds it last: tab order
@@ -336,13 +433,7 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     m_scroll = new EditorScrollArea;
     m_scroll->setWidget(m_editors);
 
-    auto *splitter = new QSplitter(Qt::Vertical);
-    splitter->setChildrenCollapsible(false);
-    splitter->addWidget(listPage);
-    splitter->addWidget(m_scroll);
-    splitter->setStretchFactor(0, 0);
-    splitter->setStretchFactor(1, 1);
-    m_splitter = splitter;
+    m_splitter = new RuleSplitter(listPage, m_scroll);
 
     auto *layout = new QVBoxLayout(this);
     layout->addWidget(header);

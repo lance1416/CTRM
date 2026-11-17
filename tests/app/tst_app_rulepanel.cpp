@@ -523,7 +523,8 @@ void TestAppRulePanel::listFollowsRows()
     QListView *list = f.panel->ruleList();
     const int row = list->sizeHintForRow(0);
     QVERIFY(row > 0);
-    QCOMPARE(list->minimumSizeHint().height(), 3 * row + 2 * list->frameWidth());
+    // The minimum is the rule rows: a low panel gives the empty rows to the editor (M06).
+    QCOMPARE(list->minimumSizeHint().height(), 2 * row + 2 * list->frameWidth());
     QCOMPARE(list->sizeHint().height(), 3 * row + 2 * list->frameWidth());
     const int before = list->height();
     QVERIFY2(before <= list->sizeHint().height() + 2, qPrintable(QString::number(before)));
