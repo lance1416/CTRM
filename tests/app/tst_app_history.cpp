@@ -17,6 +17,7 @@
 #include "temptree.h"
 #include "text/messages.h"
 #include "widgets/itemtableview.h"
+#include "widgets/rulepanel.h"
 
 #include <QAction>
 #include <QApplication>
@@ -26,6 +27,7 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListView>
 #include <QPushButton>
 #include <QSettings>
 #include <QTableView>
@@ -182,6 +184,7 @@ private slots:
     void undoAfterRestart();
     void undoPreviewTexts();
     void tablesLayout();
+    void focusAfterRunAndUndo();
 };
 
 void TestHistory::quickUndoNoPreview()
@@ -630,6 +633,65 @@ void TestHistory::undoPreviewTexts()
     const int gap = std::min(cancel->mapTo(&none, QPoint()).x(), run->mapTo(&none, QPoint()).x()) -
                     reason->mapTo(&none, QPoint(reason->width(), 0)).x();
     QVERIFY2(gap >= 0 && gap < 60, qPrintable(QString::number(gap)));
+}
+
+// AC-G3, keyboard only: after a batch, a quick undo and a History undo, a control has the
+// focus again: the one from before the run, else the item table.
+void TestHistory::focusAfterRunAndUndo()
+{
+    Fixture f;
+    f.window.show();
+    QVERIFY(QTest::qWaitForWindowActive(&f.window));
+    QStringList paths;
+    for (const char *rel : {"old_a.txt", "old_b.txt"})
+        paths.append(f.tree.file(QLatin1StringView(rel), "x"));
+    f.window.itemAdder().addPaths(paths);
+    f.window.ruleModel().insertRule(0, replaceRule(QStringLiteral("old"), QStringLiteral("new")));
+
+    // The Find field of the rule editor: disabled during the run.
+    f.window.rulePanel()->ruleList()->setCurrentIndex(f.window.ruleModel().index(0));
+    QLineEdit *field = nullptr;
+    QTRY_VERIFY((field = f.window.rulePanel()->findChild<QLineEdit *>(QStringLiteral("find"))) &&
+                field->isVisible() && field->isEnabled());
+    field->setFocus();
+    QTRY_COMPARE(f.window.focusWidget(), field);
+    QVERIFY(f.run([&] { QTest::keySequence(&f.window, f.window.actions().rename->shortcut()); }));
+    QVERIFY(f.exists(QStringLiteral("new_a.txt")));
+    QTRY_COMPARE(f.window.focusWidget(), field);
+    QVERIFY(field->isEnabled());
+
+    // Undo from History with the keyboard: the Undo Batch button hides after the undo, so
+    // the table gets the focus.
+    const QString id = f.batch.lastBatchId();
+    QVERIFY(!id.isEmpty());
+    f.history.showHistory(id);
+    auto *w = f.window.findChild<HistoryWindow *>();
+    QVERIFY(w);
+    QVERIFY(QTest::qWaitForWindowActive(w));
+    QPushButton *undo = button(w, "undoBatch");
+    QVERIFY(undo->isVisible());
+    undo->setFocus();
+    f.previewAnswer = true;
+    QVERIFY(f.run([&] { QTest::keyClick(undo, Qt::Key_Space); }));
+    QVERIFY(f.exists(QStringLiteral("old_a.txt")));
+    QVERIFY(!undo->isVisible());
+    QTRY_COMPARE(f.window.focusWidget(), f.window.tableView());
+
+    // Quick undo (Ctrl+Z) from the table: the table has the focus again.
+    Fixture g;
+    g.window.show();
+    QVERIFY(QTest::qWaitForWindowActive(&g.window));
+    QVERIFY(!g.renameOld({"old_a.txt"}).isEmpty());
+    // The offscreen platform does not make the window active again after the run.
+    g.window.activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(&g.window));
+    g.window.tableView()->setFocus();
+    QTRY_VERIFY(g.window.actions().undoRename->isEnabled());
+    QVERIFY(g.run(
+            [&] { QTest::keySequence(&g.window, g.window.actions().undoRename->shortcut()); }));
+    QVERIFY(g.exists(QStringLiteral("old_a.txt")));
+    QTRY_COMPARE(g.window.focusWidget(), g.window.tableView());
+    QVERIFY(g.window.tableView()->isEnabled());
 }
 
 QTEST_MAIN(TestHistory)

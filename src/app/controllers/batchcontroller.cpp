@@ -8,9 +8,11 @@
 #include "mainwindow.h"
 #include "text/plural.h"
 #include "widgets/actionbar.h"
+#include "widgets/itemtableview.h"
 #include "widgets/messagebar.h"
 
 #include <QAction>
+#include <QApplication>
 #include <QCloseEvent>
 #include <QMessageBox>
 #include <QPushButton>
@@ -228,6 +230,10 @@ void BatchController::runPlan(const Plan &plan, const QString &undoOf)
     m_undoOf = undoOf;
     m_startTime = QDateTime::currentDateTime();
     m_lastResult = {};
+    // AC-G3: setRunning disables the field with the focus; give it back after the run.
+    m_focusBeforeRun = QApplication::focusWidget();
+    if (!m_focusBeforeRun)
+        m_focusBeforeRun = m_w.focusWidget();
     m_w.setResultShown(false);
     m_w.setRunning(true);
     m_w.actions().cancelBatch->setEnabled(true);
@@ -341,6 +347,18 @@ void BatchController::finishOnWorker(std::function<FinishResult()> job)
                                 [this](const FinishResult &result) { finished(result); });
 }
 
+void BatchController::restoreFocus()
+{
+    // The control that had the focus before the run, when the user can still use it (an undo
+    // from History: the Undo Batch button hides after the undo). Else the item table.
+    QWidget *target = m_focusBeforeRun;
+    m_focusBeforeRun.clear();
+    if (!target || !target->isVisible() || !target->isEnabled() ||
+        target->focusPolicy() == Qt::NoFocus)
+        target = m_w.tableView();
+    target->setFocus(Qt::OtherFocusReason);
+}
+
 void BatchController::finished(const FinishResult &result)
 {
     const QString batchId = m_session->batchId();
@@ -408,6 +426,8 @@ void BatchController::finished(const FinishResult &result)
     if (failurePath && !m_closeAfterRun)
         showReport(result);
     emit batchFinished(result, batchId, undoOf);
+    // After batchFinished: the History window refresh can hide the control that had the focus.
+    restoreFocus();
     if (m_closeAfterRun) {
         m_closeAfterRun = false;
         m_w.close();

@@ -9,7 +9,9 @@
 #include <QHash>
 #include <QList>
 #include <QObject>
+#include <QPointer>
 #include <QString>
+#include <QWidget>
 
 #include <atomic>
 #include <functional>
@@ -81,6 +83,7 @@ private:
     void runDone(const ctrm::RunOutcome &outcome);
     void finishOnWorker(std::function<ctrm::FinishResult()> job);
     void finished(const ctrm::FinishResult &result);
+    void restoreFocus();
     void showResultMessage(const ctrm::FinishResult &result);
     void openReport(const ctrm::FinishResult &result);
     ctrm::FinishResult partialReport(const ctrm::RunOutcome &outcome) const;
@@ -97,6 +100,7 @@ private:
     QDateTime m_startTime;
     QHash<ctrm::ItemId, QString> m_skipReasons;
     ctrm::FinishResult m_lastResult;
+    QPointer<QWidget> m_focusBeforeRun;
     QDateTime m_lastResultTime;
     QString m_lastBatchId;
     quint64 m_lastListVersion = 0;
