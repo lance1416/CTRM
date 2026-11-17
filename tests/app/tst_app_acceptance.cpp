@@ -114,12 +114,12 @@ struct Fixture
         QWidget *target = window.findChild<EmptyState *>();
         if (!target || !target->isVisible())
             target = window.tableView()->viewport();
-        const QPointF pos(target->rect().center());
+        const QPoint pos = target->rect().center();
         QDragEnterEvent enter(pos, Qt::CopyAction, &mime, Qt::LeftButton, {});
         QCoreApplication::sendEvent(target, &enter);
         if (!enter.isAccepted())
             return false;
-        QDropEvent dropEvent(pos, Qt::CopyAction, &mime, Qt::LeftButton, {});
+        QDropEvent dropEvent(QPointF(pos), Qt::CopyAction, &mime, Qt::LeftButton, {});
         QCoreApplication::sendEvent(target, &dropEvent);
         return dropEvent.isAccepted();
     }
