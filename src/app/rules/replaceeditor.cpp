@@ -31,7 +31,7 @@ ReplaceEditor::ReplaceEditor(QWidget *parent)
                                     {tr("Last"), int(Occurrence::Last)}}))
     , m_matchCase(new QCheckBox(tr("Match &case")))
     , m_wholeWord(new QCheckBox(tr("W&hole words only")))
-    , m_applyTo(makeApplyToCombo(this))
+    , m_applyTo(makeApplyToCombo(nullptr)) // the form row sets the parent: tab order
 {
     m_find->setObjectName(QStringLiteral("find"));
     m_hint->setObjectName(QStringLiteral("hint"));

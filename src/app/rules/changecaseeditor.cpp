@@ -22,7 +22,7 @@ ChangeCaseEditor::ChangeCaseEditor(QWidget *parent)
     : RuleEditor(parent)
     , m_pendingText(new PendingTextEdit(this))
     , m_cases(new QButtonGroup(this))
-    , m_applyTo(makeApplyToCombo(this))
+    , m_applyTo(makeApplyToCombo(nullptr)) // the form row sets the parent: tab order
     , m_more(nullptr)
     , m_separators(new QLineEdit)
     , m_smallWords(new QLineEdit)

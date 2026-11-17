@@ -13,6 +13,7 @@
 #include "rules/removeeditor.h"
 #include "rules/removerule.h"
 #include "rules/replaceeditor.h"
+#include "rules/ruleeditorfactory.h"
 #include "widgets/formutils.h"
 
 #include <QCheckBox>
@@ -113,6 +114,7 @@ private slots:
     void extensionInlineFields();
     void extensionWritesRule();
     void inlineFieldsFullHeight();
+    void tabOrderFollowsRows();
     void extensionFolderNote();
     void chainOptionsDefaults();
     void chainOptionsChangedCount();
@@ -371,6 +373,33 @@ bool fieldsFullHeight(const QStringList &names, const std::function<void(Editor 
 }
 
 } // namespace
+
+void TestAppEditors2::tabOrderFollowsRows()
+{
+    // ui-design 12 (with M29): Tab goes down the form rows; Apply to is not first.
+    for (const QString &type :
+         {"replace", "insert", "remove", "changeCase", "numbering", "extension", "cleanup"}) {
+        std::unique_ptr<RuleEditor> e(createRuleEditor(type, nullptr));
+        QFormLayout *form = e->form();
+        const auto formRow = [form](const QWidget *w) {
+            for (int row = 0; row < form->rowCount(); ++row) {
+                if (ctrm::test::itemHolds(form->itemAt(row, QFormLayout::FieldRole), w))
+                    return row;
+            }
+            return -1;
+        };
+        int last = -1;
+        QStringList order;
+        for (QWidget *w = e->nextInFocusChain(); w != e.get(); w = w->nextInFocusChain()) {
+            const int row = formRow(w);
+            if (row < 0 || !(w->focusPolicy() & Qt::TabFocus))
+                continue;
+            order.append(w->objectName());
+            QVERIFY2(row >= last, qPrintable(type + u": " + order.join(u' ')));
+            last = row;
+        }
+    }
+}
 
 // M05: an inline sub-field next to a radio button or a check box has its normal height.
 void TestAppEditors2::inlineFieldsFullHeight()

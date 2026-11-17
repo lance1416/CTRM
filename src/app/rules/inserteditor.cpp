@@ -31,7 +31,7 @@ InsertEditor::InsertEditor(QWidget *parent)
     , m_atIndex(new QRadioButton(tr("At &index")))
     , m_index(new QSpinBox)
     , m_fromEnd(new QCheckBox(tr("From &end")))
-    , m_applyTo(makeApplyToCombo(this))
+    , m_applyTo(makeApplyToCombo(nullptr)) // the form row sets the parent: tab order
 {
     m_text->setObjectName(QStringLiteral("text"));
     m_prefix->setObjectName(QStringLiteral("prefix"));

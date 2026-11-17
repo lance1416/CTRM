@@ -47,7 +47,7 @@ RemoveEditor::RemoveEditor(QWidget *parent)
     , m_occurrence(makeChoiceCombo(
               {{tr("All"), int(Occurrence::All)}, {tr("First"), int(Occurrence::First)}}))
     , m_keepDelimiters(new QCheckBox(tr("&Keep the delimiters")))
-    , m_applyTo(makeApplyToCombo(this))
+    , m_applyTo(makeApplyToCombo(nullptr)) // the form row sets the parent: tab order
 {
     m_mode->setObjectName(QStringLiteral("mode"));
     m_from->setObjectName(QStringLiteral("from"));
