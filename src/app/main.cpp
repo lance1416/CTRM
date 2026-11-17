@@ -11,6 +11,7 @@
 #include "version.h"
 
 #include <QApplication>
+#include <QStandardPaths>
 #include <QStyle>
 #include <QStyleFactory>
 
@@ -29,6 +30,13 @@ int main(int argc, char *argv[])
 #endif
 
     QApplication::setWindowIcon(ctrm::app::appIcon());
+
+    // One CTRM at a time, before the history is read (no recovery check in a second CTRM).
+    ctrm::app::InstanceLock lock(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation));
+    if (!lock.tryLock()) {
+        ctrm::app::showAlreadyOpen(ctrm::app::itemArgumentCount(QApplication::arguments()));
+        return 0;
+    }
 
     ctrm::app::AppContext context;
     ctrm::app::MainWindow window(context);

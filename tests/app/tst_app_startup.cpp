@@ -15,7 +15,9 @@
 #include "temptree.h"
 
 #include <QFile>
+#include <QProcess>
 #include <QSettings>
+#include <QSysInfo>
 #include <QTemporaryDir>
 #include <QtTest>
 
@@ -120,15 +122,94 @@ struct Fixture
     QStringList asked;
 };
 
+// Writes a lock file as QLockFile does, for a process ID.
+void writeLockFile(const QString &path, qint64 pid)
+{
+    QFile f(path);
+    QVERIFY(f.open(QIODevice::WriteOnly));
+    f.write(QByteArray::number(pid) + '\n' + QCoreApplication::applicationName().toUtf8() + '\n' +
+            QSysInfo::machineHostName().toUtf8() + '\n');
+}
+
 } // namespace
 
 class TestAppStartup : public QObject
 {
     Q_OBJECT
 private slots:
+    void lockOnce();
+    void lockOfOpenCtrmStays();
+    void staleLockTaken();
+    void alreadyOpenText();
+    void itemArguments();
     void retentionAfterRecovery();
     void retentionAfterDecision();
 };
+
+void TestAppStartup::lockOnce()
+{
+    QTemporaryDir dir;
+    auto first = std::make_unique<InstanceLock>(dir.path());
+    InstanceLock second(dir.path());
+    QVERIFY(first->tryLock());
+    QVERIFY(first->tryLock()); // the holder asks again
+    QVERIFY(!second.tryLock());
+    first.reset(); // the first CTRM closes
+    QVERIFY(second.tryLock());
+}
+
+void TestAppStartup::lockOfOpenCtrmStays()
+{
+    // A CTRM that is open for a long time keeps its lock: no stale time. On macOS and Linux the
+    // native file lock of the holder also stops the removal, so this test passes with the
+    // default stale time too; setStaleLockTime(0) is for file systems with no native lock.
+    QTemporaryDir dir;
+    InstanceLock first(dir.path());
+    QVERIFY(first.tryLock());
+    QFile file(first.filePath());
+    QVERIFY(file.open(QIODevice::ReadWrite));
+    QVERIFY(file.setFileTime(QDateTime::currentDateTime().addSecs(-3600),
+                             QFileDevice::FileModificationTime));
+    file.close();
+    InstanceLock second(dir.path());
+    QVERIFY(!second.tryLock());
+}
+
+void TestAppStartup::staleLockTaken()
+{
+    // CTRM stopped and left its lock file: the next start takes the lock.
+    QProcess process;
+    process.start(QCoreApplication::applicationFilePath(), {QStringLiteral("-functions")});
+    QVERIFY(process.waitForStarted());
+    const qint64 pid = process.processId();
+    QVERIFY(process.waitForFinished());
+    QTemporaryDir dir;
+    InstanceLock lock(dir.path());
+    writeLockFile(lock.filePath(), pid);
+    QVERIFY(lock.tryLock());
+}
+
+void TestAppStartup::alreadyOpenText()
+{
+    QCOMPARE(ctrm::app::alreadyOpenText(), QStringLiteral("CTRM is already open."));
+    const QString why = QStringLiteral("Use the CTRM window that is open. Two open copies could "
+                                       "rename the same files at the same time.");
+    QCOMPARE(ctrm::app::alreadyOpenInformativeText(0), why);
+    QCOMPARE(ctrm::app::alreadyOpenInformativeText(1),
+             why + QStringLiteral("\n\nThe item was not added. Add it in the open CTRM window."));
+    QCOMPARE(ctrm::app::alreadyOpenInformativeText(3),
+             why + QStringLiteral(
+                           "\n\nThe items were not added. Add them in the open CTRM window."));
+}
+
+void TestAppStartup::itemArguments()
+{
+    // Open With gives the items as arguments; options are not items (Qt removes its own).
+    QCOMPARE(ctrm::app::itemArgumentCount({QStringLiteral("ctrm")}), 0);
+    QCOMPARE(ctrm::app::itemArgumentCount({QStringLiteral("ctrm"), QStringLiteral("/a/b.txt"),
+                                           QStringLiteral("-x"), QStringLiteral("/a/c")}),
+             2);
+}
 
 void TestAppStartup::retentionAfterRecovery()
 {
