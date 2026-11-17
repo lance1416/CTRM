@@ -725,11 +725,18 @@ void RulePanel::focusFirstField(RuleEditor *editor)
     QFormLayout *form = editor->form();
     for (int row = 0; row < form->rowCount(); ++row) {
         QLayoutItem *item = form->itemAt(row, QFormLayout::FieldRole);
-        QWidget *field = item ? item->widget() : nullptr;
-        if (!field || !form->isRowVisible(row))
+        if (!item || !form->isRowVisible(row))
             continue;
-        QList<QWidget *> candidates{field};
-        candidates += field->findChildren<QWidget *>();
+        QList<QWidget *> candidates;
+        if (QWidget *field = item->widget()) {
+            candidates.append(field);
+            candidates += field->findChildren<QWidget *>();
+        } else if (QLayout *group = item->layout()) { // a field group (makeFieldGroup)
+            for (int i = 0; i < group->count(); ++i) {
+                if (QWidget *w = group->itemAt(i)->widget())
+                    candidates.append(w);
+            }
+        }
         QWidget *target = nullptr;
         for (QWidget *w : std::as_const(candidates)) {
             auto *radio = qobject_cast<QRadioButton *>(w);
