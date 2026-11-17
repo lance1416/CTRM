@@ -33,10 +33,14 @@ int main(int argc, char *argv[])
     ctrm::app::MainWindow window(context);
     ctrm::app::BatchController batch(window, context, &window);
     ctrm::app::HistoryController history(window, context, batch, &window);
-    ctrm::app::RecoveryController recovery(window, context, &window);
+    ctrm::app::RecoveryController recovery(window, context, history, &window);
     ctrm::app::PresetController presets(window, context, &window);
     ctrm::app::PreferencesController preferences(window, context, &window);
     window.show();
+    // Before the user can use the window (ui-design 9.10). History retention (Task 18) runs
+    // after the recovery.
+    QMetaObject::invokeMethod(&recovery, &ctrm::app::RecoveryController::checkAtStart,
+                              Qt::QueuedConnection);
 
     return QApplication::exec();
 }
