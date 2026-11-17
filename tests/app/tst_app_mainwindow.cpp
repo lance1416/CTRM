@@ -916,7 +916,10 @@ void TestMainWindow::listWholeRows()
     const int frames = 2 * list->frameWidth();
     int tallest = 0;
     for (int i = 0; i < pages->count(); ++i)
-        tallest = std::max(tallest, pages->widget(i)->sizeHint().height());
+        tallest = std::max(tallest, pages->widget(i)
+                                            ->sizeHint()
+                                            .expandedTo(pages->widget(i)->minimumSize())
+                                            .height()); // as RuleSplitter
     bool keptCut = false;
     for (int h = f.window.minimumHeight(); h <= 1100; h += 7) {
         f.window.resize(1200, h);
