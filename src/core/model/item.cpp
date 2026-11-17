@@ -66,9 +66,11 @@ bool sameFile(const FileIdentity &expected, const FileIdentity &actual)
         return expected.volume == actual.volume && expected.idHigh == actual.idHigh &&
                expected.idLow == actual.idLow;
     }
-    if (expected.mtimeNs != actual.mtimeNs)
-        return false;
-    return expected.size < 0 || expected.size == actual.size;
+    // A weak folder matches on its type only: its name is checked by the path, and its
+    // modification time changes when CTRM renames an item in it.
+    if (expected.size < 0)
+        return actual.size < 0;
+    return expected.mtimeNs == actual.mtimeNs && expected.size == actual.size;
 }
 
 QJsonObject identityToJson(const FileIdentity &id)

@@ -4,6 +4,7 @@
 #include "fakefilesystem.h"
 #include "temptree.h"
 
+#include <QThread>
 #include <QtTest>
 
 #include <atomic>
@@ -160,6 +161,7 @@ private slots:
     void rollBackStartFailureDoesNotRename();
     void restoreTempNamesWritesStarts();
     void restoreTempNamesStopsOnStartFailure();
+    void weakFolderWithRenamedChild();
 };
 
 void TstExecutor::runsAllSteps()
@@ -858,6 +860,48 @@ void TstExecutor::restoreTempNamesStopsOnStartFailure()
     QCOMPARE(rb.failedSteps, (QList<int>{0}));
     QCOMPARE(fs.renameCount(), renames); // try 2 does not run either
     QVERIFY(fs.exists(plan.steps[0].to));
+}
+
+// Real folders: the child rename gives the folder a new modification time. With weak identity
+// a folder matches on its type only, so the folder step still runs.
+void TstExecutor::weakFolderWithRenamedChild()
+{
+    TempTree t;
+    t.file(QStringLiteral("d/a.txt"), "A");
+    const std::unique_ptr<FileSystem> fs = createNativeFileSystem();
+    const auto request = [&](ItemId id, const QString &folder, const QString &oldName,
+                             const QString &newName, bool isFolder) {
+        RenameRequest r;
+        r.item = id;
+        r.folder = folder;
+        r.oldName = oldName;
+        r.newName = newName;
+        r.isFolder = isFolder;
+        r.identity = *fs->identity(folder + u'/' + oldName, IdentityType::Weak);
+        return r;
+    };
+    const QList<RenameRequest> requests{
+            request(1, t.root(), QStringLiteral("d"), QStringLiteral("e"), true),
+            request(2, t.root() + QStringLiteral("/d"), QStringLiteral("a.txt"),
+                    QStringLiteral("b.txt"), false)};
+    QThread::msleep(20);
+    const PlanResult planned = makePlan(requests, *fs, kBatch);
+    QVERIFY2(planned.plan, qPrintable(planned.error));
+    QCOMPARE(planned.plan->steps.first().item, ItemId(2)); // the child first
+
+    MemorySink sink;
+    Executor ex(*fs, sink);
+    std::atomic<bool> cancel{false};
+    const RunOutcome out = ex.run(*planned.plan, cancel);
+    QVERIFY2(out.finished, qPrintable(out.failure.errorText));
+    QVERIFY(QFile::exists(t.root() + QStringLiteral("/e/b.txt")));
+
+    // A file at the folder's path is not the folder.
+    QVERIFY(!sameFile(requests[0].identity,
+                      *fs->identity(t.root() + QStringLiteral("/e/b.txt"), IdentityType::Weak)));
+    // Roll back: the folder first, then the child.
+    QVERIFY(ex.rollBack(*planned.plan, out.okSteps).complete);
+    QVERIFY(QFile::exists(t.root() + QStringLiteral("/d/a.txt")));
 }
 
 QTEST_GUILESS_MAIN(TstExecutor)

@@ -170,6 +170,7 @@ void TestNativeFsWin::identityWeak()
     const auto folderId = fs->identity(t.mkdir(QStringLiteral("d")), IdentityType::Weak);
     QVERIFY(folderId);
     QCOMPARE(folderId->size, qint64(-1));
+    QCOMPARE(folderId->mtimeNs, qint64(0)); // a folder: type only
 }
 
 void TestNativeFsWin::identityMissing()

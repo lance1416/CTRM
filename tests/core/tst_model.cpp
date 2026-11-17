@@ -157,11 +157,19 @@ void TestModel::sameFileWeak()
     otherSize.size = 101;
     QVERIFY(!sameFile(a, otherSize));
 
+    // A weak folder matches on its type only: another time is the same folder, a file is not.
     FileIdentity folder = a;
     folder.size = -1;
     FileIdentity folderNow = folder;
-    folderNow.size = 4096;
+    folderNow.mtimeNs += 5;
     QVERIFY(sameFile(folder, folderNow));
+    FileIdentity fileNow = folder;
+    fileNow.size = 4096;
+    QVERIFY(!sameFile(folder, fileNow));
+    // An old journal has a folder time; a folder read now has none.
+    FileIdentity folderRead = folder;
+    folderRead.mtimeNs = 0;
+    QVERIFY(sameFile(folder, folderRead));
 
     FileIdentity otherTime = a;
     otherTime.mtimeNs += 1;

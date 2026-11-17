@@ -108,8 +108,10 @@ public:
             id.volume = quint64(st.st_dev);
             id.idLow = quint64(st.st_ino);
         } else {
-            id.size = S_ISDIR(st.st_mode) ? -1 : qint64(st.st_size);
-            id.mtimeNs = mtimeNs(st);
+            // A folder: type only (its time changes when an item in it is renamed).
+            const bool folder = S_ISDIR(st.st_mode);
+            id.size = folder ? -1 : qint64(st.st_size);
+            id.mtimeNs = folder ? 0 : mtimeNs(st);
         }
         return id;
     }

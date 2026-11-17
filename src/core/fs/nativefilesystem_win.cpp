@@ -224,13 +224,14 @@ public:
         if (!GetFileInformationByHandle(h.get(), &info))
             return std::nullopt;
         if (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            // A folder: type only (its time changes when an item in it is renamed).
             id.size = -1;
-        } else {
-            LARGE_INTEGER size{};
-            if (!GetFileSizeEx(h.get(), &size))
-                return std::nullopt;
-            id.size = size.QuadPart;
+            return id;
         }
+        LARGE_INTEGER size{};
+        if (!GetFileSizeEx(h.get(), &size))
+            return std::nullopt;
+        id.size = size.QuadPart;
         const qint64 ft = (qint64(info.ftLastWriteTime.dwHighDateTime) << 32) |
                           qint64(info.ftLastWriteTime.dwLowDateTime);
         id.mtimeNs = (ft - kEpochDiff100ns) * 100;

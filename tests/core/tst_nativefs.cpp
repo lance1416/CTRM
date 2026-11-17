@@ -193,6 +193,7 @@ void TestNativeFs::identityWeakFolderSize()
     QVERIFY(folder);
     QCOMPARE(folder->type, IdentityType::Weak);
     QCOMPARE(folder->size, qint64(-1));
+    QCOMPARE(folder->mtimeNs, qint64(0)); // a folder: type only
     const auto file = fs->identity(f, IdentityType::Weak);
     QVERIFY(file);
     QCOMPARE(file->size, qint64(5));

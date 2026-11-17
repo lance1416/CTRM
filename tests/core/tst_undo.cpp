@@ -2,8 +2,10 @@
 #include "exec/batchservice.h"
 #include "exec/undo.h"
 #include "fakefilesystem.h"
+#include "temptree.h"
 
 #include <QTemporaryDir>
+#include <QThread>
 #include <QtTest>
 
 #include <atomic>
@@ -125,6 +127,7 @@ private slots:
     void markCompleteRefusesFinishedBatch();
     void undoNestedFolders();
     void undoChildAfterParentUndone();
+    void undoWeakFolderWithRenamedChild();
 };
 
 void TstUndo::undoRestoresAll()
@@ -504,6 +507,57 @@ void TstUndo::undoChildAfterParentUndone()
     undo(env, p);
     QCOMPARE(env.fs.names("/f/d"), (QStringList{"f.txt"}));
     QCOMPARE(stateOf(env.history, id), BatchState::Undone);
+}
+
+// Real folders: renaming a child changes the modification time of its folder. On a volume with
+// weak identity, a folder matches on its type only (its name is checked by the path).
+void TstUndo::undoWeakFolderWithRenamedChild()
+{
+    TempTree t;
+    t.file("d/a.txt", "A");
+    const std::unique_ptr<FileSystem> fs = createNativeFileSystem();
+    QTemporaryDir dir;
+    HistoryStore history(dir.path());
+    BatchService service(*fs, history, kApp);
+
+    const auto request = [&](ItemId id, const QString &folder, const QString &oldName,
+                             const QString &newName, bool isFolder) {
+        RenameRequest r;
+        r.item = id;
+        r.folder = folder;
+        r.oldName = oldName;
+        r.newName = newName;
+        r.isFolder = isFolder;
+        r.identity = *fs->identity(folder + "/" + oldName, IdentityType::Weak);
+        return r;
+    };
+    const QList<RenameRequest> requests{request(1, t.root(), "d", "e", true),
+                                        request(2, t.root() + "/d", "a.txt", "b.txt", false)};
+    QThread::msleep(20); // so that a rename in the folder gives it a new modification time
+    PlanResult planned = makePlan(requests, *fs, newBatchId());
+    QVERIFY2(planned.plan, qPrintable(planned.error));
+    QString error;
+    auto session = service.start(*planned.plan, RuleChain(), {}, &error);
+    QVERIFY2(session, qPrintable(error));
+    std::atomic<bool> cancel{false};
+    const RunOutcome run = session->run(cancel);
+    QVERIFY2(run.finished, qPrintable(run.failure.errorText));
+    QCOMPARE(session->complete().state, BatchState::Complete);
+    QVERIFY(QFile::exists(t.root() + "/e/b.txt"));
+
+    QThread::msleep(20);
+    const UndoPreview preview = service.previewUndo(planned.plan->batchId, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QCOMPARE(preview.items.size(), 2);
+    QCOMPARE(preview.passCount, 2);
+    PlanResult undo = service.planUndo(preview);
+    QVERIFY2(undo.plan, qPrintable(undo.error));
+    auto undoSession = service.start(*undo.plan, RuleChain(), planned.plan->batchId, &error);
+    QVERIFY2(undoSession, qPrintable(error));
+    const RunOutcome undone = undoSession->run(cancel);
+    QVERIFY2(undone.finished, qPrintable(undone.failure.errorText));
+    QCOMPARE(undoSession->complete().state, BatchState::Complete);
+    QVERIFY(QFile::exists(t.root() + "/d/a.txt"));
 }
 
 QTEST_GUILESS_MAIN(TstUndo)

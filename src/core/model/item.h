@@ -21,12 +21,13 @@ struct FileIdentity
     quint64 idHigh = 0; // strong: 0 / FILE_ID_128 high
     quint64 idLow = 0;  // strong: st_ino / FILE_ID_128 low
     qint64 size = -1;   // weak: file size, -1 for a folder
-    qint64 mtimeNs = 0; // weak: modification time
+    qint64 mtimeNs = 0; // weak: modification time of a file (0 for a folder)
     bool operator==(const FileIdentity &) const = default;
 };
 
-// Strong: compares volume, idHigh and idLow. Weak: compares mtimeNs, and size when
-// expected.size >= 0. Identities of different type are never the same file.
+// Strong: compares volume, idHigh and idLow. Weak file: compares size and mtimeNs. Weak
+// folder (size -1): matches any folder (the path checks the name). Identities of different
+// type are never the same file.
 bool sameFile(const FileIdentity &expected, const FileIdentity &actual);
 
 // Keys: type ("strong"|"weak"), volume, idHigh, idLow, size, mtimeNs.
