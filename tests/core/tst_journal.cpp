@@ -154,6 +154,9 @@ private slots:
     void createNeverReplaces();
     void appendAfterReopen();
     void appendAfterTruncatedTail();
+    void openAndReadAgree_data();
+    void openAndReadAgree();
+    void bestEffortOpenWithoutHeader();
     void listNewestFirst();
     void listShowsDamaged();
     void inProgressListed();
@@ -451,6 +454,75 @@ void TestJournal::appendAfterTruncatedTail()
     const auto r2 = readJournal(path2, &error);
     QVERIFY2(r2, qPrintable(error));
     QCOMPARE(r2->state(), BatchState::Incomplete);
+}
+
+void TestJournal::openAndReadAgree_data()
+{
+    QTest::addColumn<QByteArray>("extra");
+    QTest::addColumn<bool>("readable");
+    const QByteArray op = "{\"type\":\"state\",\"state\":\"incomplete\",\"time\":\"x\"}\n";
+    QTest::newRow("clean") << QByteArray() << true;
+    QTest::newRow("tail") << QByteArray("{\"type\":\"op\",\"st") << true;
+    QTest::newRow("bad last line") << QByteArray("{\"type\":\"op\",\"st\n") << true;
+    QTest::newRow("good line, tail") << op + "{\"ty" << true;
+    // A complete line before a tail is not the last line: it must be valid.
+    QTest::newRow("bad line, tail") << QByteArray("not json\n{\"ty") << false;
+    // Valid JSON, but not a valid record: never a torn write.
+    QTest::newRow("bad record last") << QByteArray("{\"type\":\"op\",\"step\":99}\n") << false;
+    QTest::newRow("bad middle") << QByteArray("not json\n") + op << false;
+}
+
+// openForAppend() accepts exactly the journals that readJournal() reads, and cuts exactly the
+// tail that readJournal() ignores.
+void TestJournal::openAndReadAgree()
+{
+    QFETCH(QByteArray, extra);
+    QFETCH(bool, readable);
+    TempTree t;
+    const QString path = writeRaw(t.root(), newId(), utc(2026, 1, 1), BatchState::InProgress);
+    appendBytes(path, extra);
+    QFile f(path);
+    QVERIFY(f.open(QIODevice::ReadOnly));
+    const QByteArray before = f.readAll();
+    f.close();
+
+    QString error;
+    const auto r = readJournal(path, &error);
+    QCOMPARE(bool(r), readable);
+    auto w = JournalWriter::openForAppend(path, &error);
+    QCOMPARE(bool(w), readable);
+    if (!readable) {
+        QVERIFY(!error.isEmpty());
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        QCOMPARE(f.readAll(), before); // the file is not changed
+        return;
+    }
+    QVERIFY(w->appendState({BatchState::RolledBack, utc(2026, 1, 2), {}}));
+    const auto after = readJournal(path, &error);
+    QVERIFY2(after, qPrintable(error));
+    QVERIFY(!after->ignoredTail);
+    QCOMPARE(after->states.size(), r->states.size() + 1);
+    QCOMPARE(after->steps.size(), r->steps.size());
+    QCOMPARE(after->state(), BatchState::RolledBack);
+}
+
+void TestJournal::bestEffortOpenWithoutHeader()
+{
+    TempTree t;
+    const QString path = t.file("x.jsonl", "garbage\nnot json\n{\"type\":\"op\",\"st");
+    QString error;
+    QVERIFY(!JournalWriter::openForAppend(path, &error));
+    auto w = JournalWriter::openForAppend(path, &error, ReadMode::BestEffort);
+    QVERIFY2(w, qPrintable(error));
+    QVERIFY(w->appendState({BatchState::Complete, utc(2026, 1, 2), {}}));
+    QFile f(path);
+    QVERIFY(f.open(QIODevice::ReadOnly));
+    const QList<QByteArray> lines = f.readAll().split('\n');
+    QCOMPARE(lines.size(), 4); // garbage, not json, state, ""
+    QVERIFY(lines[2].contains("\"complete\""));
+    // No complete line at all: nothing to append to.
+    QVERIFY(!JournalWriter::openForAppend(t.file("y.jsonl", "{\"ty"), &error,
+                                          ReadMode::BestEffort));
 }
 
 void TestJournal::listNewestFirst()

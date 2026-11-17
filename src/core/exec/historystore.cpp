@@ -181,7 +181,9 @@ bool HistoryStore::appendState(const QString &batchId, const StateRecord &rec, Q
             *error = QStringLiteral("No journal for batch %1").arg(batchId);
         return false;
     }
-    auto writer = JournalWriter::openForAppend(path, error);
+    // Best effort: "Mark as Complete" must work on a damaged journal too. Only a state line is
+    // added.
+    auto writer = JournalWriter::openForAppend(path, error, ReadMode::BestEffort);
     if (!writer)
         return false;
     if (!writer->appendState(rec)) {

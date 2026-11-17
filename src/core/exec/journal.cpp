@@ -203,6 +203,64 @@ QString parseRecord(const QJsonObject &o, BatchRecord &record)
     return {};
 }
 
+// The end of the part of a journal that readers use: a last line with no '\n' is a write
+// that did not finish, and so is a last complete line (not the first line) that is not valid
+// JSON, when no unfinished tail follows. Both readJournal() and openForAppend() use this rule.
+// Returns 0 when there is no complete line.
+qsizetype usableEnd(const QByteArray &data)
+{
+    qsizetype end = data.lastIndexOf('\n') + 1;
+    if (end == 0)
+        return 0;
+    const bool hasTail = end < data.size();
+    const qsizetype lastStart = end >= 2 ? data.lastIndexOf('\n', end - 2) + 1 : 0;
+    if (!hasTail && lastStart > 0) {
+        QJsonParseError parseError;
+        const QJsonDocument doc =
+                QJsonDocument::fromJson(data.mid(lastStart, end - 1 - lastStart), &parseError);
+        if (parseError.error != QJsonParseError::NoError || !doc.isObject())
+            end = lastStart;
+    }
+    return end;
+}
+
+// Parses the journal data. nullopt and *error (without the file path) on failure.
+std::optional<BatchRecord> parseJournal(const QByteArray &data, ReadMode mode, QString *error)
+{
+    const auto fail = [error](const QString &text) -> std::optional<BatchRecord> {
+        if (error)
+            *error = text;
+        return std::nullopt;
+    };
+    const qsizetype end = usableEnd(data);
+    if (end == 0)
+        return fail(QStringLiteral("no complete header line"));
+    BatchRecord record;
+    record.ignoredTail = end < data.size();
+    // The used part ends with '\n': split() gives an empty last part.
+    QList<QByteArray> lines = data.left(end).split('\n');
+    lines.removeLast();
+    for (qsizetype i = 0; i < lines.size(); ++i) {
+        QJsonParseError parseError;
+        const QJsonDocument doc = QJsonDocument::fromJson(lines[i], &parseError);
+        QString text;
+        if (parseError.error != QJsonParseError::NoError || !doc.isObject())
+            text = QStringLiteral("line %1 is not valid JSON").arg(i + 1);
+        else if (const QString e = i == 0 ? parseHeader(doc.object(), record)
+                                          : parseRecord(doc.object(), record);
+                 !e.isEmpty())
+            text = QStringLiteral("line %1: %2").arg(i + 1).arg(e);
+        if (text.isEmpty())
+            continue;
+        if (mode == ReadMode::BestEffort && i > 0) {
+            record.skippedLines.append(int(i + 1));
+            continue;
+        }
+        return fail(text);
+    }
+    return record;
+}
+
 } // namespace
 
 QString batchStateToString(BatchState s)
@@ -270,7 +328,8 @@ std::unique_ptr<JournalWriter> JournalWriter::create(const QString &historyDir,
     return w;
 }
 
-std::unique_ptr<JournalWriter> JournalWriter::openForAppend(const QString &filePath, QString *error)
+std::unique_ptr<JournalWriter> JournalWriter::openForAppend(const QString &filePath, QString *error,
+                                                            ReadMode mode)
 {
     const auto fail = [error](const QString &text) -> std::unique_ptr<JournalWriter> {
         if (error)
@@ -281,23 +340,16 @@ std::unique_ptr<JournalWriter> JournalWriter::openForAppend(const QString &fileP
     if (!w->m_file.open(QIODevice::ReadWrite | QIODevice::ExistingOnly | QIODevice::Unbuffered))
         return fail(QStringLiteral("Cannot open the journal %1: %2")
                             .arg(filePath, w->m_file.errorString()));
-    // Cut off an incomplete last line, so that the next record starts on its own line.
-    // readJournal() ignores the same tail: a last line with no '\n', or a last line (not the
-    // header) that is not valid JSON.
     const QByteArray data = w->m_file.readAll();
-    qsizetype end = data.lastIndexOf('\n') + 1;
+    const qsizetype end = usableEnd(data);
     if (end == 0)
         return fail(QStringLiteral("The journal %1 has no complete line").arg(filePath));
-    // Like readJournal(): a complete last line is checked only when no unfinished tail follows.
-    const bool hasTail = end < data.size();
-    const qsizetype lastStart = end >= 2 ? data.lastIndexOf('\n', end - 2) + 1 : 0;
-    if (!hasTail && lastStart > 0) {
-        QJsonParseError parseError;
-        const QJsonDocument doc =
-                QJsonDocument::fromJson(data.mid(lastStart, end - 1 - lastStart), &parseError);
-        if (parseError.error != QJsonParseError::NoError || !doc.isObject())
-            end = lastStart;
-    }
+    // Never add records to a journal that readJournal() cannot read: they could not be read.
+    QString text;
+    if (mode == ReadMode::Strict && !parseJournal(data, mode, &text))
+        return fail(QStringLiteral("%1: %2").arg(filePath, text));
+    // Cut off the tail that readJournal() ignores, so that the next record starts on its own
+    // line.
     if (end < data.size() && (!w->m_file.resize(end) || !fullSync(w->m_file)))
         return fail(QStringLiteral("Cannot repair the journal %1: %2")
                             .arg(filePath, w->m_file.errorString()));
@@ -356,51 +408,19 @@ QString JournalWriter::filePath() const
 
 std::optional<BatchRecord> readJournal(const QString &filePath, QString *error, ReadMode mode)
 {
-    const auto fail = [error, &filePath](const QString &text) -> std::optional<BatchRecord> {
+    QFile file(filePath);
+    QString text;
+    std::optional<BatchRecord> record;
+    if (!file.open(QIODevice::ReadOnly))
+        text = file.errorString();
+    else
+        record = parseJournal(file.readAll(), mode, &text);
+    if (!record) {
         if (error)
             *error = QStringLiteral("%1: %2").arg(filePath, text);
         return std::nullopt;
-    };
-    QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly))
-        return fail(file.errorString());
-    const QByteArray data = file.readAll();
-
-    QList<QByteArray> lines = data.split('\n');
-    BatchRecord record;
-    record.filePath = filePath;
-    // split() gives an empty last part when the data ends with '\n'. Any other last part is a
-    // line with no '\n' at the end: a write that did not finish.
-    const QByteArray tail = lines.takeLast();
-    if (!tail.isEmpty())
-        record.ignoredTail = true;
-
-    for (qsizetype i = 0; i < lines.size(); ++i) {
-        QJsonParseError parseError;
-        const QJsonDocument doc = QJsonDocument::fromJson(lines[i], &parseError);
-        if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
-            if (i == lines.size() - 1 && !record.ignoredTail && i > 0) {
-                record.ignoredTail = true; // a last line that is not valid JSON
-                break;
-            }
-            if (mode == ReadMode::BestEffort && i > 0) {
-                record.skippedLines.append(int(i + 1));
-                continue;
-            }
-            return fail(QStringLiteral("line %1 is not valid JSON").arg(i + 1));
-        }
-        const QString text =
-                i == 0 ? parseHeader(doc.object(), record) : parseRecord(doc.object(), record);
-        if (!text.isEmpty()) {
-            if (mode == ReadMode::BestEffort && i > 0) {
-                record.skippedLines.append(int(i + 1));
-                continue;
-            }
-            return fail(QStringLiteral("line %1: %2").arg(i + 1).arg(text));
-        }
     }
-    if (lines.isEmpty())
-        return fail(QStringLiteral("no complete header line"));
+    record->filePath = filePath;
     return record;
 }
 

@@ -62,6 +62,10 @@ struct BatchRecord
     QDateTime ended() const;  // time of the last state record
 };
 
+// Strict: every complete line must be valid. BestEffort (summaries only, never a roll back):
+// a bad line other than the header is skipped; its number goes into skippedLines.
+enum class ReadMode { Strict, BestEffort };
+
 class JournalSink
 {
 public:
@@ -83,9 +87,12 @@ public:
     static std::unique_ptr<JournalWriter> create(const QString &historyDir,
                                                  const JournalHeader &header, const Plan &plan,
                                                  QString *error);
-    // Opens an existing journal for more records. An incomplete last line (a crash during a
-    // write) is cut off first, so that the next record starts on a new line.
-    static std::unique_ptr<JournalWriter> openForAppend(const QString &filePath, QString *error);
+    // Opens an existing journal for more records. The tail that readJournal() ignores (a crash
+    // during a write) is cut off first, so that the next record starts on a new line. Strict:
+    // refuses (and does not change) a journal that readJournal(Strict) cannot read.
+    // BestEffort: any file with a complete line (used to mark a damaged journal as complete).
+    static std::unique_ptr<JournalWriter> openForAppend(const QString &filePath, QString *error,
+                                                        ReadMode mode = ReadMode::Strict);
 
     bool appendStep(const PlanStep &step, const StepRecord &rec) override;
     bool appendState(const StateRecord &rec) override;
@@ -97,10 +104,6 @@ private:
 
     QFile m_file;
 };
-
-// Strict: every complete line must be valid. BestEffort (summaries only, never a roll back):
-// a bad line other than the header is skipped; its number goes into skippedLines.
-enum class ReadMode { Strict, BestEffort };
 
 // nullopt and *error set when the file cannot be read, the first line is not a header, or
 // (Strict) a line other than the last one is not a valid record. An incomplete last line is
