@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.24)
 # CMake 3.29+: link each static library once (Apple ld warns on duplicates).
 if(POLICY CMP0156)
-  cmake_policy(SET CMP0156 NEW)
+    cmake_policy(SET CMP0156 NEW)
 endif()
 project(CTRM VERSION 0.1.0 LANGUAGES CXX)
 
@@ -14,11 +14,11 @@ find_package(Qt6 6.8 REQUIRED COMPONENTS Core Widgets Test)
 qt_standard_project_setup()
 
 function(ctrm_set_warnings target)
-  if(MSVC)
-    target_compile_options(${target} PRIVATE /W4 /permissive- /utf-8)
-  elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
-  endif()
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /W4 /permissive- /utf-8)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
 endfunction()
 
 add_subdirectory(src/core)
