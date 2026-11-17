@@ -371,28 +371,40 @@ void TestMainWindow::activationReadsFolderAgain()
 
 void TestMainWindow::conflictTipShown()
 {
+    // S11: the tip is one line in the reason area of the action bar: no bar, no layout shift.
     Fixture f;
     f.window.show();
     f.addFiles({QStringLiteral("x1.txt"), QStringLiteral("x2.txt")});
-    auto *tip = f.child<MessageBar>("conflictTip");
-    QVERIFY(tip);
+    QVERIFY(!f.child<MessageBar>("conflictTip"));
+    auto *tip = f.child<QLabel>("conflictTipText");
+    auto *add = f.child<QPushButton>("addNumberingButton");
+    QVERIFY(tip && add);
+    QVERIFY(f.window.actionBar()->isAncestorOf(tip));
+    QVERIFY(f.window.actionBar()->isAncestorOf(add));
     QVERIFY(!f.shown(tip));
+    QVERIFY(!f.shown(add));
     f.window.ruleModel().insertRule(0, regexRemoveDigits());
     QVERIFY(f.shown(tip));
-    QCOMPARE(tip->findChild<QLabel *>(QStringLiteral("messageBarText"))->text(),
-             QStringLiteral("Tip: names are the same. Add a Numbering rule, or turn on \"Add a "
-                            "number to duplicate names\"."));
-    QPushButton *add = nullptr;
-    for (QPushButton *b : tip->findChildren<QPushButton *>())
-        if (b->text() == QStringLiteral("Add Numbering"))
-            add = b;
-    QVERIFY(add);
+    QVERIFY(f.shown(add));
+    QCOMPARE(tip->text(), QStringLiteral("Same names."));
+    QCOMPARE(add->text(), QStringLiteral("Add Numbering"));
     QVERIFY(!add->isDefault());
+    QVERIFY(!add->autoDefault());
+    // The tip does not change the height of the bar or the place of the table.
+    QCoreApplication::processEvents();
+    const int barHeight = f.window.actionBar()->height();
+    const QRect tableRect = f.window.tableSlot()->geometry();
+    f.window.actionBar()->setConflictTip(false);
+    QCoreApplication::processEvents();
+    QCOMPARE(f.window.actionBar()->height(), barHeight);
+    QCOMPARE(f.window.tableSlot()->geometry(), tableRect);
+    f.window.actionBar()->setConflictTip(true);
     add->click();
     QCOMPARE(f.window.ruleModel().rowCount(), 2);
     QCOMPARE(f.window.ruleModel().chain().at(1)->type(), QStringLiteral("numbering"));
     QCOMPARE(f.window.currentPreview().summary.conflicts, 0);
     QVERIFY(!f.shown(tip));
+    QVERIFY(!f.shown(add));
 
     // A conflict with a name on disk is not a duplicate in the batch: no tip.
     f.window.ruleModel().removeRule(1);

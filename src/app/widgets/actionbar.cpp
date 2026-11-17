@@ -67,6 +67,8 @@ ActionBar::ActionBar(const Actions &actions, QWidget *parent)
                                   QStringLiteral("nextProblemButton"), m_normalPage))
     , m_reasonIcon(new QLabel(m_normalPage))
     , m_reason(new QLabel(m_normalPage))
+    , m_tipText(new QLabel(m_normalPage))
+    , m_addNumbering(pushButton(QStringLiteral("addNumberingButton"), m_normalPage))
     , m_skip(pushButton(QStringLiteral("skipButton"), m_normalPage))
     , m_rename(pushButton(QStringLiteral("renameButton"), m_normalPage))
     , m_progressLabel(new QLabel(m_progressPage))
@@ -84,6 +86,12 @@ ActionBar::ActionBar(const Actions &actions, QWidget *parent)
     m_reasonIcon->setObjectName(QStringLiteral("renameReasonIcon"));
     m_reason->setObjectName(QStringLiteral("renameReason"));
     m_reason->setTextFormat(Qt::PlainText);
+    m_tipText->setObjectName(QStringLiteral("conflictTipText"));
+    m_tipText->setTextFormat(Qt::PlainText);
+    m_tipText->setText(tr("Same names."));
+    m_addNumbering->setText(tr("Add Numbering"));
+    m_addNumbering->setToolTip(tr("Add a Numbering rule, so that each name is different."));
+    connect(m_addNumbering, &QPushButton::clicked, this, &ActionBar::addNumberingClicked);
     connect(m_skip, &QPushButton::clicked, actions.skipAndRename, &QAction::trigger);
     connect(m_rename, &QPushButton::clicked, actions.rename, &QAction::trigger);
 
@@ -95,6 +103,8 @@ ActionBar::ActionBar(const Actions &actions, QWidget *parent)
     normal->addStretch(1);
     normal->addWidget(m_reasonIcon);
     normal->addWidget(m_reason);
+    normal->addWidget(m_tipText);
+    normal->addWidget(m_addNumbering);
     normal->addWidget(m_skip);
     normal->addWidget(m_rename);
 
@@ -172,9 +182,23 @@ void ActionBar::setState(const WindowStateInfo &info, const ctrm::PreviewSummary
     m_reason->setVisible(showReason);
     m_reasonIcon->setVisible(showReason);
 
+    updateTip();
     updateSummary(summary); // sets m_summary, which the reason icon uses
     updateReasonIcon();
     updateAccent();
+}
+
+void ActionBar::setConflictTip(bool shown)
+{
+    m_tipWanted = shown;
+    updateTip();
+}
+
+void ActionBar::updateTip()
+{
+    const bool shown = m_tipWanted && m_info.state == WindowState::Blocked;
+    m_tipText->setVisible(shown);
+    m_addNumbering->setVisible(shown);
 }
 
 void ActionBar::updateSummary(const ctrm::PreviewSummary &summary)

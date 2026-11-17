@@ -274,7 +274,6 @@ void MainWindow::setRunning(bool running)
     m_toolBar->setEnabled(!running);
     m_rulePanel->setEnabled(!running);
     m_tablePages->setEnabled(!running);
-    m_conflictTip->setEnabled(!running);
     updateWindowState();
     if (!running)
         updateListActions();
@@ -528,11 +527,7 @@ void MainWindow::buildPanels()
     m_tablePages->addWidget(m_tablePage);
     m_tableSlot->layout()->addWidget(m_tablePages);
 
-    // ui-design 9.3: the tip is a message bar above the action bar.
-    m_conflictTip = new MessageBar(m_actionBarSlot);
-    m_conflictTip->setObjectName(QStringLiteral("conflictTip"));
     m_actionBar = new ActionBar(m_actions, m_actionBarSlot);
-    m_actionBarSlot->layout()->addWidget(m_conflictTip);
     m_actionBarSlot->layout()->addWidget(m_actionBar);
 }
 
@@ -722,9 +717,10 @@ void MainWindow::connectActions()
     // View.
     connect(a.showSteps, &QAction::toggled, m_flowStripSlot, &QWidget::setVisible);
     connect(a.highlightChanged, &QAction::toggled, m_table, &ItemTableView::setHighlightChanged);
-    connect(m_conflictTip, &MessageBar::closed, this, [this] {
-        m_tipShown = false;
-        m_tipClosed = true;
+    connect(m_actionBar, &ActionBar::addNumberingClicked, this, [this] {
+        if (auto *add = m_actions.addRuleMenu->findChild<QAction *>(
+                    QStringLiteral("addRule_numbering")))
+            add->trigger();
     });
 }
 
@@ -806,27 +802,7 @@ void MainWindow::updateConflictTip()
                 onlyDuplicates = false;
         }
     }
-    if (!onlyDuplicates) {
-        m_tipClosed = false;
-        if (m_tipShown)
-            m_conflictTip->clear();
-        m_tipShown = false;
-        return;
-    }
-    if (m_tipShown || m_tipClosed)
-        return;
-    auto *addNumbering = new QPushButton(tr("Add Numbering"));
-    connect(addNumbering, &QPushButton::clicked, this, [this] {
-        if (auto *add = m_actions.addRuleMenu->findChild<QAction *>(
-                    QStringLiteral("addRule_numbering")))
-            add->trigger();
-    });
-    m_conflictTip->showMessage(
-            StateIcon::Conflict,
-            tr("Tip: names are the same. Add a Numbering rule, or turn on \"Add a number to "
-               "duplicate names\"."),
-            {addNumbering});
-    m_tipShown = true;
+    m_actionBar->setConflictTip(onlyDuplicates);
 }
 
 void MainWindow::updateTablePage()

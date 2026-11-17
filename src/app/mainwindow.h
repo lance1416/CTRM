@@ -112,8 +112,6 @@ private:
     bool m_resultShown = false;
     bool m_applyingPreview = false;   // in previewReady
     bool m_previewAfterApply = false; // an activation came while a preview was applied
-    bool m_tipShown = false;
-    bool m_tipClosed = false; // the user closed the tip; shown again after the conflicts change
     QHash<QAction *, bool> m_enabledBeforeRun;
 
     QMenu *m_presetsMenu = nullptr;
@@ -130,7 +128,6 @@ private:
     FlowStrip *m_flowStrip = nullptr;
     RulePanel *m_rulePanel = nullptr;
     MessageBar *m_messageBar = nullptr;
-    MessageBar *m_conflictTip = nullptr;
     QStackedWidget *m_tablePages = nullptr; // EmptyState or the table page
     EmptyState *m_emptyState = nullptr;
     QWidget *m_tablePage = nullptr;
