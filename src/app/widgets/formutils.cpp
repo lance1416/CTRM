@@ -131,6 +131,14 @@ public:
             r.setLeft(r.left() - inset);
         QGridLayout::setGeometry(r);
     }
+
+    // QGridLayout can give a maximum height below its minimum height when a style has layout
+    // margins (macOS: a line edit or spin box next to a radio button). A form uses the maximum,
+    // so the fields were squashed (M05). The minimum is the lower limit of the maximum.
+    QSize maximumSize() const override
+    {
+        return QGridLayout::maximumSize().expandedTo(minimumSize());
+    }
 };
 
 } // namespace

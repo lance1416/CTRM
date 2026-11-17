@@ -7,9 +7,11 @@
 #include "rules/extensioneditor.h"
 #include "rules/extensionrule.h"
 #include "rules/inserteditor.h"
+#include "rules/insertrule.h"
 #include "rules/numberingeditor.h"
 #include "rules/numberingrule.h"
 #include "rules/removeeditor.h"
+#include "rules/removerule.h"
 #include "rules/replaceeditor.h"
 #include "widgets/formutils.h"
 
@@ -25,6 +27,7 @@
 #include <QToolButton>
 #include <QtTest>
 
+#include <functional>
 #include <memory>
 
 using namespace ctrm;
@@ -109,6 +112,7 @@ private slots:
     void extensionNoApplyTo();
     void extensionInlineFields();
     void extensionWritesRule();
+    void inlineFieldsFullHeight();
     void extensionFolderNote();
     void chainOptionsDefaults();
     void chainOptionsChangedCount();
@@ -341,6 +345,42 @@ void TestAppEditors2::extensionInlineFields()
         labels.append(child<QRadioButton>(e, name)->text());
     QCOMPARE(labels, (QStringList{"lower case", "UPPER CASE", "Set to", "Add", "Remove"}));
     QCOMPARE(child<QLabel>(e, "onlyForHint")->text(), QStringLiteral("Empty = all items"));
+}
+
+namespace {
+
+// True when each named field of the editor has at least the height of its size hint.
+template <typename Editor, typename RuleType>
+bool fieldsFullHeight(const QStringList &names, const std::function<void(Editor *)> &setUp = {})
+{
+    Fixture<Editor, RuleType> f;
+    Editor *e = f.editor.get();
+    if (setUp)
+        setUp(e);
+    if (!QTest::qWaitForWindowExposed(e))
+        return false;
+    bool ok = true;
+    for (const QString &name : names) {
+        auto *field = e->template findChild<QWidget *>(name);
+        if (!field || field->height() < field->sizeHint().height()) {
+            qWarning() << "squashed" << name << (field ? field->geometry() : QRect());
+            ok = false;
+        }
+    }
+    return ok;
+}
+
+} // namespace
+
+// M05: an inline sub-field next to a radio button or a check box has its normal height.
+void TestAppEditors2::inlineFieldsFullHeight()
+{
+    QVERIFY((fieldsFullHeight<ExtensionEditor, ExtensionRule>({"setValue", "addValue"})));
+    QVERIFY((fieldsFullHeight<InsertEditor, InsertRule>({"index"})));
+    QVERIFY((fieldsFullHeight<NumberingEditor, NumberingRule>({"index"})));
+    QVERIFY((fieldsFullHeight<RemoveEditor, RemoveRule>({"customText"}, [](RemoveEditor *e) {
+        selectData(child<QComboBox>(e, "mode"), int(RemoveRule::Mode::Characters));
+    })));
 }
 
 void TestAppEditors2::extensionWritesRule()
