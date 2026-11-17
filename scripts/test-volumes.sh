@@ -31,7 +31,7 @@ core/tst_batchservice core/tst_undo app/tst_app_itemadder app/tst_app_acceptance
 work=$(mktemp -d "${TMPDIR:-/tmp}/ctrm-volumes.XXXXXX")
 mounts=""
 
-# shellcheck disable=SC2329 # called by the trap below
+# shellcheck disable=SC2317,SC2329 # called by the trap below
 cleanup() {
     for m in $mounts; do
         hdiutil detach -quiet -force "$m" 2>/dev/null || true
