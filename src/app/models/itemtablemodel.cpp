@@ -274,6 +274,87 @@ void ItemTableModel::setPostRun(const QHash<ItemId, PostRunState> &states)
         emit dataChanged(index(0, 0), index(rowCount() - 1, ColumnCount - 1));
 }
 
+void ItemTableModel::applyRenames(const QList<ReportRow> &rows)
+{
+    // The batch service gives all paths in the folder tree from before the batch (each path is
+    // the request folder + a name). Thus: original path -> final name of each moved item.
+    QHash<QString, QString> finalName;
+    for (const ReportRow &rr : rows) {
+        if (rr.finalPath.isEmpty() || rr.finalPath == rr.oldPath)
+            continue;
+        finalName.insert(rr.oldPath, rr.finalPath.mid(rr.finalPath.lastIndexOf(u'/') + 1));
+    }
+    if (finalName.isEmpty())
+        return;
+
+    // Maps a path from before the batch, one folder level at a time.
+    QHash<QString, QString> mapped; // cache: original folder -> current folder
+    auto mapFolder = [&](const QString &folder) {
+        if (const auto it = mapped.constFind(folder); it != mapped.cend())
+            return *it;
+        const QStringList parts = folder.split(u'/');
+        QString original;
+        QString current;
+        for (int i = 0; i < parts.size(); ++i) {
+            if (i > 0) {
+                original += u'/';
+                current += u'/';
+            }
+            original += parts[i];
+            current += parts[i].isEmpty() ? parts[i] : finalName.value(original, parts[i]);
+        }
+        mapped.insert(folder, current);
+        return current;
+    };
+
+    QList<int> changed;
+    for (int r = 0; r < m_items.size(); ++r) {
+        Item &item = m_items[r];
+        const QString folder = mapFolder(item.folder);
+        const QString name = finalName.value(item.path(), item.name);
+        if (folder == item.folder && name == item.name)
+            continue;
+        item.folder = folder;
+        item.name = name;
+        m_preview.items[r] = unchangedPreview(item);
+        changed.append(r);
+    }
+    // Two passes, so that a swap of two names does not remove the path of the other item.
+    for (int r : std::as_const(changed))
+        m_paths.remove(m_canonical.value(m_items[r].id));
+    for (int r : std::as_const(changed)) {
+        const QString canonical = canonicalItemPath(m_items[r].path());
+        m_paths.insert(canonical);
+        m_canonical.insert(m_items[r].id, canonical);
+    }
+
+    m_blockedPaths.reset();
+    if (!m_items.isEmpty())
+        emit dataChanged(index(0, 0), index(rowCount() - 1, ColumnCount - 1));
+}
+
+void ItemTableModel::replaceIdentities(const QList<Item> &fresh)
+{
+    QHash<ItemId, FileIdentity> byId;
+    for (const Item &it : fresh)
+        byId.insert(it.id, it.identity);
+    for (Item &item : m_items) {
+        const auto it = byId.constFind(item.id);
+        if (it == byId.cend())
+            continue;
+        item.identity = *it;
+        const QFileInfo info(item.path());
+        FileInfo fi;
+        if (!item.isFolder && info.exists())
+            fi.size = info.size();
+        if (info.exists())
+            fi.modified = info.lastModified();
+        m_fileInfo.insert(item.id, fi);
+    }
+    if (!m_items.isEmpty())
+        emit dataChanged(index(0, Size), index(rowCount() - 1, Modified));
+}
+
 quint64 ItemTableModel::listVersion() const
 {
     return m_listVersion;

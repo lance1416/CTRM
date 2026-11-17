@@ -97,6 +97,9 @@ private slots:
     void blockedOldNameMessage();
     void tooltipListsAllMessages();
     void postRunClearsOnChange();
+    void applyRenamesFollowsFolder();
+    void applyRenamesNestedAndSwaps();
+    void replaceIdentitiesById();
 };
 
 void TestItemModel::modelTester()
@@ -515,6 +518,101 @@ void TestItemModel::postRunClearsOnChange()
     m.moveRows({1}, 0);
     QCOMPARE(m.index(1, 0).data(ItemTableModel::PostRunRole).toInt(), int(PostRun::None));
     QCOMPARE(m.index(1, ItemTableModel::Message).data().toString(), QStringLiteral("No change"));
+}
+
+void TestItemModel::applyRenamesFollowsFolder()
+{
+    ItemTableModel m;
+    Item dir = makeItem(QStringLiteral("d"), QStringLiteral("/r"));
+    dir.isFolder = true;
+    m.addItems({dir, makeItem("x.txt", "/r/d"), makeItem("y", "/r/d/sub"), makeItem("z", "/r/dd"),
+                makeItem("w.txt", "/r/d")});
+    const QList<Item> items = m.items();
+    setPreview(m, {row(Status::Changed, "e"), row(Status::Changed, "x2.txt"),
+                   row(Status::Unchanged, "y"), row(Status::Unchanged, "z"),
+                   row(Status::Changed, "w2.txt")});
+    m.setPostRun({{items[0].id, {PostRun::Renamed, {}}}});
+    const quint64 version = m.listVersion();
+
+    ReportRow folderRow;
+    folderRow.item = items[0].id;
+    folderRow.oldPath = QStringLiteral("/r/d");
+    folderRow.finalPath = QStringLiteral("/r/e");
+    folderRow.result = ReportRow::Result::Renamed;
+    ReportRow childRow; // path under the old folder path
+    childRow.item = items[1].id;
+    childRow.oldPath = QStringLiteral("/r/d/x.txt");
+    childRow.finalPath = QStringLiteral("/r/d/x2.txt");
+    childRow.result = ReportRow::Result::Renamed;
+    ReportRow failed; // a failed item keeps its name
+    failed.item = items[4].id;
+    failed.oldPath = QStringLiteral("/r/d/w.txt");
+    failed.finalPath = QStringLiteral("/r/d/w.txt");
+    failed.result = ReportRow::Result::Failed;
+    m.applyRenames({folderRow, childRow, failed});
+
+    const QList<Item> after = m.items();
+    QCOMPARE(after[0].path(), QStringLiteral("/r/e"));
+    QCOMPARE(after[1].path(), QStringLiteral("/r/e/x2.txt"));
+    QCOMPARE(after[2].path(), QStringLiteral("/r/e/sub/y"));
+    QCOMPARE(after[3].path(), QStringLiteral("/r/dd/z")); // "/r/dd" is not in "/r/d"
+    QCOMPARE(after[4].path(), QStringLiteral("/r/e/w.txt"));
+    // Rows show the current names until the next preview.
+    QCOMPARE(column(m, ItemTableModel::NewName), (QStringList{"e", "x2.txt", "y", "z", "w.txt"}));
+    QCOMPARE(m.listVersion(), version);
+    QCOMPARE(m.index(0, 0).data(ItemTableModel::PostRunRole).toInt(), int(PostRun::Renamed));
+    // The new paths are the duplicate check paths now.
+    QCOMPARE(m.addItems({makeItem("x2.txt", "/r/e")}), 1);
+    QCOMPARE(m.addItems({makeItem("x.txt", "/r/d")}), 0);
+}
+
+void TestItemModel::applyRenamesNestedAndSwaps()
+{
+    auto report = [](ItemId id, const QString &from, const QString &to) {
+        ReportRow rr;
+        rr.item = id;
+        rr.oldPath = from;
+        rr.finalPath = to;
+        rr.result = ReportRow::Result::Renamed;
+        return rr;
+    };
+    ItemTableModel m;
+    Item d = makeItem("d", "/r");
+    d.isFolder = true;
+    Item s = makeItem("s", "/r/d");
+    s.isFolder = true;
+    Item a = makeItem("a", "/r");
+    a.isFolder = true;
+    Item b = makeItem("b", "/r");
+    b.isFolder = true;
+    m.addItems({d, s, makeItem("f", "/r/d/s"), a, b, makeItem("x", "/r/a"), makeItem("y", "/r/b"),
+                makeItem("p", "/q"), makeItem("q", "/q")});
+    const QList<Item> it = m.items();
+    m.applyRenames({// Nested: /r/d -> e and /r/d/s -> t (all paths from before the batch).
+                    report(it[0].id, "/r/d", "/r/e"), report(it[1].id, "/r/d/s", "/r/d/t"),
+                    // Folder swap a <-> b.
+                    report(it[3].id, "/r/a", "/r/b"), report(it[4].id, "/r/b", "/r/a"),
+                    // Name swap p <-> q.
+                    report(it[7].id, "/q/p", "/q/q"), report(it[8].id, "/q/q", "/q/p")});
+    QStringList paths;
+    for (const Item &i : m.items())
+        paths.append(i.path());
+    QCOMPARE(paths, (QStringList{"/r/e", "/r/e/t", "/r/e/t/f", "/r/b", "/r/a", "/r/b/x", "/r/a/y",
+                                 "/q/q", "/q/p"}));
+    // Both swapped names are still known as list paths.
+    QCOMPARE(m.addItems({makeItem("p", "/q"), makeItem("q", "/q")}), 2);
+}
+
+void TestItemModel::replaceIdentitiesById()
+{
+    ItemTableModel m;
+    m.addItems(makeItems({"a", "b"}));
+    QList<Item> fresh = {m.items()[1]};
+    fresh[0].identity.type = IdentityType::Strong;
+    fresh[0].identity.idLow = 42;
+    m.replaceIdentities(fresh);
+    QCOMPARE(m.items()[1].identity.idLow, quint64(42));
+    QCOMPARE(m.items()[0].identity.idLow, quint64(0));
 }
 
 QTEST_MAIN(TestItemModel)

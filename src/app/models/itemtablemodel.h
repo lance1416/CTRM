@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "exec/batchservice.h"
 #include "model/item.h"
 #include "preview/previewengine.h"
 #include "text/messages.h"
@@ -60,6 +61,14 @@ public:
 
     // Post-run states by item. Any change of the list clears them.
     void setPostRun(const QHash<ctrm::ItemId, PostRunState> &states);
+
+    // After a batch: each renamed item gets its final name, and items in a renamed folder (also
+    // deeper) follow the new folder path. All report paths are from before the batch. The rows show
+    // "No change" until the next preview. This is not a list change: listVersion() and the post-run
+    // states stay.
+    void applyRenames(const QList<ctrm::ReportRow> &rows);
+    // Refresh: new identities of the items with the same id.
+    void replaceIdentities(const QList<ctrm::Item> &fresh);
 
     quint64 listVersion() const; // +1 on add, remove, clear, move, sort, include
 
