@@ -238,12 +238,20 @@ void TestAppWindowState::flowSteps()
     QCOMPARE(info.currentStep, 1);
 
     // Problems are not a step.
+    WindowStateInput in;
     info = computeWindowState(input(6, 1, summary(2, 3, 1)));
     QCOMPARE(info.stepDone, (Steps{true, true, false}));
     QCOMPARE(info.currentStep, 2);
 
+    // All changes are blocked (2 items get the same name): step 2 is done, step 3 is current.
+    in = input(2, 1, summary(0, 2));
+    in.blockedChanges = 2;
+    info = computeWindowState(in);
+    QCOMPARE(info.stepDone, (Steps{true, true, false}));
+    QCOMPARE(info.currentStep, 2);
+
     // After a batch nothing will change, but all steps are done.
-    WindowStateInput in = input(12, 1, summary(0));
+    in = input(12, 1, summary(0));
     in.resultShown = true;
     info = computeWindowState(in);
     QCOMPARE(info.stepDone, (Steps{true, true, true}));

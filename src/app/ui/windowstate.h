@@ -24,7 +24,8 @@ struct WindowStateInput
     bool allFolders = false;
     bool running = false;
     bool resultShown = false;
-    int renamedCount = 0; // the result state: items the batch renamed
+    int renamedCount = 0;   // the result state: items the batch renamed
+    int blockedChanges = 0; // blocked rows with a new name (flow step 2)
 };
 
 struct WindowStateInfo

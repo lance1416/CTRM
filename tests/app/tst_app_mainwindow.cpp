@@ -142,6 +142,7 @@ private slots:
     void activationReadsFolderAgain();
     void conflictTipShown();
     void conflictTipNarrow();
+    void flowStepsWhenBlocked();
     void conflictInActiveWindow();
     void activationWhileApplyingPreview();
     void tabOrder();
@@ -437,6 +438,30 @@ void TestMainWindow::conflictTipShown()
     f.window.actions().refresh->trigger(); // the folder cache reads y.txt
     QCOMPARE(f.window.currentPreview().summary.conflicts, 3);
     QVERIFY(!f.shown(tip));
+}
+
+void TestMainWindow::flowStepsWhenBlocked()
+{
+    // S01, ui-design 5.3: blocked rows with new names make step 2 done; a click on step 3
+    // selects the first problem row.
+    Fixture f;
+    f.window.show();
+    QVERIFY(QTest::qWaitForWindowActive(&f.window));
+    f.addFiles({QStringLiteral("x1.txt"), QStringLiteral("x2.txt")});
+    f.window.ruleModel().insertRule(0, regexRemoveDigits());
+    QCOMPARE(f.window.currentPreview().summary.willChange, 0);
+    QCOMPARE(f.window.currentPreview().summary.conflicts, 2);
+    QCOMPARE(f.child<QToolButton>("flowStep2")->accessibleName(),
+             QStringLiteral("Step 2 of 3, Add rules, done"));
+    QCOMPARE(f.child<QToolButton>("flowStep3")->accessibleName(),
+             QStringLiteral("Step 3 of 3, Rename, current"));
+
+    f.child<QToolButton>("flowStep3")->click();
+    auto *table = f.child<ItemTableView>("itemTable");
+    QVERIFY(table);
+    QTRY_COMPARE(QApplication::focusWidget(), table);
+    QVERIFY(table->currentIndex().isValid());
+    QCOMPARE(table->currentIndex().row(), 0);
 }
 
 void TestMainWindow::conflictTipNarrow()

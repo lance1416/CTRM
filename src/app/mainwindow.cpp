@@ -803,6 +803,13 @@ void MainWindow::updateWindowState()
     int folders = 0;
     for (qsizetype i = 0; i < items.size(); ++i) {
         if (previewFits) {
+            const ctrm::ItemPreview &preview = m_preview.items.at(i);
+            // S01: a blocked row with a new name also counts as a change for step 2.
+            if (ctrm::isBlocking(preview.status) && preview.included && !preview.skipped &&
+                preview.newName != items.at(i).name)
+                ++in.blockedChanges;
+        }
+        if (previewFits) {
             const ctrm::Status status = m_preview.items.at(i).status;
             if (status != ctrm::Status::Changed && status != ctrm::Status::CaseOnly)
                 continue;
@@ -924,7 +931,16 @@ void MainWindow::focusStep(int step)
         focusRules();
         break;
     case 2:
-        focus(m_actionBar->renameButton());
+        if (m_state.state == WindowState::Blocked) {
+            // The first problem row.
+            if (m_proxy.rowCount() == 0 || m_tableOrNoMatch->currentWidget() != m_table)
+                clearFilter();
+            m_table->setCurrentIndex({});
+            m_table->selectNextProblem(true);
+            focusTable();
+        } else {
+            focus(m_actionBar->renameButton());
+        }
         break;
     default:
         break;
