@@ -2,16 +2,19 @@
 #include "rules/changecaserule.h"
 
 #include "rules/graphemes.h"
-#include "rules/optionjson.h"
+#include "rules/ruleoptions.h"
 
 #include <QJsonArray>
 #include <QSet>
+
+#include <array>
+#include <utility>
 
 namespace ctrm {
 
 namespace {
 
-constexpr optionjson::EnumTable<ChangeCaseRule::Case, 5> kCases{{
+constexpr std::array<std::pair<ChangeCaseRule::Case, const char *>, 5> kCases{{
         {ChangeCaseRule::Case::Lower, "lower"},
         {ChangeCaseRule::Case::Upper, "upper"},
         {ChangeCaseRule::Case::Title, "title"},
@@ -132,7 +135,7 @@ QStringList ChangeCaseRule::optionKeys() const
 QJsonObject ChangeCaseRule::optionsToJson() const
 {
     return {
-            {QStringLiteral("case"), optionjson::enumToString(kCases, caseMode)},
+            {QStringLiteral("case"), ruleoptions::enumText(caseMode, kCases)},
             {QStringLiteral("separators"), separators},
             {QStringLiteral("smallWords"), QJsonArray::fromStringList(smallWords)},
             {QStringLiteral("builtInSmallWords"), builtInSmallWords},
@@ -141,11 +144,15 @@ QJsonObject ChangeCaseRule::optionsToJson() const
 
 void ChangeCaseRule::optionsFromJson(const QJsonObject &o, QStringList *warnings)
 {
-    const optionjson::Reader r(o, type(), warnings);
-    caseMode = r.enumValue(QStringLiteral("case"), kCases, Case::Lower);
-    separators = r.string(QStringLiteral("separators"), kDefaultSeparators);
-    smallWords = r.stringList(QStringLiteral("smallWords"), {});
-    builtInSmallWords = r.boolean(QStringLiteral("builtInSmallWords"), false);
+    const QString t = type();
+    caseMode = ruleoptions::readEnum<Case>(o, QStringLiteral("case"), kCases, t, warnings)
+                       .value_or(Case::Lower);
+    separators = ruleoptions::readString(o, QStringLiteral("separators"), t, warnings)
+                         .value_or(kDefaultSeparators);
+    smallWords = ruleoptions::readStringList(o, QStringLiteral("smallWords"), t, warnings)
+                         .value_or(QStringList());
+    builtInSmallWords = ruleoptions::readBool(o, QStringLiteral("builtInSmallWords"), t, warnings)
+                                .value_or(false);
 }
 
 QString ChangeCaseRule::transform(const QString &text, const RuleContext &) const

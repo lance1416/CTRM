@@ -2,23 +2,25 @@
 #include "rules/numberingrule.h"
 
 #include "rules/graphemes.h"
-#include "rules/optionjson.h"
+#include "rules/ruleoptions.h"
 
 #include <algorithm>
+#include <array>
 #include <limits>
+#include <utility>
 
 namespace ctrm {
 
 namespace {
 
-constexpr optionjson::EnumTable<NumberingRule::Position, 4> kPositions{{
+constexpr std::array<std::pair<NumberingRule::Position, const char *>, 4> kPositions{{
         {NumberingRule::Position::Prefix, "prefix"},
         {NumberingRule::Position::Suffix, "suffix"},
         {NumberingRule::Position::Index, "index"},
         {NumberingRule::Position::Replace, "replace"},
 }};
 
-constexpr optionjson::EnumTable<NumberingRule::Scope, 2> kScopes{{
+constexpr std::array<std::pair<NumberingRule::Scope, const char *>, 2> kScopes{{
         {NumberingRule::Scope::Checked, "checked"},
         {NumberingRule::Scope::All, "all"},
 }};
@@ -65,34 +67,33 @@ QJsonObject NumberingRule::optionsToJson() const
             {QStringLiteral("start"), start},
             {QStringLiteral("step"), step},
             {QStringLiteral("padding"), paddingValue},
-            {QStringLiteral("position"), optionjson::enumToString(kPositions, position)},
+            {QStringLiteral("position"), ruleoptions::enumText(position, kPositions)},
             {QStringLiteral("separator"), separator},
             {QStringLiteral("index"), index},
             {QStringLiteral("fromEnd"), fromEnd},
-            {QStringLiteral("scope"), optionjson::enumToString(kScopes, scope)},
+            {QStringLiteral("scope"), ruleoptions::enumText(scope, kScopes)},
     };
 }
 
 void NumberingRule::optionsFromJson(const QJsonObject &o, QStringList *warnings)
 {
-    const optionjson::Reader r(o, type(), warnings);
-    start = r.integer(QStringLiteral("start"), 1, 0, kIntMax);
-    step = r.integer(QStringLiteral("step"), 1, 1, kIntMax);
-
+    const QString t = type();
+    start = ruleoptions::readInt(o, QStringLiteral("start"), 0, kIntMax, t, warnings).value_or(1);
+    step = ruleoptions::readInt(o, QStringLiteral("step"), 1, kIntMax, t, warnings).value_or(1);
     const QString paddingKey = QStringLiteral("padding");
-    const QJsonValue p = o.value(paddingKey);
-    if (p.isUndefined() || p == QJsonValue(QStringLiteral("auto")))
+    if (o.value(paddingKey) == QJsonValue(QStringLiteral("auto")))
         padding = -1;
-    else if (const auto n = optionjson::Reader::toInt(p, 0, kMaxPadding))
-        padding = *n;
     else
-        padding = r.bad(paddingKey, -1);
-
-    position = r.enumValue(QStringLiteral("position"), kPositions, Position::Suffix);
-    separator = r.string(QStringLiteral("separator"), QStringLiteral("_"));
-    index = r.integer(QStringLiteral("index"), 0, 0, kIntMax);
-    fromEnd = r.boolean(QStringLiteral("fromEnd"), false);
-    scope = r.enumValue(QStringLiteral("scope"), kScopes, Scope::Checked);
+        padding = ruleoptions::readInt(o, paddingKey, 0, kMaxPadding, t, warnings).value_or(-1);
+    position =
+            ruleoptions::readEnum<Position>(o, QStringLiteral("position"), kPositions, t, warnings)
+                    .value_or(Position::Suffix);
+    separator = ruleoptions::readString(o, QStringLiteral("separator"), t, warnings)
+                        .value_or(QStringLiteral("_"));
+    index = ruleoptions::readInt(o, QStringLiteral("index"), 0, kIntMax, t, warnings).value_or(0);
+    fromEnd = ruleoptions::readBool(o, QStringLiteral("fromEnd"), t, warnings).value_or(false);
+    scope = ruleoptions::readEnum<Scope>(o, QStringLiteral("scope"), kScopes, t, warnings)
+                    .value_or(Scope::Checked);
 }
 
 QString NumberingRule::transform(const QString &text, const RuleContext &ctx) const
