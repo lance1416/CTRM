@@ -114,7 +114,12 @@ struct Fixture
         QWidget *target = window.findChild<EmptyState *>();
         if (!target || !target->isVisible())
             target = window.tableView()->viewport();
+        // Qt 6.8 has only the QPoint constructor; Qt 6.12 adds QPointF and deprecates QPoint.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 12, 0)
+        const QPointF pos(target->rect().center());
+#else
         const QPoint pos = target->rect().center();
+#endif
         QDragEnterEvent enter(pos, Qt::CopyAction, &mime, Qt::LeftButton, {});
         QCoreApplication::sendEvent(target, &enter);
         if (!enter.isAccepted())
