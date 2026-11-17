@@ -532,11 +532,13 @@ void TestMainWindow::tertiaryButtonsHaveNoFrame()
 void TestMainWindow::ruleMenuButtonsArePushButtons()
 {
     // D5: Add Rule and Presets are push buttons with a menu (the style draws the indicator).
+    // PresetController is the one owner of the Presets menu (tst_app_presets), so the window
+    // alone does not set it.
     Fixture f;
     QPushButton *add = f.window.rulePanel()->addRuleButton();
     QPushButton *presets = f.window.rulePanel()->presetsButton();
     QVERIFY(add->menu());
-    QVERIFY(presets->menu());
+    QCOMPARE(presets->menu(), nullptr);
     QVERIFY(!add->autoDefault());
     QVERIFY(!presets->autoDefault());
 }

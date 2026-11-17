@@ -500,7 +500,6 @@ void MainWindow::buildPanels()
 
     m_rulePanel = new RulePanel(m_ruleModel, m_actions, m_rulePanelSlot);
     m_rulePanelSlot->layout()->addWidget(m_rulePanel);
-    m_rulePanel->presetsButton()->setMenu(m_presetsMenu);
 
     m_messageBar = new MessageBar(m_messageBarSlot);
     m_messageBarSlot->layout()->addWidget(m_messageBar);
