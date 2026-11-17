@@ -4,12 +4,15 @@
 #include "rules/ruleeditor.h"
 #include "theme/typography.h"
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QEvent>
 #include <QFontDatabase>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPointer>
+#include <QStyle>
+#include <QStyleOption>
 
 namespace ctrm::app {
 
@@ -102,6 +105,38 @@ QFont patternFont(const QFont &editorFont)
     if (editorFont.pointSizeF() > 0)
         font.setPointSizeF(editorFont.pointSizeF());
     return font;
+}
+
+void setCharacterWidth(QLineEdit *field, int chars)
+{
+    // As QLineEdit::sizeHint, with chars wide characters in place of 17 small ones.
+    constexpr int kHorizontalMargin = 2; // QLineEditPrivate::horizontalMargin
+    const QFontMetrics fm = field->fontMetrics();
+    const QMargins tm = field->textMargins();
+    const QSize contents(fm.horizontalAdvance(QLatin1Char('M')) * chars + 2 * kHorizontalMargin +
+                                 tm.left() + tm.right(),
+                         fm.height() + tm.top() + tm.bottom());
+    QStyleOptionFrame option;
+    option.initFrom(field);
+    option.lineWidth = field->style()->pixelMetric(QStyle::PM_DefaultFrameWidth, &option, field);
+    option.midLineWidth = 0;
+    option.state |= QStyle::State_Sunken;
+    option.features = QStyleOptionFrame::None;
+    field->setFixedWidth(field->style()
+                                 ->sizeFromContents(QStyle::CT_LineEdit, &option, contents, field)
+                                 .width());
+}
+
+int checkBoxTextIndent(const QCheckBox *box)
+{
+    QStyleOptionButton option;
+    option.initFrom(box);
+    option.text = box->text();
+    option.rect = QRect(QPoint(), box->sizeHint());
+    const QStyle *style = box->style();
+    const QRect contents = style->subElementRect(QStyle::SE_CheckBoxContents, &option, box);
+    const QRect item = style->subElementRect(QStyle::SE_CheckBoxLayoutItem, &option, box);
+    return contents.left() - (item.isValid() ? item.left() : 0);
 }
 
 } // namespace ctrm::app

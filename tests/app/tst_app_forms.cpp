@@ -7,6 +7,7 @@
 #include <QComboBox>
 #include <QElapsedTimer>
 #include <QFormLayout>
+#include <QGridLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QRadioButton>
@@ -156,6 +157,9 @@ private slots:
     void fieldError();
     void labelsTopAligned();
     void inlineField();
+    void formStartsAtLeft();
+    void syncedLabelTextAlignment();
+    void inlineSubFieldsAligned();
 };
 
 void TestAppForms::baselineMatches_data()
@@ -414,7 +418,62 @@ void TestAppForms::inlineField()
     QCOMPARE(spin->parent(), field.get());
     std::unique_ptr<QWidget> group(makeFieldGroup({new QCheckBox, new QCheckBox}));
     QCOMPARE(group->layout()->contentsMargins(), QMargins());
-    QVERIFY(qobject_cast<QVBoxLayout *>(group->layout()));
+    QVERIFY(qobject_cast<QGridLayout *>(group->layout()));
+}
+
+void TestAppForms::formStartsAtLeft()
+{
+    // D1: no field grows, and the form must not be centered.
+    QWidget window;
+    QFormLayout *form = makeForm(&window);
+    QCOMPARE(form->formAlignment(), Qt::AlignLeft | Qt::AlignTop);
+    auto *check = new QCheckBox(QStringLiteral("Skip"));
+    form->addRow(QStringLiteral("Case:"), check);
+    window.resize(600, 200);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QWidget *label = form->itemAt(0, QFormLayout::LabelRole)->widget();
+    QVERIFY2(label->x() < 30, qPrintable(QString::number(label->x())));
+}
+
+void TestAppForms::syncedLabelTextAlignment()
+{
+    // D2: a label wider than its text puts the text on the side of the label column.
+    QWidget window;
+    QFormLayout *form = makeForm(&window);
+    form->addRow(QStringLiteral("Text:"), new QLineEdit);
+    form->addRow(QStringLiteral("A much longer label:"), new QLineEdit);
+    LabelColumnSync sync;
+    sync.addForm(form);
+    sync.sync();
+    for (int row = 0; row < 2; ++row) {
+        auto *label = qobject_cast<QLabel *>(form->itemAt(row, QFormLayout::LabelRole)->widget());
+        QVERIFY(label);
+        QCOMPARE(label->alignment() & Qt::AlignHorizontal_Mask,
+                 form->labelAlignment() & Qt::AlignHorizontal_Mask);
+    }
+}
+
+void TestAppForms::inlineSubFieldsAligned()
+{
+    // D7: the sub-fields of two inline fields in one group have one start line, and the
+    // group has no extra margins.
+    QWidget window;
+    auto *layout = new QVBoxLayout(&window);
+    auto *first = new QRadioButton(QStringLiteral("At index"));
+    auto *second = new QRadioButton(QStringLiteral("Before the last"));
+    auto *field1 = new QLineEdit;
+    auto *field2 = new QLineEdit;
+    auto *plain = new QRadioButton(QStringLiteral("At end"));
+    QWidget *group = makeFieldGroup(
+            {makeInlineField(first, {field1}), makeInlineField(second, {field2}), plain});
+    layout->addWidget(group);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QCOMPARE(field1->mapTo(&window, QPoint()).x(), field2->mapTo(&window, QPoint()).x());
+    QCOMPARE(first->mapTo(&window, QPoint()).x(), plain->mapTo(&window, QPoint()).x());
+    QCOMPARE(first->parentWidget(), group);
+    QCOMPARE(field2->parentWidget(), group);
 }
 
 QTEST_MAIN(TestAppForms)

@@ -5,6 +5,7 @@
 #include <QComboBox>
 #include <QEvent>
 #include <QFormLayout>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QStyle>
@@ -22,6 +23,9 @@ QString tr(const char *text)
 {
     return QCoreApplication::translate("ctrm::app::FormUtils", text);
 }
+
+// Set on the widget of makeInlineField, so that makeFieldGroup can take its widgets.
+constexpr const char *kInlineFieldProperty = "ctrmInlineField";
 
 bool isFontOrStyleChange(const QEvent *event)
 {
@@ -80,23 +84,61 @@ QFormLayout *makeForm(QWidget *parent)
             Qt::Alignment(style->styleHint(QStyle::SH_FormLayoutLabelAlignment, nullptr, parent)) &
             Qt::AlignHorizontal_Mask;
     form->setLabelAlignment(horizontal | Qt::AlignTop);
+    // The form starts at the left edge, also when no field grows (the macOS style centers it).
+    form->setFormAlignment(Qt::AlignLeft | Qt::AlignTop);
     form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
     return form;
 }
 
 QWidget *makeFieldGroup(const QList<QWidget *> &controls)
 {
+    // A grid: a control alone spans all columns. The sub-fields of inline fields start in
+    // column 1, so they have one start line (ui-design 6.1 rule 14). The widgets of an inline
+    // field go into the grid itself: a nested widget would add the layout margins of the
+    // style a second time.
+    QList<QList<QWidget *>> rows;
+    int columns = 1;
+    for (QWidget *control : controls) {
+        QList<QWidget *> row;
+        if (control->property(kInlineFieldProperty).toBool()) {
+            QLayout *inner = control->layout();
+            for (int i = 0; i < inner->count(); ++i) {
+                if (QWidget *w = inner->itemAt(i)->widget())
+                    row.append(w);
+            }
+            for (QWidget *w : std::as_const(row))
+                inner->removeWidget(w);
+        } else {
+            row.append(control);
+        }
+        columns = std::max(columns, int(row.size()));
+        rows.append(row);
+    }
+
     auto *group = new QWidget;
-    auto *layout = new QVBoxLayout(group);
+    auto *layout = new QGridLayout(group);
     layout->setContentsMargins(0, 0, 0, 0);
-    for (QWidget *control : controls)
-        layout->addWidget(control);
+    for (int r = 0; r < rows.size(); ++r) {
+        const QList<QWidget *> &row = rows.at(r);
+        if (row.size() == 1) {
+            layout->addWidget(row.first(), r, 0, 1, columns + 1);
+            continue;
+        }
+        for (int c = 0; c < row.size(); ++c)
+            layout->addWidget(row.at(c), r, c);
+    }
+    layout->setColumnStretch(columns, 1);
+    for (QWidget *control : controls) {
+        if (control->property(kInlineFieldProperty).toBool())
+            delete control; // its widgets are in the grid now
+    }
     return group;
 }
 
 QWidget *makeInlineField(QWidget *first, const QList<QWidget *> &more)
 {
     auto *field = new QWidget;
+    field->setProperty(kInlineFieldProperty, true);
     auto *layout = new QHBoxLayout(field);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(first);
@@ -133,6 +175,11 @@ void LabelColumnSync::sync()
         for (int row = 0; row < form->rowCount(); ++row) {
             QLayoutItem *item = form->itemAt(row, QFormLayout::LabelRole);
             if (QWidget *label = item ? item->widget() : nullptr) {
+                // The label is wider than its text: the text takes the horizontal alignment of
+                // the label column (right on macOS, ui-design 6.1 rule 3).
+                if (auto *text = qobject_cast<QLabel *>(label))
+                    text->setAlignment((form->labelAlignment() & Qt::AlignHorizontal_Mask) |
+                                       (text->alignment() & Qt::AlignVertical_Mask));
                 labels.append(label);
                 widest = std::max(widest, label->sizeHint().width());
             }

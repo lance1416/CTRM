@@ -8,6 +8,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QFormLayout>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 
@@ -25,7 +26,7 @@ CleanUpEditor::CleanUpEditor(QWidget *parent)
                                   {tr("Change to -"), int(Spaces::Dash)},
                                   {tr("Change to ."), int(Spaces::Dot)},
                                   {tr("Remove"), int(Spaces::Remove)}}))
-    , m_replaceInvalid(new QCheckBox(tr("&Replace invalid characters with")))
+    , m_replaceInvalid(new QCheckBox(tr("&Replace invalid characters with:")))
     , m_replacement(new QLineEdit)
     , m_portableNote(new QLabel)
     , m_applyTo(makeApplyToCombo(this))
@@ -41,6 +42,7 @@ CleanUpEditor::CleanUpEditor(QWidget *parent)
     m_replacement->setAccessibleName(tr("Replacement"));
     m_replacement->setText(QStringLiteral("_"));
     m_replacement->setEnabled(false);
+    setCharacterWidth(m_replacement, 3);
     m_portableNote->setWordWrap(true);
     makeDimCaption(m_portableNote, this);
 
@@ -48,7 +50,14 @@ CleanUpEditor::CleanUpEditor(QWidget *parent)
     f->addRow(QString(), m_trim);
     f->addRow(QString(), m_collapseSpaces);
     f->addRow(tr("&Spaces:"), m_spacesTo);
-    f->addRow(QString(), makeInlineField(m_replaceInvalid, {m_replacement}));
+    // The field is under the check box text, so the row fits at the minimum panel width.
+    f->addRow(QString(), m_replaceInvalid);
+    auto *replacementRow = new QWidget;
+    auto *replacementLayout = new QHBoxLayout(replacementRow);
+    replacementLayout->setContentsMargins(checkBoxTextIndent(m_replaceInvalid), 0, 0, 0);
+    replacementLayout->addWidget(m_replacement);
+    replacementLayout->addStretch(1);
+    f->addRow(QString(), replacementRow);
     f->addRow(QString(), m_portableNote);
     f->addRow(tr("&Apply to:"), m_applyTo);
 

@@ -9,6 +9,7 @@
 
 #include <utility>
 
+class QCheckBox;
 class QComboBox;
 class QLabel;
 class QLineEdit;
@@ -44,6 +45,11 @@ public:
 private:
     bool m_pending = false;
 };
+
+// Gives the field a fixed width for chars wide characters and its frame.
+void setCharacterWidth(QLineEdit *field, int chars);
+// The distance from the layout edge of the check box to the start of its text.
+int checkBoxTextIndent(const QCheckBox *box);
 
 // The pattern font (design-tokens 3.1) at the size of the editor font.
 QFont patternFont(const QFont &editorFont);

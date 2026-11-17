@@ -17,7 +17,9 @@ namespace ctrm::app {
 // When parent is not nullptr, the form is its layout.
 QFormLayout *makeForm(QWidget *parent);
 
-// A radio or check box group as one field: QVBoxLayout, margins 0, spacing from the style.
+// A radio or check box group as one field: a grid, margins 0, spacing from the style. The
+// sub-fields of the inline fields in controls start on one line; the group takes their widgets
+// and deletes the inline field widgets.
 QWidget *makeFieldGroup(const QList<QWidget *> &controls);
 
 // A control with its sub-fields on one line: QHBoxLayout, margins 0.

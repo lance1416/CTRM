@@ -118,6 +118,7 @@ private slots:
     void removeWritesRule();
     void cleanupWritesRule();
     void cleanupNoteFollowsPortable();
+    void cleanupReplacementFits();
     void applyToWritesTarget();
     void setRuleFlushesPendingEdit();
     void wrongRuleTypeDisables();
@@ -527,4 +528,22 @@ void TestAppEditors1::fieldEdgeAllEditors()
 }
 
 QTEST_MAIN(TestAppEditors1)
+void TestAppEditors1::cleanupReplacementFits()
+{
+    // D8: the field is for a few characters and is under the text of its check box, so the
+    // row is not wider than the check box.
+    Fixture<CleanUpEditor, CleanUpRule> f;
+    QVERIFY(QTest::qWaitForWindowExposed(f.editor.get()));
+    auto *box = child<QCheckBox>(f.editor.get(), "replaceInvalid");
+    auto *field = child<QLineEdit>(f.editor.get(), "replacement");
+    QCOMPARE(field->minimumWidth(), field->maximumWidth());
+    QVERIFY2(field->width() < box->sizeHint().width() / 3,
+             qPrintable(QString::number(field->width())));
+    const QPoint boxAt = box->mapTo(f.editor.get(), QPoint());
+    const QPoint fieldAt = field->mapTo(f.editor.get(), QPoint());
+    QVERIFY(fieldAt.y() >= boxAt.y() + box->height());
+    QVERIFY(fieldAt.x() > boxAt.x());
+    QVERIFY(fieldAt.x() + field->width() <= boxAt.x() + box->sizeHint().width());
+}
+
 #include "tst_app_editors1.moc"
