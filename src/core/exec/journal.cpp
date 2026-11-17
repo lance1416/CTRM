@@ -4,6 +4,7 @@
 #include "fs/filesync.h"
 
 #include <QDir>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonParseError>
@@ -464,6 +465,24 @@ std::optional<BatchRecord> readJournal(const QString &filePath, QString *error, 
     }
     record->filePath = filePath;
     return record;
+}
+
+QDateTime journalFileTime(const QString &fileName)
+{
+    const QString name = QFileInfo(fileName).fileName();
+    const qsizetype dash = name.indexOf(u'-');
+    if (dash <= 0)
+        return {};
+    const QString stamp = name.left(dash);
+    for (const QString &format :
+         {QStringLiteral("yyyyMMdd'T'HHmmsszzz'Z'"), QStringLiteral("yyyyMMdd'T'HHmmss'Z'")}) {
+        QDateTime t = QDateTime::fromString(stamp, format);
+        if (t.isValid()) {
+            t.setTimeZone(QTimeZone::UTC);
+            return t;
+        }
+    }
+    return {};
 }
 
 } // namespace ctrm

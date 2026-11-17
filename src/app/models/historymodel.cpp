@@ -7,9 +7,7 @@
 
 #include <QApplication>
 #include <QDir>
-#include <QFileInfo>
 #include <QLocale>
-#include <QTimeZone>
 
 namespace ctrm::app {
 
@@ -40,6 +38,8 @@ int HistoryModel::rowOf(const QString &batchId) const
 
 QString HistoryModel::whenText(const QDateTime &time, const QDateTime &now)
 {
+    if (!time.isValid())
+        return tr("Unknown"); // a damaged journal whose file name has no time
     const QLocale locale = QLocale::system();
     const QDateTime local = time.toLocalTime();
     const QDate today = now.toLocalTime().date();
@@ -49,25 +49,6 @@ QString HistoryModel::whenText(const QDateTime &time, const QDateTime &now)
     if (local.date() == today.addDays(-1))
         return tr("Yesterday %1").arg(clock);
     return tr("%1 %2").arg(locale.toString(local.date(), QStringLiteral("d MMM")), clock);
-}
-
-QDateTime HistoryModel::startedOf(const BatchSummary &s)
-{
-    if (s.started.isValid() || !s.damaged)
-        return s.started;
-    // A damaged journal with no readable header: the time in the file name, with or without
-    // milliseconds ("yyyyMMddTHHmmss[zzz]Z-<batchId>.jsonl").
-    const QString base = QFileInfo(s.filePath).fileName();
-    const QString stamp = base.left(base.indexOf(u'-'));
-    for (const QString &format :
-         {QStringLiteral("yyyyMMdd'T'HHmmsszzz'Z'"), QStringLiteral("yyyyMMdd'T'HHmmss'Z'")}) {
-        QDateTime t = QDateTime::fromString(stamp, format);
-        if (t.isValid()) {
-            t.setTimeZone(QTimeZone::UTC);
-            return t;
-        }
-    }
-    return {};
 }
 
 QString HistoryModel::displayPath(const QString &path)
@@ -157,9 +138,7 @@ QVariant HistoryModel::data(const QModelIndex &index, int role) const
     if (role == Qt::DisplayRole || role == Qt::ToolTipRole) {
         switch (index.column()) {
         case When: {
-            const QDateTime started = startedOf(s);
-            return started.isValid() ? whenText(started, QDateTime::currentDateTime())
-                                     : tr("Unknown");
+            return whenText(s.started, QDateTime::currentDateTime());
         }
         case Items:
             return s.damaged ? QString() : QLocale().toString(s.itemCount);

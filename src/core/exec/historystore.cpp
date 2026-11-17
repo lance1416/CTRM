@@ -9,7 +9,6 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSet>
-#include <QTimeZone>
 
 #include <algorithm>
 #include <utility>
@@ -65,7 +64,7 @@ bool unsafeToDelete(const BatchSummary &s)
     return s.damaged || s.state == BatchState::InProgress || s.state == BatchState::Incomplete;
 }
 
-// The summary of a journal with no readable header. "yyyyMMddTHHmmsszzzZ-<batchId>.jsonl"
+// The summary of a journal with no readable header. "yyyyMMddTHHmmss[zzz]Z-<batchId>.jsonl"
 // gives the ID and the start time. The state is the last valid state line (for example one
 // that "Mark as Complete" wrote), else InProgress.
 BatchSummary summarizeUnreadable(const QString &dir, const QString &name)
@@ -75,12 +74,7 @@ BatchSummary summarizeUnreadable(const QString &dir, const QString &name)
     const QString base = name.chopped(int(QStringLiteral(".jsonl").size()));
     const qsizetype dash = base.indexOf(u'-');
     s.batchId = dash < 0 ? base : base.mid(dash + 1);
-    if (dash > 0) {
-        QDateTime t =
-                QDateTime::fromString(base.left(dash), QStringLiteral("yyyyMMdd'T'HHmmsszzz'Z'"));
-        t.setTimeZone(QTimeZone::UTC);
-        s.started = t;
-    }
+    s.started = journalFileTime(name);
     QFile file(s.filePath);
     if (file.open(QIODevice::ReadOnly)) {
         const QList<QByteArray> lines = file.readAll().split('\n');

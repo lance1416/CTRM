@@ -298,6 +298,8 @@ void TestHistory::historyStatesShown()
 
 void TestHistory::whenText()
 {
+    QCOMPARE(HistoryModel::whenText(QDateTime(), QDateTime::currentDateTime()),
+             QStringLiteral("Unknown"));
     const QDateTime now(QDate(2026, 11, 17), QTime(15, 0));
     QCOMPARE(HistoryModel::whenText(QDateTime(QDate(2026, 11, 17), QTime(14, 2)), now),
              QStringLiteral("Today %1")

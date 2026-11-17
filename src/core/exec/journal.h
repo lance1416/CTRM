@@ -127,4 +127,8 @@ private:
 std::optional<BatchRecord> readJournal(const QString &filePath, QString *error,
                                        ReadMode mode = ReadMode::Strict);
 
+// The start time (UTC) in a journal file name "yyyyMMddTHHmmss[zzz]Z-<batchId>.jsonl", with or
+// without milliseconds. The path may have folders. Invalid when the name has no such time.
+QDateTime journalFileTime(const QString &fileName);
+
 } // namespace ctrm

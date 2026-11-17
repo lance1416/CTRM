@@ -6,7 +6,6 @@
 #include "dialogs/reportdialog.h"
 #include "exec/undo.h"
 #include "mainwindow.h"
-#include "models/historymodel.h"
 
 #include <QApplication>
 #include <QDesktopServices>
@@ -42,7 +41,7 @@ RecoveryInfo RecoveryController::infoOf(const BatchSummary &summary) const
     RecoveryInfo info;
     info.batchId = summary.batchId;
     info.filePath = summary.filePath;
-    info.started = HistoryModel::startedOf(summary);
+    info.started = summary.started;
     info.damaged = summary.damaged;
     info.folders = summary.folders;
     info.openSteps = summary.openSteps;

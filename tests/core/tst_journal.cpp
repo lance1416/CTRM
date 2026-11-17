@@ -167,6 +167,8 @@ private slots:
     void retentionKeepsUnsafe();
     void clearKeepsUnsafe();
     void retentionDeletesGroups();
+    void fileNameTime();
+    void damagedListTimeWithoutMs();
 };
 
 void TestJournal::stateStrings()
@@ -788,6 +790,43 @@ void TestJournal::retentionDeletesGroups()
     HistoryStore store2(t2.root());
     QCOMPARE(store2.applyRetention(1, 180, now), 1);
     QCOMPARE(store2.list().size(), 2);
+}
+
+void TestJournal::fileNameTime()
+{
+    const QDateTime withMs(QDate(2026, 11, 1), QTime(10, 0, 0, 123), QTimeZone::UTC);
+    QCOMPARE(journalFileTime(QStringLiteral("20261101T100000123Z-abc.jsonl")), withMs);
+    const QDateTime noMs(QDate(2026, 11, 1), QTime(10, 0), QTimeZone::UTC);
+    QCOMPARE(journalFileTime(QStringLiteral("20261101T100000Z-abc.jsonl")), noMs);
+    QCOMPARE(journalFileTime(QStringLiteral("/h/20261101T100000Z-abc.jsonl")), noMs);
+    QCOMPARE(journalFileTime(QStringLiteral("20261101T100000Z-abc.jsonl")).timeSpec(), Qt::UTC);
+    QVERIFY(!journalFileTime(QStringLiteral("abc.jsonl")).isValid());
+    QVERIFY(!journalFileTime(QStringLiteral("x-abc.jsonl")).isValid());
+    QVERIFY(!journalFileTime(QString()).isValid());
+
+    // The writer's name reads back.
+    TempTree tree;
+    JournalHeader h;
+    h.batchId = QStringLiteral("b1");
+    h.started = QDateTime(QDate(2026, 11, 17), QTime(14, 2, 3, 45), QTimeZone::UTC);
+    QString error;
+    const auto w = JournalWriter::create(tree.root(), h, Plan{}, &error);
+    QVERIFY2(w, qPrintable(error));
+    QCOMPARE(journalFileTime(w->filePath()), h.started);
+}
+
+void TestJournal::damagedListTimeWithoutMs()
+{
+    TempTree tree;
+    QFile f(tree.root() + QStringLiteral("/20261101T100000Z-dmg.jsonl"));
+    QVERIFY(f.open(QIODevice::WriteOnly));
+    f.write("not json\n");
+    f.close();
+    const QList<BatchSummary> list = HistoryStore(tree.root()).list();
+    QCOMPARE(list.size(), 1);
+    QVERIFY(list[0].damaged);
+    QCOMPARE(list[0].batchId, QStringLiteral("dmg"));
+    QCOMPARE(list[0].started, QDateTime(QDate(2026, 11, 1), QTime(10, 0), QTimeZone::UTC));
 }
 
 QTEST_GUILESS_MAIN(TestJournal)

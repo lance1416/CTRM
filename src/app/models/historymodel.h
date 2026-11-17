@@ -28,9 +28,6 @@ public:
     static QString foldersText(const ctrm::BatchSummary &s, const QList<ctrm::BatchSummary> &all);
     // "Complete", "Complete, 3 failed", "Damaged", ...
     static QString stateText(const ctrm::BatchSummary &s);
-    // The start time. For a damaged journal with no readable header, the time in the file
-    // name; invalid when the file name has none (the When column shows "Unknown").
-    static QDateTime startedOf(const ctrm::BatchSummary &s);
     // A path for the user: native separators, the home folder as "~".
     static QString displayPath(const QString &path);
 
