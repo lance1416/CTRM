@@ -379,8 +379,13 @@ void BatchController::finished(const FinishResult &result)
     for (const Item &item : m_w.itemModel().items())
         idOfPath.insert(item.path(), item.id);
     m_w.itemModel().applyRenames(result.report);
+    // S04: after a complete undo the list shows the names on disk and a new preview, not a
+    // result state.
+    const bool undone = !undoOf.isEmpty() && result.state == BatchState::Complete;
     QHash<ItemId, PostRunState> states;
     for (const ReportRow &row : result.report) {
+        if (undone)
+            break;
         const auto id = idOfPath.constFind(row.oldPath);
         if (id == idOfPath.cend())
             continue;
@@ -421,7 +426,8 @@ void BatchController::finished(const FinishResult &result)
     m_w.folderCache().invalidate();
     m_w.requestPreview();
     showResultMessage(result);
-    m_w.setResultShown(true);
+    if (!undone)
+        m_w.setResultShown(true);
 
     if (failurePath && !m_closeAfterRun)
         showReport(result);
@@ -441,7 +447,9 @@ void BatchController::showResultMessage(const FinishResult &result)
     QList<QPushButton *> buttons;
     StateIcon icon = StateIcon::Done;
     QString text;
-    if (result.state == BatchState::Complete) {
+    if (result.state == BatchState::Complete && !m_undoOf.isEmpty()) {
+        text = numerus(tr("Undid the rename of %n item(s).", nullptr, renamed), renamed);
+    } else if (result.state == BatchState::Complete) {
         text = numerus(tr("Renamed %n item(s).", nullptr, renamed), renamed);
         if (renamed > 0 && m_undoOf.isEmpty()) {
             auto *undo = new QPushButton(tr("Undo"));
