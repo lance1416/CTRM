@@ -1087,8 +1087,9 @@ void TestMainWindow::toolbarPresetsArrowOnTextLine()
 QTEST_MAIN(TestMainWindow)
 void TestMainWindow::tableShortcutsOnlyWithFocus()
 {
-    // R1-02, same rule as M28: the menus show Delete for Remove from List and Space for Include
-    // and Exclude only while the table has the focus. The keys still work in the table.
+    // R1-02, same rule as M28: the menu shows Delete for Remove from List only while the table
+    // has the focus. R2-03: Include and Exclude show no key, because Space toggles the state and
+    // is only a key of the table. The keys still work in the table.
     Fixture f;
     f.window.show();
     QVERIFY(QTest::qWaitForWindowActive(&f.window));
@@ -1106,8 +1107,8 @@ void TestMainWindow::tableShortcutsOnlyWithFocus()
     table->setFocus();
     QTRY_VERIFY(table->hasFocus());
     QCOMPARE(a.removeFromList->shortcut(), QKeySequence(Qt::Key_Delete));
-    QCOMPARE(a.include->shortcut(), QKeySequence(Qt::Key_Space));
-    QCOMPARE(a.exclude->shortcut(), QKeySequence(Qt::Key_Space));
+    QVERIFY(a.include->shortcut().isEmpty());
+    QVERIFY(a.exclude->shortcut().isEmpty());
 
     // Space toggles Include one time; Delete removes the selected row.
     table->selectRow(0);

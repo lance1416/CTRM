@@ -651,10 +651,9 @@ void MainWindow::connectActions()
             [this] { m_itemModel.setIncluded(m_table->selectedIds(), true); });
     connect(a.exclude, &QAction::triggered, this,
             [this] { m_itemModel.setIncluded(m_table->selectedIds(), false); });
-    // R1-02: Delete and Space show in the menus only while the table has the focus.
-    new FocusShortcuts(m_table, {{a.removeFromList, a.removeFromList->shortcuts()},
-                                 {a.include, {QKeySequence(Qt::Key_Space)}},
-                                 {a.exclude, {QKeySequence(Qt::Key_Space)}}});
+    // R1-02: Delete shows in the menu only while the table has the focus. Include and Exclude
+    // have no key: Space toggles the state in the table (R2-03).
+    new FocusShortcuts(m_table, {{a.removeFromList, a.removeFromList->shortcuts()}});
     connect(a.selectAll, &QAction::triggered, this, [this] {
         // Text fields and lists select their own contents; else the table.
         QWidget *target = QApplication::focusWidget();

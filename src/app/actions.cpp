@@ -83,8 +83,8 @@ Actions createActions(QObject *parent)
     // Edit
     a.undoRename = make(parent, "undoRename", tr("Undo Rename"), keys({"Ctrl+Z"}));
     a.undoRename->setShortcutContext(Qt::WindowShortcut);
-    // Space is the shortcut for Include and Exclude only when the focus is in the table
-    // (ui-design 12). The table connects it.
+    // Include and Exclude have no shortcut. Space toggles the state in the table (ui-design 12,
+    // R2-03).
     a.include = make(parent, "include", tr("Include"));
     a.exclude = make(parent, "exclude", tr("Exclude"));
     a.selectAll = make(parent, "selectAll", tr("Select All"),
