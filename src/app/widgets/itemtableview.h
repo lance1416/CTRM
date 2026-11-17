@@ -34,6 +34,7 @@ signals:
     void showInFileManager(ctrm::ItemId id);
 
 protected:
+    bool event(QEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
     void dragEnterEvent(QDragEnterEvent *event) override;

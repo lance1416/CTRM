@@ -160,6 +160,7 @@ private slots:
     void listActionsAtStart();
     void pendingPreviewBlocksRename();
     void viewShowColumns();
+    void tableShortcutsOnlyWithFocus();
     void toolbarPresetsArrowOnTextLine();
     void toolbarIcons();
     void tertiaryButtonsHaveNoFrame();
@@ -1018,4 +1019,58 @@ void TestMainWindow::toolbarPresetsArrowOnTextLine()
 }
 
 QTEST_MAIN(TestMainWindow)
+void TestMainWindow::tableShortcutsOnlyWithFocus()
+{
+    // R1-02, same rule as M28: the menus show Delete for Remove from List and Space for Include
+    // and Exclude only while the table has the focus. The keys still work in the table.
+    Fixture f;
+    f.window.show();
+    QVERIFY(QTest::qWaitForWindowActive(&f.window));
+    f.addFiles({QStringLiteral("a.txt"), QStringLiteral("b.txt"), QStringLiteral("c.txt")});
+    const Actions &a = f.window.actions();
+    auto *table = f.child<ItemTableView>("itemTable");
+    QListView *rules = f.window.rulePanel()->ruleList();
+
+    rules->setFocus();
+    QTRY_VERIFY(rules->hasFocus());
+    QVERIFY(a.removeFromList->shortcut().isEmpty());
+    QVERIFY(a.include->shortcut().isEmpty());
+    QVERIFY(a.exclude->shortcut().isEmpty());
+
+    table->setFocus();
+    QTRY_VERIFY(table->hasFocus());
+    QCOMPARE(a.removeFromList->shortcut(), QKeySequence(Qt::Key_Delete));
+    QCOMPARE(a.include->shortcut(), QKeySequence(Qt::Key_Space));
+    QCOMPARE(a.exclude->shortcut(), QKeySequence(Qt::Key_Space));
+
+    // Space toggles Include one time; Delete removes the selected row.
+    table->selectRow(0);
+    QTest::keyClick(table, Qt::Key_Space);
+    QVERIFY(!f.window.itemModel().items().at(0).included);
+    QTest::keyClick(table, Qt::Key_Space);
+    QVERIFY(f.window.itemModel().items().at(0).included);
+    QTest::keyClick(table, Qt::Key_Delete);
+    QCOMPARE(f.oldNames(), (QStringList{QStringLiteral("b.txt"), QStringLiteral("c.txt")}));
+
+    // An open popup menu takes the focus for a short time; the menu keeps the keys.
+    QFocusEvent popupOut(QEvent::FocusOut, Qt::PopupFocusReason);
+    QCoreApplication::sendEvent(table, &popupOut);
+    QCOMPARE(a.removeFromList->shortcut(), QKeySequence(Qt::Key_Delete));
+
+    rules->setFocus();
+    QTRY_VERIFY(rules->hasFocus());
+    QVERIFY(a.removeFromList->shortcut().isEmpty());
+    QVERIFY(a.include->shortcut().isEmpty());
+
+    // Space and Delete in the filter field edit the text; the selected rows do not change.
+    table->selectRow(0);
+    auto *filter = f.child<QLineEdit>("filterField");
+    filter->setFocus();
+    QTRY_VERIFY(filter->hasFocus());
+    QTest::keyClick(filter, Qt::Key_Space);
+    QTest::keyClick(filter, Qt::Key_Delete);
+    QVERIFY(f.window.itemModel().items().at(0).included);
+    QCOMPARE(f.window.itemModel().rowCount(), 2);
+}
+
 #include "tst_app_mainwindow.moc"

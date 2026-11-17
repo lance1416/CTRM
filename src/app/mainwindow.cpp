@@ -9,6 +9,7 @@
 #include "widgets/actionbar.h"
 #include "widgets/emptystate.h"
 #include "widgets/flowstrip.h"
+#include "widgets/focusshortcuts.h"
 #include "widgets/itemtableview.h"
 #include "widgets/menutoolbutton.h"
 #include "widgets/messagebar.h"
@@ -650,6 +651,10 @@ void MainWindow::connectActions()
             [this] { m_itemModel.setIncluded(m_table->selectedIds(), true); });
     connect(a.exclude, &QAction::triggered, this,
             [this] { m_itemModel.setIncluded(m_table->selectedIds(), false); });
+    // R1-02: Delete and Space show in the menus only while the table has the focus.
+    new FocusShortcuts(m_table, {{a.removeFromList, a.removeFromList->shortcuts()},
+                                 {a.include, {QKeySequence(Qt::Key_Space)}},
+                                 {a.exclude, {QKeySequence(Qt::Key_Space)}}});
     connect(a.selectAll, &QAction::triggered, this, [this] {
         // Text fields and lists select their own contents; else the table.
         QWidget *target = QApplication::focusWidget();

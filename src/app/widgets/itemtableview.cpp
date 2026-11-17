@@ -357,6 +357,20 @@ void ItemTableView::changeEvent(QEvent *event)
     }
 }
 
+bool ItemTableView::event(QEvent *event)
+{
+    // Space is also the menu shortcut of Include and Exclude while the table has the focus
+    // (R1-02). The table takes the key first, so one press toggles the rows one time.
+    if (event->type() == QEvent::ShortcutOverride) {
+        const auto *key = static_cast<QKeyEvent *>(event);
+        if (key->key() == Qt::Key_Space && key->modifiers() == Qt::NoModifier) {
+            event->accept();
+            return true;
+        }
+    }
+    return QTableView::event(event);
+}
+
 void ItemTableView::keyPressEvent(QKeyEvent *event)
 {
     // Space toggles Include on the selected rows (ui-design 7.5).
