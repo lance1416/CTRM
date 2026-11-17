@@ -19,7 +19,7 @@ public:
 
     // The FolderInfo of each folder of the items. Reads only the folders that are not cached.
     QHash<QString, ctrm::FolderInfo> folders(const QList<ctrm::Item> &items);
-    // Forgets all folders (Refresh, after a batch).
+    // Forgets all folders (Refresh, after a batch, on add of items, on window activation).
     void invalidate();
 
 private:

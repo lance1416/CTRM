@@ -67,6 +67,8 @@ public:
 
 protected:
     void closeEvent(QCloseEvent *e) override; // saves geometry, state, splitters
+    // Activation reads the folders again: files can change while CTRM is not active.
+    void changeEvent(QEvent *e) override;
 
 private:
     void buildMenus();

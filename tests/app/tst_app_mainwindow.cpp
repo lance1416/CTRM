@@ -128,6 +128,8 @@ private slots:
     void filterEmptyText();
     void blockingReasonTooltip();
     void refreshDetectsMissing();
+    void addReadsFolderAgain();
+    void activationReadsFolderAgain();
     void conflictTipShown();
     void tabOrder();
     void presetTitle();
@@ -313,6 +315,43 @@ void TestMainWindow::refreshDetectsMissing()
     f.window.actions().refresh->trigger();
     QCOMPARE(f.window.currentPreview().items.at(0).status, Status::Unchanged);
     QCOMPARE(f.window.currentPreview().items.at(1).status, Status::Missing);
+}
+
+void TestMainWindow::addReadsFolderAgain()
+{
+    Fixture f;
+    f.addFiles({QStringLiteral("a1.txt")}); // the folder is now in the cache
+    f.window.ruleModel().insertRule(0, regexRemoveDigits());
+    QCOMPARE(f.window.currentPreview().summary.conflicts, 0);
+
+    // Files made after the folder was read: a new item is not Missing, and a file on disk with
+    // the new name of an item is a conflict.
+    f.tree.file(QStringLiteral("a.txt"), "x");
+    f.addFiles({QStringLiteral("b.txt")});
+    QCOMPARE(f.window.currentPreview().items.at(1).status, Status::Unchanged);
+    QCOMPARE(f.window.currentPreview().items.at(0).status, Status::Conflict);
+}
+
+void TestMainWindow::activationReadsFolderAgain()
+{
+    Fixture f;
+    f.window.show();
+    f.window.activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(&f.window));
+    f.addFiles({QStringLiteral("c1.txt")});
+    f.window.ruleModel().insertRule(0, regexRemoveDigits());
+    QCOMPARE(f.window.currentPreview().summary.conflicts, 0);
+
+    // The user makes c.txt in another app, then comes back to CTRM.
+    QWidget other;
+    other.show();
+    other.activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(&other));
+    QTRY_VERIFY(!f.window.isActiveWindow());
+    f.tree.file(QStringLiteral("c.txt"), "x");
+    f.window.activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(&f.window));
+    QTRY_COMPARE(f.window.currentPreview().items.at(0).status, Status::Conflict);
 }
 
 void TestMainWindow::conflictTipShown()

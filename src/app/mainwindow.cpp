@@ -16,6 +16,7 @@
 #include <QApplication>
 #include <QCloseEvent>
 #include <QComboBox>
+#include <QEvent>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -552,6 +553,10 @@ void MainWindow::connectActions()
     const Actions &a = m_actions;
 
     // The preview follows the list, the rules and the chain options.
+    // New items can be in a folder that changed after it was read: read the folders again
+    // before the preview of listChanged. The batch and undo plans always read the disk.
+    connect(&m_itemModel, &QAbstractItemModel::rowsInserted, this,
+            [this] { m_folderCache.invalidate(); });
     connect(&m_itemModel, &ItemTableModel::listChanged, this, &MainWindow::contentChanged);
     connect(&m_ruleModel, &RuleListModel::chainChanged, this, [this] {
         const ctrm::RuleChain &chain = m_ruleModel.chain();
@@ -793,6 +798,16 @@ void MainWindow::clearFilter()
     m_filter->clear();
     setShowMode(ShowMode::All);
     focus(m_table);
+}
+
+void MainWindow::changeEvent(QEvent *e)
+{
+    QMainWindow::changeEvent(e);
+    if (e->type() != QEvent::ActivationChange || !isActiveWindow() || m_running ||
+        m_itemModel.rowCount() == 0)
+        return;
+    m_folderCache.invalidate();
+    requestPreview();
 }
 
 void MainWindow::refresh()
