@@ -168,6 +168,12 @@ void TestNativeFs::identityStrongOnTmp()
 #ifdef Q_OS_LINUX
     if (v.fsName != u"ext4" && v.fsName != u"btrfs" && v.fsName != u"xfs")
         QSKIP(qPrintable(QStringLiteral("temporary folder is on %1").arg(v.fsName)));
+#elif defined(Q_OS_MACOS)
+    // exFAT, FAT and some network volumes have no stable file IDs (weak identity).
+    if (v.fsName != u"apfs" && v.fsName != u"hfs")
+        QSKIP(qPrintable(QStringLiteral("temporary folder is on %1, which has no strong file "
+                                        "identity")
+                                 .arg(v.fsName)));
 #endif
     QCOMPARE(v.identityType, IdentityType::Strong);
     const auto before = fs->identity(a, IdentityType::Strong);
@@ -208,6 +214,13 @@ void TestNativeFs::listFolderHidden()
     t.mkdir("sub");
 #ifdef Q_OS_MACOS
     QCOMPARE(chflags(enc(flagged).constData(), UF_HIDDEN), 0);
+    // Some volumes (exFAT, FAT) report the hidden flag for each name with a leading dot. The OS
+    // gives this flag, not CTRM, so check the OS first.
+    if (lstatOf(t.root() + "/.h").st_flags & UF_HIDDEN)
+        QSKIP("the volume marks each name with a leading dot as hidden (for example exFAT or "
+              "FAT)");
+    if (!(lstatOf(flagged).st_flags & UF_HIDDEN))
+        QSKIP("the volume does not keep the hidden flag");
 #endif
     auto fs = createNativeFileSystem();
     QString error;
@@ -304,6 +317,8 @@ void TestNativeFs::timestampsAndModeKept()
     TempTree t;
     const QString a = t.file("a.txt", "A");
     QCOMPARE(chmod(enc(a).constData(), 0640), 0);
+    // exFAT and FAT have no file mode: chmod has no effect there.
+    const bool modeKept = (lstatOf(a).st_mode & 0777) == 0640;
     const struct timespec times[2] = {{1000000000, 123456789}, {1100000000, 987654321}};
     QCOMPARE(utimensat(AT_FDCWD, enc(a).constData(), times, 0), 0);
     const struct stat before = lstatOf(a);
@@ -312,7 +327,6 @@ void TestNativeFs::timestampsAndModeKept()
     QVERIFY(fs->renameNoReplace(a, b).ok);
     const struct stat after = lstatOf(b);
     QCOMPARE(after.st_mode, before.st_mode);
-    QCOMPARE(after.st_mode & 0777, mode_t(0640));
 #ifdef Q_OS_MACOS
     QCOMPARE(after.st_mtimespec.tv_sec, before.st_mtimespec.tv_sec);
     QCOMPARE(after.st_mtimespec.tv_nsec, before.st_mtimespec.tv_nsec);
@@ -321,6 +335,9 @@ void TestNativeFs::timestampsAndModeKept()
     QCOMPARE(after.st_mtim.tv_nsec, before.st_mtim.tv_nsec);
 #endif
     QCOMPARE(TempTree::sha256(b), TempTree::sha256(t.file("c.txt", "A")));
+    if (!modeKept)
+        QSKIP("the volume does not keep the file mode (for example exFAT or FAT)");
+    QCOMPARE(after.st_mode & 0777, mode_t(0640));
 }
 
 #endif
