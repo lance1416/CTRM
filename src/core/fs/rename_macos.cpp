@@ -8,13 +8,18 @@ namespace ctrm {
 
 RenameResult platformRenameNoReplace(const QByteArray &from, const QByteArray &to)
 {
-    RenameResult r;
     if (renamex_np(from.constData(), to.constData(), RENAME_EXCL) == 0) {
+        RenameResult r;
         r.ok = true;
         return r;
     }
-    r.errorCode = errno;
-    r.errorText = posixErrorText(r.errorCode);
+    const int e = errno;
+    // The file system does not support RENAME_EXCL (exFAT, FAT, some network volumes).
+    if (e == ENOTSUP || e == EINVAL)
+        return posixRenameFallback(from, to);
+    RenameResult r;
+    r.errorCode = e;
+    r.errorText = posixErrorText(e);
     return r;
 }
 

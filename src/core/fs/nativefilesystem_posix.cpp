@@ -5,10 +5,12 @@
 #include <QFile>
 
 #include <cerrno>
+#include <cstdio>
 #include <cstring>
 #include <dirent.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 namespace ctrm {
 
@@ -133,6 +135,68 @@ public:
 QString posixErrorText(int errorCode)
 {
     return QString::fromLocal8Bit(std::strerror(errorCode));
+}
+
+namespace {
+
+RenameResult renameFailure(int errorCode, const QString &fallback)
+{
+    RenameResult r;
+    r.errorCode = errorCode;
+    r.errorText = posixErrorText(errorCode);
+    r.fallback = fallback;
+    return r;
+}
+
+RenameResult renameSuccess(const QString &fallback)
+{
+    RenameResult r;
+    r.ok = true;
+    r.fallback = fallback;
+    return r;
+}
+
+// Only when the target does not exist. Not atomic: the documented last fallback.
+RenameResult lstatRename(const char *from, const char *to)
+{
+    const QString fallback = QStringLiteral("lstat-rename");
+    struct stat st;
+    if (lstat(to, &st) == 0)
+        return renameFailure(EEXIST, fallback);
+    if (errno != ENOENT)
+        return renameFailure(errno, fallback);
+    if (::rename(from, to) != 0)
+        return renameFailure(errno, fallback);
+    return renameSuccess(fallback);
+}
+
+} // namespace
+
+RenameResult posixRenameFallback(const QByteArray &from, const QByteArray &to)
+{
+    const char *src = from.constData();
+    const char *dst = to.constData();
+    struct stat st;
+    if (lstat(src, &st) != 0)
+        return renameFailure(errno, {});
+    if (!S_ISDIR(st.st_mode)) {
+        const QString fallback = QStringLiteral("link-unlink");
+        // Flag 0: a symbolic link is linked itself, not its target (macOS link() follows it).
+        if (linkat(AT_FDCWD, src, AT_FDCWD, dst, 0) == 0) {
+            if (unlink(src) == 0)
+                return renameSuccess(fallback);
+            // Both names exist now: remove the new name, keep the original.
+            const int unlinkError = errno;
+            unlink(dst);
+            return renameFailure(unlinkError, fallback);
+        }
+        const int linkError = errno;
+        // ENOTSUP and EOPNOTSUPP are the same value on Linux, not on macOS.
+        if (linkError != EPERM && linkError != EXDEV && linkError != ENOTSUP &&
+            linkError != EOPNOTSUPP)
+            return renameFailure(linkError, fallback);
+    }
+    return lstatRename(src, dst);
 }
 
 std::unique_ptr<FileSystem> createNativeFileSystem()
