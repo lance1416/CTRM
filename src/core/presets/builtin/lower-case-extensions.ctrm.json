@@ -1,0 +1,22 @@
+{
+  "$schema": "https://ctrm.example/schema/preset-v1.json",
+  "format": "ctrm-preset",
+  "formatVersion": 1,
+  "name": "Lower-case extensions",
+  "description": "Changes each extension to lower case: Photo.JPG becomes Photo.jpg.",
+  "createdWith": "CTRM 0.1.0",
+  "options": {
+    "portableNames": true,
+    "folderExtensions": false,
+    "autoResolveDuplicates": false
+  },
+  "rules": [
+    {
+      "type": "extension",
+      "enabled": true,
+      "action": "lower",
+      "value": "",
+      "onlyIfMatches": ""
+    }
+  ]
+}

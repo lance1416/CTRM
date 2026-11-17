@@ -32,4 +32,14 @@ target_include_directories(ctrm_core PUBLIC
     ${CMAKE_CURRENT_BINARY_DIR}
 )
 target_link_libraries(ctrm_core PUBLIC Qt6::Core)
+
+qt_add_resources(ctrm_core "builtin_presets"
+    PREFIX "/ctrm/presets"
+    BASE presets/builtin
+    FILES
+        presets/builtin/lower-case-extensions.ctrm.json
+        presets/builtin/photo-numbering.ctrm.json
+        presets/builtin/remove-tags.ctrm.json
+        presets/builtin/spaces-to-underscores.ctrm.json
+)
 ctrm_set_warnings(ctrm_core)

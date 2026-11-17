@@ -1,0 +1,424 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ctrm.example/schema/preset-v1.json",
+  "title": "CTRM preset, format version 1",
+  "description": "A CTRM rule chain (PRD 9). Unknown keys are allowed; CTRM keeps them on save.",
+  "type": "object",
+  "required": [
+    "format",
+    "formatVersion",
+    "name",
+    "rules"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "format": {
+      "const": "ctrm-preset"
+    },
+    "formatVersion": {
+      "const": 1
+    },
+    "name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "createdWith": {
+      "type": "string"
+    },
+    "options": {
+      "type": "object",
+      "properties": {
+        "portableNames": {
+          "type": "boolean"
+        },
+        "folderExtensions": {
+          "type": "boolean"
+        },
+        "autoResolveDuplicates": {
+          "type": "boolean"
+        }
+      }
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/rule"
+      }
+    }
+  },
+  "$defs": {
+    "target": {
+      "enum": [
+        "stem",
+        "extension",
+        "name"
+      ]
+    },
+    "rule": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "replace"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "type": {
+                "const": "replace"
+              },
+              "target": {
+                "$ref": "#/$defs/target"
+              },
+              "find": {
+                "type": "string"
+              },
+              "replace": {
+                "type": "string"
+              },
+              "mode": {
+                "enum": [
+                  "literal",
+                  "regex",
+                  "wildcard"
+                ]
+              },
+              "caseSensitive": {
+                "type": "boolean"
+              },
+              "occurrence": {
+                "enum": [
+                  "all",
+                  "first",
+                  "last"
+                ]
+              },
+              "wholeWord": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "insert"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "type": {
+                "const": "insert"
+              },
+              "target": {
+                "$ref": "#/$defs/target"
+              },
+              "text": {
+                "type": "string"
+              },
+              "position": {
+                "enum": [
+                  "prefix",
+                  "suffix",
+                  "index"
+                ]
+              },
+              "index": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "fromEnd": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "remove"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "type": {
+                "const": "remove"
+              },
+              "target": {
+                "$ref": "#/$defs/target"
+              },
+              "mode": {
+                "enum": [
+                  "range",
+                  "characters",
+                  "between"
+                ]
+              },
+              "from": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "fromEnd": {
+                "type": "boolean"
+              },
+              "classes": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "digits",
+                    "letters",
+                    "spaces",
+                    "punctuation",
+                    "symbols",
+                    "nonAscii",
+                    "custom"
+                  ]
+                },
+                "uniqueItems": true
+              },
+              "custom": {
+                "type": "string"
+              },
+              "open": {
+                "type": "string"
+              },
+              "close": {
+                "type": "string"
+              },
+              "keepDelimiters": {
+                "type": "boolean"
+              },
+              "occurrence": {
+                "enum": [
+                  "all",
+                  "first"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "cleanup"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "type": {
+                "const": "cleanup"
+              },
+              "target": {
+                "$ref": "#/$defs/target"
+              },
+              "trim": {
+                "type": "boolean"
+              },
+              "collapseSpaces": {
+                "type": "boolean"
+              },
+              "spacesTo": {
+                "enum": [
+                  "keep",
+                  "_",
+                  "-",
+                  ".",
+                  ""
+                ]
+              },
+              "replaceInvalid": {
+                "type": "boolean"
+              },
+              "replacement": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "changeCase"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "type": {
+                "const": "changeCase"
+              },
+              "target": {
+                "$ref": "#/$defs/target"
+              },
+              "case": {
+                "enum": [
+                  "lower",
+                  "upper",
+                  "title",
+                  "sentence",
+                  "invert"
+                ]
+              },
+              "separators": {
+                "type": "string"
+              },
+              "smallWords": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "builtInSmallWords": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "extension"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "type": {
+                "const": "extension"
+              },
+              "action": {
+                "enum": [
+                  "set",
+                  "remove",
+                  "lower",
+                  "upper",
+                  "add"
+                ]
+              },
+              "value": {
+                "type": "string"
+              },
+              "onlyIfMatches": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "numbering"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "type": {
+                "const": "numbering"
+              },
+              "target": {
+                "$ref": "#/$defs/target"
+              },
+              "start": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "step": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "padding": {
+                "oneOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10
+                  },
+                  {
+                    "const": "auto"
+                  }
+                ]
+              },
+              "position": {
+                "enum": [
+                  "prefix",
+                  "suffix",
+                  "index",
+                  "replace"
+                ]
+              },
+              "separator": {
+                "type": "string"
+              },
+              "index": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "fromEnd": {
+                "type": "boolean"
+              },
+              "scope": {
+                "enum": [
+                  "checked",
+                  "all"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

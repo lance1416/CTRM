@@ -1,0 +1,25 @@
+{
+  "$schema": "https://ctrm.example/schema/preset-v1.json",
+  "format": "ctrm-preset",
+  "formatVersion": 1,
+  "name": "Spaces to underscores",
+  "description": "Removes spaces at the start and end, then changes each group of spaces to one underscore.",
+  "createdWith": "CTRM 0.1.0",
+  "options": {
+    "portableNames": true,
+    "folderExtensions": false,
+    "autoResolveDuplicates": false
+  },
+  "rules": [
+    {
+      "type": "cleanup",
+      "enabled": true,
+      "target": "stem",
+      "trim": true,
+      "collapseSpaces": true,
+      "spacesTo": "_",
+      "replaceInvalid": false,
+      "replacement": "_"
+    }
+  ]
+}

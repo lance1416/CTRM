@@ -1,0 +1,40 @@
+{
+  "$schema": "https://ctrm.example/schema/preset-v1.json",
+  "format": "ctrm-preset",
+  "formatVersion": 1,
+  "name": "Remove [...] tags",
+  "description": "Removes each text in square brackets, then removes the extra spaces.",
+  "createdWith": "CTRM 0.1.0",
+  "options": {
+    "portableNames": true,
+    "folderExtensions": false,
+    "autoResolveDuplicates": false
+  },
+  "rules": [
+    {
+      "type": "remove",
+      "enabled": true,
+      "target": "stem",
+      "mode": "between",
+      "from": 0,
+      "count": 1,
+      "fromEnd": false,
+      "classes": [],
+      "custom": "",
+      "open": "[",
+      "close": "]",
+      "keepDelimiters": false,
+      "occurrence": "all"
+    },
+    {
+      "type": "cleanup",
+      "enabled": true,
+      "target": "stem",
+      "trim": true,
+      "collapseSpaces": true,
+      "spacesTo": "keep",
+      "replaceInvalid": false,
+      "replacement": "_"
+    }
+  ]
+}
