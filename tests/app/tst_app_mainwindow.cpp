@@ -150,6 +150,7 @@ private slots:
     void noEmptyStatusBar();
     void flowStripIsThin();
     void clearListUndo();
+    void removeManyUndo();
     void presetTitle();
     void listActionsAtStart();
     void pendingPreviewBlocksRename();
@@ -613,6 +614,47 @@ void TestMainWindow::clearListUndo()
     f.window.actions().clearList->trigger();
     QVERIFY(f.shown(bar));
     f.addFiles({QStringLiteral("d.txt")});
+    QVERIFY(!f.shown(bar));
+}
+
+void TestMainWindow::removeManyUndo()
+{
+    // ui-design 9.12: Remove from List of 10 or more items shows "Removed N items." with Undo.
+    // Undo puts the items back at their places with the same Include states.
+    Fixture f;
+    f.window.show();
+    QStringList names;
+    for (int i = 0; i < 12; ++i)
+        names.append(QStringLiteral("f%1.txt").arg(i, 2, 10, QLatin1Char('0')));
+    f.addFiles(names);
+    const QList<Item> before = f.window.itemModel().items();
+    f.window.itemModel().setIncluded({before.at(5).id}, false);
+    auto *table = f.child<ItemTableView>("itemTable");
+    MessageBar *bar = f.window.messageBar();
+
+    // Fewer than 10 items: no message.
+    table->selectRow(0);
+    f.window.actions().removeFromList->trigger();
+    QCOMPARE(f.window.itemModel().rowCount(), 11);
+    QVERIFY(!f.shown(bar));
+
+    // Rows 1 to 10 of the 11 (f01 to f10).
+    table->clearSelection();
+    const QModelIndex first = table->model()->index(0, 0);
+    const QModelIndex last = table->model()->index(9, 0);
+    table->selectionModel()->select(QItemSelection(first, last),
+                                    QItemSelectionModel::Select | QItemSelectionModel::Rows);
+    f.window.actions().removeFromList->trigger();
+    QCOMPARE(f.oldNames(), QStringList{QStringLiteral("f11.txt")});
+    QVERIFY(f.shown(bar));
+    QCOMPARE(bar->findChild<QLabel *>(QStringLiteral("messageBarText"))->text(),
+             QStringLiteral("Removed 10 items."));
+    auto *undo = bar->findChild<QPushButton *>(QStringLiteral("removeUndo"));
+    QVERIFY(undo);
+    QVERIFY(!undo->isDefault());
+    undo->click();
+    QCOMPARE(f.oldNames(), names.mid(1));
+    QCOMPARE(f.window.itemModel().items().at(4).included, false);
     QVERIFY(!f.shown(bar));
 }
 

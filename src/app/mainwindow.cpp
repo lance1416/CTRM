@@ -652,8 +652,7 @@ void MainWindow::connectActions()
             [this](const QString &text) { statusBar()->showMessage(text); });
 
     // The list.
-    connect(a.removeFromList, &QAction::triggered, this,
-            [this] { m_itemModel.removeItems(m_table->selectedIds()); });
+    connect(a.removeFromList, &QAction::triggered, this, &MainWindow::removeFromList);
     connect(a.clearList, &QAction::triggered, this, &MainWindow::clearList);
     connect(a.refresh, &QAction::triggered, this, &MainWindow::refresh);
     connect(a.include, &QAction::triggered, this,
@@ -757,6 +756,31 @@ void MainWindow::clearList()
     });
     const int n = int(cleared.size());
     m_messageBar->showMessage(StateIcon::Done, numerus(tr("Cleared %n item(s).", nullptr, n), n),
+                              {undo});
+    m_clearMessageShown = true;
+}
+
+void MainWindow::removeFromList()
+{
+    // ui-design 9.12: 10 or more items show "Removed N items." with Undo, which puts the same
+    // list back (same order, same Include states). The bar closes at the next list change.
+    const QList<ctrm::ItemId> ids = m_table->selectedIds();
+    if (ids.isEmpty())
+        return;
+    const QList<ctrm::Item> before = m_itemModel.items();
+    m_itemModel.removeItems(ids);
+    const int n = int(before.size()) - m_itemModel.rowCount();
+    if (n < 10)
+        return;
+    auto *undo = new QPushButton(tr("Undo"));
+    undo->setObjectName(QStringLiteral("removeUndo"));
+    connect(undo, &QPushButton::clicked, this, [this, before] {
+        if (!m_clearMessageShown)
+            return; // the list changed after the removal
+        m_itemModel.clear();
+        m_itemModel.addItems(before);
+    });
+    m_messageBar->showMessage(StateIcon::Done, numerus(tr("Removed %n item(s).", nullptr, n), n),
                               {undo});
     m_clearMessageShown = true;
 }
