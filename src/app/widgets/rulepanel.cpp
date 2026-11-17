@@ -700,6 +700,16 @@ void RulePanel::detachEditor()
     m_shownRule = nullptr;
 }
 
+void RulePanel::focusEditor()
+{
+    if (auto *editor = qobject_cast<RuleEditor *>(currentEditor())) {
+        focusFirstField(editor);
+        return;
+    }
+    if (QWidget *page = currentEditor())
+        page->setFocus(Qt::ShortcutFocusReason);
+}
+
 void RulePanel::focusFirstField(RuleEditor *editor)
 {
     QFormLayout *form = editor->form();

@@ -132,6 +132,7 @@ private slots:
     void contextStores();
     void editorGetsHeightAtMinimum();
     void splitterHandlesPlain();
+    void focusEditorFirstField();
     void emptyStateShown();
     void addRulePrimaryWithItems();
     void prefixFlowUnder60s();
@@ -882,6 +883,25 @@ void TestMainWindow::splitterHandlesPlain()
             }
             QVERIFY2(plain, qPrintable(splitter->objectName()));
         }
+    }
+}
+
+void TestMainWindow::focusEditorFirstField()
+{
+    // M29: Cmd+3 puts the focus in the first field of the editor, not in Apply to.
+    Fixture f;
+    f.window.show();
+    f.window.activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(&f.window));
+    const QList<std::pair<QString, QString>> firstFields{
+            {"replace", "find"}, {"numbering", "start"}, {"cleanup", "trim"}};
+    for (const auto &[type, field] : firstFields) {
+        f.addRuleAction(type)->trigger();
+        f.window.tableView()->setFocus();
+        f.window.actions().focusEditor->trigger();
+        QWidget *focused = QApplication::focusWidget();
+        QVERIFY2(focused && focused->objectName() == field,
+                 qPrintable(type + u' ' + (focused ? focused->objectName() : QString())));
     }
 }
 

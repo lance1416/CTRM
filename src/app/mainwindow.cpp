@@ -67,16 +67,6 @@ QWidget *makeSlot(const char *objectName, QWidget *parent)
 }
 
 // The first widget in the focus chain of parent that takes focus with Tab.
-QWidget *firstFocusChild(QWidget *parent, QWidget *window)
-{
-    for (QWidget *w = parent->nextInFocusChain(); w && parent->isAncestorOf(w);
-         w = w->nextInFocusChain()) {
-        if ((w->focusPolicy() & Qt::TabFocus) && w->isEnabled() && w->isVisibleTo(window))
-            return w;
-    }
-    return nullptr;
-}
-
 void focus(QWidget *w)
 {
     if (w)
@@ -997,8 +987,7 @@ void MainWindow::focusTable()
 
 void MainWindow::focusEditor()
 {
-    if (QWidget *editor = m_rulePanel->currentEditor())
-        focus(firstFocusChild(editor, this));
+    m_rulePanel->focusEditor(); // the first field, not the first in the focus chain (M29)
 }
 
 void MainWindow::restoreLayout()

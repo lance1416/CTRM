@@ -35,6 +35,8 @@ public:
     QPushButton *addRuleButton() const;
     void setPrimaryAddRule(bool primary); // empty-with-items state (ui-design 5.4)
     void setNumberedCount(int n);         // the numbering editor and summary
+    // Cmd+3 (ui-design 12): the focus goes to the first field of the editor.
+    void focusEditor();
 
 signals:
     void chainOptionsChanged(const ctrm::ChainOptions &o);
