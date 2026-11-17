@@ -7,3 +7,11 @@ foreach(test_source IN LISTS CTRM_CORE_TESTS)
     ctrm_set_warnings(${test_name})
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
+
+# Renames 1,000 files slowly, so that tst_safety can kill it in the middle of a batch.
+add_executable(ctrm_crash_helper helpers/crashhelper.cpp)
+target_link_libraries(ctrm_crash_helper PRIVATE ctrm_core)
+ctrm_set_warnings(ctrm_crash_helper)
+add_dependencies(tst_safety ctrm_crash_helper)
+target_compile_definitions(tst_safety PRIVATE
+    CTRM_CRASH_HELPER="$<TARGET_FILE:ctrm_crash_helper>")
