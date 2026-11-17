@@ -5,13 +5,11 @@
 #   1. No staged files under docs/ (docs/ stays local to the owner).
 #   2. No trailing whitespace and no conflict markers (git diff --check).
 #   3. New source files have the SPDX-License-Identifier line.
-#   4. Staged C/C++ files are formatted with clang-format.
+#   4. scripts/lint.sh --staged: editorconfig-checker and clang-format.
 # To skip the hook in an emergency: git commit --no-verify
 
 set -u
 
-# clang-format major version that CI uses. Other versions can format differently.
-expected_cf_major=23
 spdx='SPDX-License-Identifier: GPL-3.0-or-later'
 status=0
 
@@ -73,42 +71,9 @@ if [ -n "$missing_spdx" ]; then
         "$spdx" "$spdx" >&2
 fi
 
-# 4. clang-format on staged C/C++ content.
-cxx_files=$(printf '%s\n' "$staged" | while IFS= read -r f; do
-    [ -n "$f" ] && is_cxx "$f" && printf '%s\n' "$f"
-done)
-
-if [ -n "$cxx_files" ]; then
-    cf=${CLANG_FORMAT:-}
-    if [ -z "$cf" ]; then
-        if command -v clang-format >/dev/null 2>&1; then
-            cf=clang-format
-        elif command -v xcrun >/dev/null 2>&1 && xcrun --find clang-format >/dev/null 2>&1; then
-            cf="xcrun clang-format"
-        fi
-    fi
-    if [ -z "$cf" ]; then
-        err 'clang-format is necessary to check staged C/C++ files, but it is not installed.'
-        printf '  Install: macOS: brew install clang-format\n' >&2
-        printf '           Linux: pipx install clang-format==%s.*\n' "$expected_cf_major" >&2
-        printf '           Windows: pip install clang-format==%s.*\n' "$expected_cf_major" >&2
-        printf '  Or set CLANG_FORMAT to the path of the tool.\n\n' >&2
-        exit 1
-    fi
-    cf_major=$($cf --version | sed -n 's/.*version \([0-9][0-9]*\).*/\1/p' | head -n 1)
-    if [ "$cf_major" != "$expected_cf_major" ]; then
-        printf 'pre-commit: warning: clang-format %s found; CI uses %s. Results can differ.\n' \
-            "${cf_major:-unknown}" "$expected_cf_major" >&2
-    fi
-    bad=$(printf '%s\n' "$cxx_files" | while IFS= read -r f; do
-        git show ":$f" | $cf --dry-run --Werror --assume-filename="$f" >/dev/null 2>&1 ||
-            printf '%s\n' "$f"
-    done)
-    if [ -n "$bad" ]; then
-        err 'these staged files are not formatted with clang-format:'
-        printf '%s\n' "$bad" | sed 's/^/    /' >&2
-        printf '  Fix: %s -i <file>... then run git add again.\n\n' "$cf" >&2
-    fi
+# 4. EditorConfig and clang-format on the staged content (same checks as CI).
+if ! sh scripts/lint.sh --staged; then
+    status=1
 fi
 
 exit "$status"
