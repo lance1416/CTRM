@@ -64,6 +64,8 @@ private slots:
     void summaryTargetSuffix();
     void summaryOff();
     void summaryError();
+    void summaryEmptyNoTarget();
+    void numberingSummaryDigits();
     void modelTester();
     void modelRoles();
     void moveEmitsChain();
@@ -265,6 +267,31 @@ void TestAppRuleList::summaries_data()
                 });
             },
             QStringLiteral("No change"));
+    // S10: a rule with no main text says what is missing, with no empty quotes.
+    row(
+            "replace empty", [] { return make<ReplaceRule>([](auto &) {}); },
+            QStringLiteral("Replace: no Find text yet"));
+    row(
+            "insert empty", [] { return make<InsertRule>([](auto &) {}); },
+            QStringLiteral("Insert: no text yet"));
+    row(
+            "remove no characters",
+            [] {
+                return make<RemoveRule>([](auto &r) {
+                    r.mode = RemoveRule::Mode::Characters;
+                    r.classes = RemoveRule::Custom;
+                });
+            },
+            QStringLiteral("Remove: no characters yet"));
+    row(
+            "remove no marks",
+            [] {
+                return make<RemoveRule>([](auto &r) {
+                    r.mode = RemoveRule::Mode::Between;
+                    r.close.clear();
+                });
+            },
+            QStringLiteral("Remove: no marks yet"));
     row(
             "unsupported",
             [] {
@@ -314,6 +341,35 @@ void TestAppRuleList::summaryError()
     });
     QVERIFY(rule->problem().has_value());
     QCOMPARE(ruleSummary(*rule), QStringLiteral("Error"));
+}
+
+void TestAppRuleList::summaryEmptyNoTarget()
+{
+    // S10: the text says what is missing; the target and "(off)" do not hide it.
+    auto rule = make<InsertRule>([](auto &r) {
+        r.target = Target::Extension;
+        r.enabled = false;
+    });
+    QCOMPARE(ruleSummary(*rule), QStringLiteral("Insert: no text yet (off)"));
+}
+
+void TestAppRuleList::numberingSummaryDigits()
+{
+    // M24: with Auto padding, the summary has the digits of the editor example and the preview.
+    NumberingRule rule;
+    QCOMPARE(ruleSummary(rule, 10), QStringLiteral("Suffix _01, from 1"));
+    QCOMPARE(ruleSummary(rule, 1), QStringLiteral("Suffix _1, from 1"));
+    QCOMPARE(ruleSummary(rule, 120), QStringLiteral("Suffix _001, from 1"));
+
+    RuleListModel model;
+    RuleChain chain;
+    chain.insert(0, std::make_unique<NumberingRule>());
+    model.setChain(chain);
+    QSignalSpy changed(&model, &QAbstractItemModel::dataChanged);
+    model.setNumberedCount(10);
+    QCOMPARE(changed.count(), 1);
+    QCOMPARE(model.index(0).data(RuleListModel::SummaryRole).toString(),
+             QStringLiteral("Suffix _01, from 1"));
 }
 
 void TestAppRuleList::modelTester()

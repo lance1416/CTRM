@@ -110,6 +110,16 @@ void RuleListModel::ruleChanged(int row)
     emit chainChanged();
 }
 
+void RuleListModel::setNumberedCount(int n)
+{
+    n = std::max(1, n);
+    if (n == m_numberedCount)
+        return;
+    m_numberedCount = n;
+    if (rowCount() > 0)
+        emit dataChanged(index(0), index(rowCount() - 1), {SummaryRole});
+}
+
 int RuleListModel::rowCount(const QModelIndex &parent) const
 {
     return parent.isValid() ? 0 : m_chain.size();
@@ -126,7 +136,7 @@ QVariant RuleListModel::data(const QModelIndex &index, int role) const
     case Qt::CheckStateRole:
         return rule.enabled ? Qt::Checked : Qt::Unchecked;
     case SummaryRole:
-        return ruleSummary(rule);
+        return ruleSummary(rule, m_numberedCount);
     case TypeRole:
         return rule.type();
     case HasErrorRole:

@@ -34,7 +34,7 @@ public:
     QWidget *currentEditor() const;
     QPushButton *addRuleButton() const;
     void setPrimaryAddRule(bool primary); // empty-with-items state (ui-design 5.4)
-    void setNumberedCount(int n);         // forwards to NumberingEditor
+    void setNumberedCount(int n);         // the numbering editor and summary
 
 signals:
     void chainOptionsChanged(const ctrm::ChainOptions &o);

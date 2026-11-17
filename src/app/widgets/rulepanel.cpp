@@ -565,6 +565,7 @@ void RulePanel::setPrimaryAddRule(bool primary)
 
 void RulePanel::setNumberedCount(int n)
 {
+    m_model.setNumberedCount(n);
     if (auto *numbering =
                 qobject_cast<NumberingEditor *>(m_editorByType.value(QStringLiteral("numbering"))))
         numbering->setNumberedCount(n);

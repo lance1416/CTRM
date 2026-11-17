@@ -30,6 +30,8 @@ public:
     void setEnabled(int row, bool enabled);
     void setChainOptions(const ctrm::ChainOptions &o);
     void ruleChanged(int row);
+    // The number of items that get a number: the numbering summary shows their digits (M24).
+    void setNumberedCount(int n);
 
     int rowCount(const QModelIndex &parent = {}) const override;
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
@@ -58,6 +60,7 @@ private:
     int draggedRow(const QMimeData *data) const;
 
     ctrm::RuleChain m_chain;
+    int m_numberedCount = 1; // as NumberingEditor: one item when the list is empty
 };
 
 } // namespace ctrm::app

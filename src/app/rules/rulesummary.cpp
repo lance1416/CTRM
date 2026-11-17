@@ -18,7 +18,7 @@ namespace ctrm::app {
 
 namespace {
 
-// The summary has no item count. "Auto" padding shows at least this number of digits.
+// With no item count, "Auto" padding shows at least this number of digits.
 constexpr int kAutoPaddingDigits = 3;
 
 QString tr(const char *text)
@@ -29,6 +29,27 @@ QString tr(const char *text)
 QString quoted(const QString &text)
 {
     return QStringLiteral("\"%1\"").arg(text);
+}
+
+// The summary of a rule with no main text: it changes nothing (ui-design 8.9). Empty when the
+// rule has its main text.
+QString missingSummary(const Rule &rule)
+{
+    if (const auto *r = dynamic_cast<const ReplaceRule *>(&rule); r && r->find.isEmpty())
+        return tr("Replace: no Find text yet");
+    if (const auto *r = dynamic_cast<const InsertRule *>(&rule); r && r->text.isEmpty())
+        return tr("Insert: no text yet");
+    if (const auto *r = dynamic_cast<const RemoveRule *>(&rule)) {
+        constexpr quint32 named = RemoveRule::Digits | RemoveRule::Letters | RemoveRule::Spaces |
+                                  RemoveRule::Punctuation | RemoveRule::Symbols |
+                                  RemoveRule::NonAscii;
+        const bool custom = (r->classes & RemoveRule::Custom) && !r->custom.isEmpty();
+        if (r->mode == RemoveRule::Mode::Characters && !(r->classes & named) && !custom)
+            return tr("Remove: no characters yet");
+        if (r->mode == RemoveRule::Mode::Between && (r->open.isEmpty() || r->close.isEmpty()))
+            return tr("Remove: no marks yet");
+    }
+    return {};
 }
 
 QString replaceSummary(const ReplaceRule &r)
@@ -93,8 +114,6 @@ QString removeSummary(const RemoveRule &r)
         }
         if ((r.classes & RemoveRule::Custom) && !r.custom.isEmpty())
             parts.append(quoted(r.custom));
-        if (parts.isEmpty())
-            return tr("Remove no characters");
         return tr("Remove %1").arg(parts.join(QStringLiteral(", ")));
     }
     case RemoveRule::Mode::Between:
@@ -120,11 +139,13 @@ QString caseSummary(const ChangeCaseRule &r)
     return {};
 }
 
-QString numberingSummary(const NumberingRule &r)
+QString numberingSummary(const NumberingRule &r, int numberedCount)
 {
-    const int digits = r.padding >= 0 ? r.padding
-                                      : std::max(kAutoPaddingDigits,
-                                                 NumberingRule::autoDigits(r.start, r.step, 1));
+    int digits = r.padding;
+    if (digits < 0 && numberedCount > 0)
+        digits = NumberingRule::autoDigits(r.start, r.step, numberedCount);
+    else if (digits < 0)
+        digits = std::max(kAutoPaddingDigits, NumberingRule::autoDigits(r.start, r.step, 1));
     const QString number = QStringLiteral("%1").arg(r.start, digits, 10, QLatin1Char('0'));
     QString summary;
     switch (r.position) {
@@ -205,7 +226,7 @@ QString cleanUpSummary(const CleanUpRule &r)
     return summary;
 }
 
-QString optionSummary(const Rule &rule)
+QString optionSummary(const Rule &rule, int numberedCount)
 {
     if (const auto *r = dynamic_cast<const ReplaceRule *>(&rule))
         return replaceSummary(*r);
@@ -216,7 +237,7 @@ QString optionSummary(const Rule &rule)
     if (const auto *r = dynamic_cast<const ChangeCaseRule *>(&rule))
         return caseSummary(*r);
     if (const auto *r = dynamic_cast<const NumberingRule *>(&rule))
-        return numberingSummary(*r);
+        return numberingSummary(*r, numberedCount);
     if (const auto *r = dynamic_cast<const ExtensionRule *>(&rule))
         return extensionSummary(*r);
     if (const auto *r = dynamic_cast<const CleanUpRule *>(&rule))
@@ -245,13 +266,15 @@ QString ruleDisplayName(const QString &type)
     return tr("Unsupported rule");
 }
 
-QString ruleSummary(const Rule &rule)
+QString ruleSummary(const Rule &rule, int numberedCount)
 {
     QString summary;
     if (const auto problem = rule.problem()) {
         summary = problem->unsupported ? tr("Unsupported rule (%1)").arg(rule.type()) : tr("Error");
+    } else if (const QString missing = missingSummary(rule); !missing.isEmpty()) {
+        summary = missing;
     } else {
-        summary = optionSummary(rule);
+        summary = optionSummary(rule, numberedCount);
         if (!rule.hasFixedTarget()) {
             if (rule.target == Target::Extension)
                 summary += tr(" (extension only)");
