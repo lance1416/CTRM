@@ -917,6 +917,11 @@ void MainWindow::refresh()
         }
     }
     m_itemModel.replaceIdentities(fresh);
+    // ui-design 9.8, 9.12: Refresh ends any result state and closes the Clear List message.
+    m_itemModel.setPostRun({});
+    if (std::exchange(m_clearMessageShown, false))
+        m_messageBar->clear();
+    setResultShown(false);
     requestPreview();
 }
 

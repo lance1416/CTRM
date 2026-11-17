@@ -17,6 +17,7 @@
 #include <QAction>
 #include <QLabel>
 #include <QPushButton>
+#include <QScopeGuard>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QToolButton>
@@ -42,6 +43,7 @@ struct Fixture
     {
         batch.showReport = [](const FinishResult &) {};
         history.showUndoPreview = [](const UndoPreview &) { return false; };
+        batch.askFailure = [](const FailureInfo &) { return FailureChoice::Keep; };
     }
 
     // Adds the files and renames "old" to "new".
@@ -114,6 +116,8 @@ class TestUndoResult : public QObject
     Q_OBJECT
 private slots:
     void quickUndoShowsNamesOnDisk();
+    void partialUndo();
+    void refreshEndsResult();
 };
 
 void TestUndoResult::quickUndoShowsNamesOnDisk()
@@ -146,6 +150,41 @@ void TestUndoResult::quickUndoShowsNamesOnDisk()
     QVERIFY(f.window.actions().rename->isEnabled());
     // S01: after the undo, step 3 is "later" again.
     QCOMPARE(f.step3()->accessibleName(), QStringLiteral("Step 3 of 3, Rename, current"));
+}
+
+void TestUndoResult::partialUndo()
+{
+    // ui-design 9.8: "Undid 1 of 2 items. 1 item could not go back." The result state ends.
+    Fixture f;
+    f.window.show();
+    f.renameOld({QStringLiteral("a/old_a.txt"), QStringLiteral("b/old_b.txt")});
+    const QString b = f.tree.root() + QStringLiteral("/b");
+    QFile::setPermissions(b, QFile::ReadOwner | QFile::ExeOwner);
+    const auto restore = qScopeGuard([&] {
+        QFile::setPermissions(b, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+    });
+
+    QVERIFY(f.run([&] { f.barButton("resultUndo")->click(); }));
+    QVERIFY(QFile::exists(f.tree.root() + QStringLiteral("/a/old_a.txt")));
+    QVERIFY(QFile::exists(f.tree.root() + QStringLiteral("/b/new_b.txt")));
+    QCOMPARE(f.barText(), QStringLiteral("Undid 1 of 2 items. 1 item could not go back."));
+    QVERIFY(!f.barButton("resultUndo"));
+    QVERIFY(f.barButton("resultShowReport"));
+    QCOMPARE(f.names(), QStringList({QStringLiteral("old_a.txt"), QStringLiteral("new_b.txt")}));
+    QCOMPARE(f.step3()->accessibleName(), QStringLiteral("Step 3 of 3, Rename, current"));
+}
+
+void TestUndoResult::refreshEndsResult()
+{
+    // ui-design 9.8: Refresh always ends the result state.
+    Fixture f;
+    f.window.show();
+    f.renameOld({QStringLiteral("old_a.txt")});
+    QCOMPARE(f.step3()->accessibleName(), QStringLiteral("Step 3 of 3, Rename, done"));
+    f.window.actions().refresh->trigger();
+    QCOMPARE(f.postRun(), QStringList({QString::number(int(PostRun::None))}));
+    QVERIFY(!f.window.messageBar()->isVisibleTo(&f.window));
+    QCOMPARE(f.step3()->accessibleName(), QStringLiteral("Step 3 of 3, Rename, later"));
 }
 
 QTEST_MAIN(TestUndoResult)

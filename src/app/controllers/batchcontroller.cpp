@@ -6,6 +6,7 @@
 #include "dialogs/failuredialog.h"
 #include "dialogs/reportdialog.h"
 #include "mainwindow.h"
+#include "models/itemtablemodel.h"
 #include "text/plural.h"
 #include "widgets/actionbar.h"
 #include "widgets/itemtableview.h"
@@ -384,9 +385,9 @@ void BatchController::finished(const FinishResult &result)
     for (const Item &item : m_w.itemModel().items())
         idOfPath.insert(item.path(), item.id);
     m_w.itemModel().applyRenames(result.report);
-    // S04: after a complete undo the list shows the names on disk and a new preview, not a
-    // result state.
-    const bool undone = !undoOf.isEmpty() && result.state == BatchState::Complete;
+    // S04, ui-design 9.8: after an undo (complete, partial or failed) the list shows the names on
+    // disk and a new preview, not a result state.
+    const bool undone = !undoOf.isEmpty();
     QHash<ItemId, PostRunState> states;
     for (const ReportRow &row : result.report) {
         if (undone)
@@ -452,8 +453,15 @@ void BatchController::showResultMessage(const FinishResult &result)
     QList<QPushButton *> buttons;
     StateIcon icon = StateIcon::Done;
     QString text;
-    if (result.state == BatchState::Complete && !m_undoOf.isEmpty()) {
+    const int total = int(result.report.size());
+    if (!m_undoOf.isEmpty() && result.state == BatchState::Complete && renamed == total) {
         text = numerus(tr("Undid the rename of %n item(s).", nullptr, renamed), renamed);
+    } else if (!m_undoOf.isEmpty()) {
+        // ui-design 9.8: a partial or failed undo.
+        icon = renamed > 0 ? StateIcon::Warning : StateIcon::Error;
+        text = numerus(tr("Undid %1 of %n item(s).", nullptr, total), total).arg(renamed) + u' ' +
+               numerus(tr("%n item(s) could not go back.", nullptr, total - renamed),
+                       total - renamed);
     } else if (result.state == BatchState::Complete) {
         text = numerus(tr("Renamed %n item(s).", nullptr, renamed), renamed);
         if (renamed > 0 && m_undoOf.isEmpty()) {
