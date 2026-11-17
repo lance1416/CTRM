@@ -41,7 +41,9 @@ struct RenameResult
 
 namespace ErrorCode {
 constexpr int SourceMissing = -1001, IdentityChanged = -1002, JournalWrite = -1003,
-              TargetExists = -1004;
+              TargetExists = -1004,
+              // Recovery: a step has a start record, and the disk shows that it did not run.
+        Interrupted = -1005;
 }
 
 // All platform calls go through this interface. Paths are absolute with '/' separators.

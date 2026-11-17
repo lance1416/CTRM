@@ -29,7 +29,9 @@ struct RollbackOutcome
     bool journalFailed = false; // a record could not be written (the renames still ran)
 };
 
-// Runs the steps of a plan. Each result goes to the journal before the next step starts.
+// Runs the steps of a plan. Each rename has a start record before it and a result record
+// after it; no rename runs when its start record cannot be written. Each result goes to the
+// journal before the next step starts.
 // Not thread-safe; one instance per batch.
 class Executor
 {

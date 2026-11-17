@@ -32,6 +32,16 @@ struct StepRecord
     QDateTime time;
 };
 
+// A start record: written before the rename of a step, so that recovery knows which step
+// was running when CTRM stopped. Line: {"type":"start", step, phase, from, to, time}.
+// Readers that know only the old format ignore it (unknown type).
+struct StartRecord
+{
+    int step = 0;
+    Phase phase = Phase::Forward;
+    QDateTime time;
+};
+
 struct StateRecord
 {
     BatchState state;
@@ -57,6 +67,9 @@ struct BatchRecord
     QList<StateRecord> states;
     QString filePath;
     bool ignoredTail = false;
+    // Start records with no later result record of the same step and phase, in journal order.
+    // Recovery checks the disk for each one. Empty for a journal of the old format.
+    QList<StartRecord> openStarts;
     QList<int> skippedLines;  // 1-based; bad middle lines skipped by a ReadMode::BestEffort read
     BatchState state() const; // last state record (InProgress when there is none)
     QDateTime ended() const;  // time of the last state record
@@ -73,6 +86,8 @@ public:
     // Forward: the record has from = step.from, to = step.to.
     // Rollback: the record has from = step.to, to = step.from (the reverse rename).
     virtual bool appendStep(const PlanStep &step, const StepRecord &rec) = 0;
+    // Before each rename. from and to as for appendStep. No rename may run when this fails.
+    virtual bool appendStart(const PlanStep &step, Phase phase) = 0;
     virtual bool appendState(const StateRecord &rec) = 0;
 };
 
@@ -95,6 +110,7 @@ public:
                                                         ReadMode mode = ReadMode::Strict);
 
     bool appendStep(const PlanStep &step, const StepRecord &rec) override;
+    bool appendStart(const PlanStep &step, Phase phase) override;
     bool appendState(const StateRecord &rec) override;
     QString filePath() const;
 

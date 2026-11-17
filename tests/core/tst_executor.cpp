@@ -27,8 +27,26 @@ public:
     };
     QList<Line> lines;
     QList<StateRecord> states;
+    struct Start
+    {
+        int step;
+        Phase phase;
+        int linesBefore; // op records before this start record
+    };
+    QList<Start> starts;
     int failOn = 0;
     int calls = 0;
+    int failStartOn = 0;
+    int startCalls = 0;
+
+    bool appendStart(const PlanStep &step, Phase phase) override
+    {
+        ++startCalls;
+        if (startCalls == failStartOn)
+            return false;
+        starts.append({step.index, phase, int(lines.size())});
+        return true;
+    }
 
     bool appendStep(const PlanStep &step, const StepRecord &rec) override
     {
@@ -137,6 +155,11 @@ private slots:
     void rollBackSkipsReplacedItem();
     void rollBackSkipsMissingItem();
     void restoreTempNamesSkipsReplacedItem();
+    void startRecordBeforeEachRename();
+    void startWriteFailureStopsRun();
+    void rollBackStartFailureDoesNotRename();
+    void restoreTempNamesWritesStarts();
+    void restoreTempNamesStopsOnStartFailure();
 };
 
 void TstExecutor::runsAllSteps()
@@ -726,6 +749,115 @@ void TstExecutor::restoreTempNamesSkipsReplacedItem()
     QCOMPARE(sink.lines.size(), 2);
     QCOMPARE(sink.lines[1].rec.phase, Phase::Rollback);
     QCOMPARE(sink.lines[1].rec.errorCode, ErrorCode::IdentityChanged);
+}
+
+void TstExecutor::startRecordBeforeEachRename()
+{
+    FakeFileSystem fs;
+    const Plan plan = threePlan(fs);
+    MemorySink sink;
+    QList<QPair<int, int>> seen; // (start records, op records) at each rename
+    fs.onBeforeRename([&](const QString &, const QString &) {
+        seen.append({int(sink.starts.size()), int(sink.lines.size())});
+    });
+    Executor ex(fs, sink);
+    std::atomic<bool> cancel{false};
+    const RunOutcome out = ex.run(plan, cancel);
+    QVERIFY(out.finished);
+    QVERIFY(ex.rollBack(plan, out.okSteps).complete);
+    // Each rename has its start record, and the record of the rename before it.
+    QCOMPARE(seen, (QList<QPair<int, int>>{{1, 0}, {2, 1}, {3, 2}, {4, 3}, {5, 4}, {6, 5}}));
+    QCOMPARE(sink.starts[0].step, 0);
+    QCOMPARE(sink.starts[0].phase, Phase::Forward);
+    QCOMPARE(sink.starts[3].step, 2);
+    QCOMPARE(sink.starts[3].phase, Phase::Rollback);
+}
+
+void TstExecutor::startWriteFailureStopsRun()
+{
+    FakeFileSystem fs;
+    const Plan plan = threePlan(fs);
+    MemorySink sink;
+    sink.failStartOn = 2;
+    Executor ex(fs, sink);
+    std::atomic<bool> cancel{false};
+    const RunOutcome out = ex.run(plan, cancel);
+    QVERIFY(!out.finished);
+    QCOMPARE(out.failedStep, 1);
+    QCOMPARE(out.failure.errorCode, ErrorCode::JournalWrite);
+    QCOMPARE(out.okSteps, (QList<int>{0}));
+    QCOMPARE(fs.renameCount(), 1); // no rename without its start record
+    QVERIFY(fs.exists(plan.steps[1].from));
+    QCOMPARE(sink.lines.size(), 1);
+}
+
+void TstExecutor::rollBackStartFailureDoesNotRename()
+{
+    FakeFileSystem fs;
+    const Plan plan = threePlan(fs);
+    MemorySink sink;
+    Executor ex(fs, sink);
+    std::atomic<bool> cancel{false};
+    const RunOutcome out = ex.run(plan, cancel);
+    QVERIFY(out.finished);
+    sink.failStartOn = sink.startCalls + 2; // the start record of the roll back of step 1
+
+    const RollbackOutcome rb = ex.rollBack(plan, out.okSteps);
+    QVERIFY(!rb.complete);
+    QVERIFY(rb.journalFailed);
+    QCOMPARE(rb.failedSteps, (QList<int>{1}));
+    QCOMPARE(rb.lastFailure.errorCode, ErrorCode::JournalWrite);
+    QCOMPARE(fs.renameCount(), 5);
+    QVERIFY(fs.exists(plan.steps[1].to)); // not moved
+    QVERIFY(fs.exists(plan.steps[0].from));
+    QVERIFY(fs.exists(plan.steps[2].from));
+}
+
+void TstExecutor::restoreTempNamesWritesStarts()
+{
+    FakeFileSystem fs;
+    addSwapFiles(fs);
+    const Plan plan = swapPlan(fs);
+    MemorySink sink;
+    Executor ex(fs, sink);
+    std::atomic<bool> cancel{false};
+    const RunOutcome out = ex.run(plan, cancel, [&](int, int) { cancel.store(true); });
+    QCOMPARE(out.okSteps, (QList<int>{0}));
+    QCOMPARE(plan.steps[0].kind, StepKind::ToTemp);
+    const int before = int(sink.starts.size());
+    QList<int> startsAtRename;
+    fs.onBeforeRename([&](const QString &, const QString &) {
+        startsAtRename.append(int(sink.starts.size()));
+    });
+    // Try 1 and try 2 both fail: each try has its own start record before the rename.
+    fs.failRename(plan.steps[0].to, EACCES, QStringLiteral("Permission denied"));
+    QVERIFY(!ex.restoreTempNames(plan, out.okSteps).complete);
+    QCOMPARE(sink.starts.size(), before + 2);
+    QCOMPARE(startsAtRename, (QList<int>{before + 1, before + 2}));
+    QCOMPARE(sink.starts[before].step, 0);
+    QCOMPARE(sink.starts[before].phase, Phase::Rollback);
+    QCOMPARE(sink.starts[before + 1].step, indexOfKind(plan, StepKind::FromTemp));
+    QCOMPARE(sink.starts[before + 1].phase, Phase::Forward);
+}
+
+void TstExecutor::restoreTempNamesStopsOnStartFailure()
+{
+    FakeFileSystem fs;
+    addSwapFiles(fs);
+    const Plan plan = swapPlan(fs);
+    MemorySink sink;
+    Executor ex(fs, sink);
+    std::atomic<bool> cancel{false};
+    const RunOutcome out = ex.run(plan, cancel, [&](int, int) { cancel.store(true); });
+    QCOMPARE(out.okSteps, (QList<int>{0}));
+    const int renames = fs.renameCount();
+    sink.failStartOn = sink.startCalls + 1; // the start record of try 1
+    const RollbackOutcome rb = ex.restoreTempNames(plan, out.okSteps);
+    QVERIFY(!rb.complete);
+    QVERIFY(rb.journalFailed);
+    QCOMPARE(rb.failedSteps, (QList<int>{0}));
+    QCOMPARE(fs.renameCount(), renames); // try 2 does not run either
+    QVERIFY(fs.exists(plan.steps[0].to));
 }
 
 QTEST_GUILESS_MAIN(TstExecutor)

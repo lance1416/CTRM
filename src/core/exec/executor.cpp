@@ -57,12 +57,26 @@ RenameResult checkItemAt(FileSystem &fs, const RequestMap &requests, ItemId item
     return r;
 }
 
+RenameResult journalFailure()
+{
+    return checkFailure(ErrorCode::JournalWrite, QStringLiteral("Cannot write the journal"));
+}
+
+// Writes the start record of the step, then renames. No rename when the start record cannot
+// be written (JournalWrite failure).
+RenameResult startAndRename(FileSystem &fs, JournalSink &journal, const PlanStep &step, Phase phase)
+{
+    if (!journal.appendStart(step, phase))
+        return journalFailure();
+    return phase == Phase::Forward ? fs.renameNoReplace(step.from, step.to)
+                                   : fs.renameNoReplace(step.to, step.from);
+}
+
 // Sets the outcome after all tries: a rename failure has priority over a journal failure.
 void finish(RollbackOutcome &out)
 {
     if (out.journalFailed && out.failedSteps.isEmpty())
-        out.lastFailure =
-                checkFailure(ErrorCode::JournalWrite, QStringLiteral("Cannot write the journal"));
+        out.lastFailure = journalFailure();
     out.complete = out.failedSteps.isEmpty() && !out.journalFailed;
 }
 
@@ -97,8 +111,15 @@ RunOutcome Executor::run(const Plan &plan, const std::atomic<bool> &cancel,
             result = checkItemAt(m_fs, requests, step.item, step.from);
         else
             result.ok = true;
-        if (result.ok)
-            result = m_fs.renameNoReplace(step.from, step.to);
+        if (result.ok) {
+            result = startAndRename(m_fs, m_journal, step, Phase::Forward);
+            if (result.errorCode == ErrorCode::JournalWrite) {
+                // No rename ran, and no more renames run without a journal.
+                out.failedStep = i;
+                out.failure = result;
+                return out;
+            }
+        }
 
         if (result.ok)
             out.okSteps.append(i);
@@ -112,8 +133,7 @@ RunOutcome Executor::run(const Plan &plan, const std::atomic<bool> &cancel,
             // The rename is done (it counts in okSteps, so roll back can undo it), but no more
             // renames run without a journal record.
             out.failedStep = i;
-            out.failure = checkFailure(ErrorCode::JournalWrite,
-                                       QStringLiteral("Cannot write the journal"));
+            out.failure = journalFailure();
             return out;
         }
         if (progress)
@@ -134,8 +154,9 @@ RollbackOutcome Executor::rollBack(const Plan &plan, const QList<int> &okSteps)
         // Never move an item that is not the one this step renamed.
         RenameResult r = checkItemAt(m_fs, requests, step.item, step.to);
         if (r.ok)
-            r = m_fs.renameNoReplace(step.to, step.from);
-        if (!m_journal.appendStep(step, recordOf(step.index, Phase::Rollback, r)))
+            r = startAndRename(m_fs, m_journal, step, Phase::Rollback);
+        if (r.errorCode == ErrorCode::JournalWrite ||
+            !m_journal.appendStep(step, recordOf(step.index, Phase::Rollback, r)))
             out.journalFailed = true;
         if (!r.ok) {
             out.failedSteps.append(*it);
@@ -178,11 +199,18 @@ RollbackOutcome Executor::restoreTempNames(const Plan &plan, const QList<int> &o
         }
 
         // 1. Back to the old name.
-        const RenameResult back = m_fs.renameNoReplace(toTemp.to, toTemp.from);
-        if (!m_journal.appendStep(toTemp, recordOf(toTemp.index, Phase::Rollback, back)))
+        const RenameResult back = startAndRename(m_fs, m_journal, toTemp, Phase::Rollback);
+        if (back.errorCode == ErrorCode::JournalWrite ||
+            !m_journal.appendStep(toTemp, recordOf(toTemp.index, Phase::Rollback, back)))
             out.journalFailed = true;
         if (back.ok)
             continue;
+        if (back.errorCode == ErrorCode::JournalWrite) {
+            // No journal: no more renames for this item. It keeps the temporary name.
+            out.failedSteps.append(toTemp.index);
+            out.lastFailure = back;
+            continue;
+        }
 
         // 2. On to the planned new name: that is the item's FromTemp step.
         const PlanStep *fromTemp = nullptr;
@@ -194,8 +222,9 @@ RollbackOutcome Executor::restoreTempNames(const Plan &plan, const QList<int> &o
         }
         RenameResult last = back;
         if (fromTemp) {
-            last = m_fs.renameNoReplace(fromTemp->from, fromTemp->to);
-            if (!m_journal.appendStep(*fromTemp, recordOf(fromTemp->index, Phase::Forward, last)))
+            last = startAndRename(m_fs, m_journal, *fromTemp, Phase::Forward);
+            if (last.errorCode == ErrorCode::JournalWrite ||
+                !m_journal.appendStep(*fromTemp, recordOf(fromTemp->index, Phase::Forward, last)))
                 out.journalFailed = true;
             if (last.ok)
                 continue;

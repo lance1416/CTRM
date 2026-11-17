@@ -168,7 +168,23 @@ QString parseHeader(const QJsonObject &o, BatchRecord &record)
     return {};
 }
 
-// Adds an op or state record. Returns an error text, or empty. Other types are ignored.
+std::optional<Phase> phaseFromString(const QString &s)
+{
+    if (s == u"forward")
+        return Phase::Forward;
+    if (s == u"rollback")
+        return Phase::Rollback;
+    return std::nullopt;
+}
+
+// A result record (or a newer start record) of the step and phase closes its start record.
+void closeStart(BatchRecord &record, int step, Phase phase)
+{
+    record.openStarts.removeIf(
+            [&](const StartRecord &r) { return r.step == step && r.phase == phase; });
+}
+
+// Adds an op, start or state record. Returns an error text, or empty. Other types are ignored.
 QString parseRecord(const QJsonObject &o, BatchRecord &record)
 {
     const QString type = o.value(u"type").toString();
@@ -185,19 +201,31 @@ QString parseRecord(const QJsonObject &o, BatchRecord &record)
         rec.step = o.value(u"step").toInt(-1);
         if (rec.step < 0 || rec.step >= record.plan.steps.size())
             return QStringLiteral("An operation record has no valid step");
-        const QString phase = o.value(u"phase").toString();
-        if (phase == u"forward")
-            rec.phase = Phase::Forward;
-        else if (phase == u"rollback")
-            rec.phase = Phase::Rollback;
-        else
+        const auto phase = phaseFromString(o.value(u"phase").toString());
+        if (!phase)
             return QStringLiteral("An operation record has no valid phase");
+        rec.phase = *phase;
         rec.ok = o.value(u"result").toString() == u"ok";
         rec.errorCode = o.value(u"errorCode").toInt();
         rec.errorText = o.value(u"errorText").toString();
         rec.fallback = o.value(u"fallback").toString();
         rec.time = timeFromString(o.value(u"time").toString());
         record.steps.append(rec);
+        closeStart(record, rec.step, rec.phase);
+        return {};
+    }
+    if (type == u"start") {
+        StartRecord rec;
+        rec.step = o.value(u"step").toInt(-1);
+        if (rec.step < 0 || rec.step >= record.plan.steps.size())
+            return QStringLiteral("A start record has no valid step");
+        const auto phase = phaseFromString(o.value(u"phase").toString());
+        if (!phase)
+            return QStringLiteral("A start record has no valid phase");
+        rec.phase = *phase;
+        rec.time = timeFromString(o.value(u"time").toString());
+        closeStart(record, rec.step, rec.phase);
+        record.openStarts.append(rec);
         return {};
     }
     return {};
@@ -394,6 +422,20 @@ bool JournalWriter::appendStep(const PlanStep &step, const StepRecord &rec)
     if (!rec.fallback.isEmpty())
         o.insert(QStringLiteral("fallback"), rec.fallback);
     return writeLine(o);
+}
+
+bool JournalWriter::appendStart(const PlanStep &step, Phase phase)
+{
+    const bool forward = phase == Phase::Forward;
+    return writeLine(QJsonObject{
+            {QStringLiteral("type"), QStringLiteral("start")},
+            {QStringLiteral("step"), step.index},
+            {QStringLiteral("phase"),
+             forward ? QStringLiteral("forward") : QStringLiteral("rollback")},
+            {QStringLiteral("from"), forward ? step.from : step.to},
+            {QStringLiteral("to"), forward ? step.to : step.from},
+            {QStringLiteral("time"), timeToString(QDateTime::currentDateTimeUtc())},
+    });
 }
 
 bool JournalWriter::appendState(const StateRecord &rec)

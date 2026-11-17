@@ -52,6 +52,63 @@ QString updateOriginal(HistoryStore &history, const QString &undoOf, const QStri
     return {};
 }
 
+// True when the item of the request is at path. A FromTemp step has a name only CTRM uses, so
+// only its presence is checked (as in Executor::run).
+bool itemAt(FileSystem &fs, const Plan &plan, const PlanStep &step, const QString &path)
+{
+    if (!fs.exists(path))
+        return false;
+    if (step.kind == StepKind::FromTemp)
+        return true;
+    for (const RenameRequest &r : plan.requests) {
+        if (r.item == step.item) {
+            const auto id = fs.identity(path, r.identity.type);
+            return id && sameFile(r.identity, *id);
+        }
+    }
+    return false;
+}
+
+struct StartCheck
+{
+    QList<StepRecord> results;      // records to append: the disk shows the step ran or not
+    QHash<int, QString> unresolved; // step -> error text; the step is not touched
+};
+
+// Checks the disk for each start record with no result (CTRM stopped during that rename).
+// Done: the target exists, the source does not, and the item at the target is the item of
+// the step. Not done: the same with source and target the other way. Any other case is
+// unresolved: CTRM cannot tell, so it does not touch the step.
+StartCheck checkOpenStarts(FileSystem &fs, const BatchRecord &rec)
+{
+    StartCheck out;
+    for (const StartRecord &start : rec.openStarts) {
+        const PlanStep &step = rec.plan.steps[start.step];
+        const bool forward = start.phase == Phase::Forward;
+        const QString &src = forward ? step.from : step.to;
+        const QString &dst = forward ? step.to : step.from;
+        const bool srcExists = fs.exists(src);
+        const bool dstExists = fs.exists(dst);
+        StepRecord r;
+        r.step = start.step;
+        r.phase = start.phase;
+        r.time = now();
+        if (dstExists && !srcExists && itemAt(fs, rec.plan, step, dst)) {
+            r.ok = true;
+        } else if (srcExists && !dstExists && itemAt(fs, rec.plan, step, src)) {
+            r.errorCode = ErrorCode::Interrupted;
+            r.errorText = QStringLiteral("CTRM stopped before this rename");
+        } else {
+            out.unresolved.insert(
+                    start.step,
+                    QStringLiteral("CTRM cannot tell if this rename ran: %1 -> %2").arg(src, dst));
+            continue;
+        }
+        out.results.append(r);
+    }
+    return out;
+}
+
 } // namespace
 
 // Writes each record to the journal and keeps a copy for the report.
@@ -66,6 +123,10 @@ public:
     {
         records.append(rec);
         return m_sink.appendStep(step, rec);
+    }
+    bool appendStart(const PlanStep &step, Phase phase) override
+    {
+        return m_sink.appendStart(step, phase);
     }
     bool appendState(const StateRecord &rec) override { return m_sink.appendState(rec); }
 
@@ -331,22 +392,37 @@ FinishResult BatchService::recoverRollBack(const QString &batchId)
     if (!writer)
         return out;
 
-    // Failures of the run: failed forward records before the first roll back.
+    // Failures of the run: failed forward records before the first roll back. A step that did
+    // not run because CTRM stopped is not a failure.
     QHash<int, QString> failed;
     for (const StepRecord &s : rec->steps) {
         if (s.phase == Phase::Rollback)
             break;
-        if (!s.ok)
+        if (!s.ok && s.errorCode != ErrorCode::Interrupted)
             failed.insert(s.step, s.errorText);
     }
 
     BatchSession::Recorder recorder(*writer, rec->steps);
+    // First the steps that were running when CTRM stopped: their results from the disk.
+    const StartCheck starts = checkOpenStarts(m_fs, *rec);
+    bool journalFailed = false;
+    for (const StepRecord &r : starts.results) {
+        if (!recorder.appendStep(rec->plan.steps[r.step], r))
+            journalFailed = true;
+    }
+    QList<int> done = replayDoneSteps(rec->plan, recorder.records);
+    for (auto it = starts.unresolved.cbegin(); it != starts.unresolved.cend(); ++it) {
+        done.removeAll(it.key()); // never touched
+        failed.insert(it.key(), it.value());
+    }
+
     Executor ex(m_fs, recorder);
-    const RollbackOutcome rb = ex.rollBack(rec->plan, replayDoneSteps(rec->plan, rec->steps));
+    const RollbackOutcome rb = ex.rollBack(rec->plan, done);
     addRollbackFailures(recorder.records.mid(rec->steps.size()), rb.failedSteps, failed);
-    out.state = rb.complete ? BatchState::RolledBack : BatchState::Incomplete;
+    const bool complete = rb.complete && starts.unresolved.isEmpty() && !journalFailed;
+    out.state = complete ? BatchState::RolledBack : BatchState::Incomplete;
     out.report = buildReport(rec->plan, recorder.records, failed);
-    if (rb.journalFailed)
+    if (rb.journalFailed || journalFailed)
         out.error = journalError(rec->filePath);
     if (!writer->appendState({out.state, now(), {}}))
         out.error = journalError(rec->filePath);

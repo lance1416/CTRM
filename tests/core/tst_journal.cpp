@@ -154,6 +154,7 @@ private slots:
     void createNeverReplaces();
     void appendAfterReopen();
     void appendAfterTruncatedTail();
+    void startRecordsOpen();
     void openAndReadAgree_data();
     void openAndReadAgree();
     void bestEffortOpenWithoutHeader();
@@ -454,6 +455,48 @@ void TestJournal::appendAfterTruncatedTail()
     const auto r2 = readJournal(path2, &error);
     QVERIFY2(r2, qPrintable(error));
     QCOMPARE(r2->state(), BatchState::Incomplete);
+}
+
+void TestJournal::startRecordsOpen()
+{
+    TempTree t;
+    const QString id = newId();
+    const Plan plan = samplePlan(id, {"/a", "/b"});
+    QString error;
+    auto w = JournalWriter::create(t.root(), sampleHeader(id, utc(2026, 1, 1)), plan, &error);
+    QVERIFY2(w, qPrintable(error));
+    // Step 0: start, then its result. Step 1: start only (a crash during the rename).
+    QVERIFY(w->appendStart(plan.steps[0], Phase::Forward));
+    QVERIFY(w->appendStep(plan.steps[0], okRecord(0, Phase::Forward, utc(2026, 1, 1))));
+    QVERIFY(w->appendStart(plan.steps[1], Phase::Forward));
+    QVERIFY(w->appendStart(plan.steps[0], Phase::Rollback));
+
+    QFile f(w->filePath());
+    QVERIFY(f.open(QIODevice::ReadOnly));
+    const QList<QByteArray> lines = f.readAll().split('\n');
+    const QJsonObject start = QJsonDocument::fromJson(lines[2]).object();
+    QCOMPARE(start.value("type").toString(), QString("start"));
+    QCOMPARE(start.value("step").toInt(), 0);
+    QCOMPARE(start.value("phase").toString(), QString("forward"));
+    QCOMPARE(start.value("from").toString(), plan.steps[0].from);
+    QCOMPARE(start.value("to").toString(), plan.steps[0].to);
+    QVERIFY(!start.value("time").toString().isEmpty());
+    const QJsonObject rollback = QJsonDocument::fromJson(lines[5]).object();
+    QCOMPARE(rollback.value("from").toString(), plan.steps[0].to); // the reverse rename
+    QCOMPARE(rollback.value("to").toString(), plan.steps[0].from);
+
+    const auto r = readJournal(w->filePath(), &error);
+    QVERIFY2(r, qPrintable(error));
+    QCOMPARE(r->steps.size(), 1); // a start record is not a result
+    QCOMPARE(r->openStarts.size(), 2);
+    QCOMPARE(r->openStarts[0].step, 1);
+    QCOMPARE(r->openStarts[0].phase, Phase::Forward);
+    QCOMPARE(r->openStarts[1].step, 0);
+    QCOMPARE(r->openStarts[1].phase, Phase::Rollback);
+
+    // A journal of the old format has no start records.
+    const QString old = writeRaw(t.root(), newId(), utc(2026, 1, 2), BatchState::Complete);
+    QVERIFY(readJournal(old, &error)->openStarts.isEmpty());
 }
 
 void TestJournal::openAndReadAgree_data()

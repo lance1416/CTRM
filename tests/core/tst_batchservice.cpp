@@ -140,6 +140,33 @@ const ReportRow *rowOf(const QList<ReportRow> &rows, ItemId item)
     return nullptr;
 }
 
+// A crash after the start record of a step (and, when rename is true, after the rename) and
+// before its result record.
+void crashInStep(Env &env, const Plan &plan, int step, Phase phase, bool rename)
+{
+    QString error;
+    auto w = JournalWriter::openForAppend(env.history.list().first().filePath, &error);
+    if (!w || !w->appendStart(plan.steps[step], phase))
+        qFatal("cannot write the start record: %s", qPrintable(error));
+    const PlanStep &s = plan.steps[step];
+    if (rename) {
+        const bool forward = phase == Phase::Forward;
+        if (!env.fs.renameNoReplace(forward ? s.from : s.to, forward ? s.to : s.from).ok)
+            qFatal("rename failed");
+    }
+}
+
+// Runs the first `steps` steps of the plan, then stops with no end state (a crash).
+void runAndCrash(Env &env, const Plan &plan, int steps)
+{
+    auto s = startOrFail(env, plan);
+    std::atomic<bool> cancel{steps == 0};
+    s->run(cancel, [&](int done, int) {
+        if (done == steps)
+            cancel.store(true);
+    });
+}
+
 } // namespace
 
 class TstBatchService : public QObject
@@ -167,6 +194,13 @@ private slots:
     void pendingShowsUnreadableJournal();
     void damagedBatchCannotBeUndone();
     void markCompleteOnDamagedJournal();
+    void crashForwardDone();
+    void crashForwardNotDone();
+    void crashNotDoneOtherItemAtOldName();
+    void crashToTempDone();
+    void crashFromTempDone();
+    void crashRollbackDone();
+    void crashBothNamesTaken();
     void recoveryMarkComplete();
     void reportRows();
     void secondRollBackInSession();
@@ -558,6 +592,115 @@ void TstBatchService::markCompleteOnDamagedJournal()
     }
     // A finished damaged batch cannot be marked again.
     QVERIFY(!env.service.markComplete("lost", &error));
+}
+
+void TstBatchService::crashForwardDone()
+{
+    Env env;
+    const Plan plan = threePlan(env);
+    runAndCrash(env, plan, 2);
+    crashInStep(env, plan, 2, Phase::Forward, true); // c.txt -> z.txt is done
+    const FinishResult f = env.service.recoverRollBack(plan.batchId);
+    QVERIFY2(f.error.isEmpty(), qPrintable(f.error));
+    QCOMPARE(f.state, BatchState::RolledBack);
+    QCOMPARE(env.fs.names("/f"), (QStringList{"a.txt", "b.txt", "c.txt"}));
+    QCOMPARE(rowOf(f.report, 3)->result, ReportRow::Result::RolledBack);
+}
+
+void TstBatchService::crashForwardNotDone()
+{
+    Env env;
+    const Plan plan = threePlan(env);
+    runAndCrash(env, plan, 2);
+    crashInStep(env, plan, 2, Phase::Forward, false); // c.txt -> z.txt did not run
+    const FinishResult f = env.service.recoverRollBack(plan.batchId);
+    QVERIFY2(f.error.isEmpty(), qPrintable(f.error));
+    QCOMPARE(f.state, BatchState::RolledBack);
+    QCOMPARE(env.fs.names("/f"), (QStringList{"a.txt", "b.txt", "c.txt"}));
+    QCOMPARE(rowOf(f.report, 3)->result, ReportRow::Result::NotRun);
+    // History does not count the step as failed.
+    QCOMPARE(env.history.list().first().failedCount, 0);
+}
+
+void TstBatchService::crashNotDoneOtherItemAtOldName()
+{
+    Env env;
+    const Plan plan = threePlan(env);
+    runAndCrash(env, plan, 2);
+    crashInStep(env, plan, 2, Phase::Forward, false);
+    // Another file is at the old name now: CTRM cannot tell what happened.
+    QVERIFY(env.fs.remove("/f/c.txt"));
+    env.add("c.txt", "other");
+    const FinishResult f = env.service.recoverRollBack(plan.batchId);
+    QCOMPARE(f.state, BatchState::Incomplete);
+    QCOMPARE(rowOf(f.report, 3)->result, ReportRow::Result::Failed);
+    QVERIFY(rowOf(f.report, 3)->errorText.contains("/f/c.txt"));
+    QCOMPARE(env.fs.content("/f/c.txt"), QByteArray("other")); // not touched
+    // The other steps are rolled back.
+    QCOMPARE(env.fs.names("/f"), (QStringList{"a.txt", "b.txt", "c.txt"}));
+    QCOMPARE(env.service.pendingRecovery().size(), 1);
+}
+
+void TstBatchService::crashToTempDone()
+{
+    Env env;
+    const Plan plan = swapPlan(env);
+    QCOMPARE(plan.steps[0].kind, StepKind::ToTemp);
+    runAndCrash(env, plan, 0);
+    crashInStep(env, plan, 0, Phase::Forward, true); // a.txt -> temporary name is done
+    QVERIFY(hasTempName(env.fs.names("/f")));
+    const FinishResult f = env.service.recoverRollBack(plan.batchId);
+    QVERIFY2(f.error.isEmpty(), qPrintable(f.error));
+    QCOMPARE(f.state, BatchState::RolledBack);
+    QCOMPARE(env.fs.names("/f"), (QStringList{"a.txt", "b.txt"}));
+    QCOMPARE(env.fs.content("/f/a.txt"), QByteArray("A"));
+}
+
+void TstBatchService::crashFromTempDone()
+{
+    Env env;
+    const Plan plan = swapPlan(env);
+    QCOMPARE(plan.steps[2].kind, StepKind::FromTemp);
+    runAndCrash(env, plan, 2);
+    crashInStep(env, plan, 2, Phase::Forward, true); // temporary name -> b.txt is done
+    const FinishResult f = env.service.recoverRollBack(plan.batchId);
+    QVERIFY2(f.error.isEmpty(), qPrintable(f.error));
+    QCOMPARE(f.state, BatchState::RolledBack);
+    QCOMPARE(env.fs.names("/f"), (QStringList{"a.txt", "b.txt"}));
+    QCOMPARE(env.fs.content("/f/a.txt"), QByteArray("A"));
+    QCOMPARE(env.fs.content("/f/b.txt"), QByteArray("B"));
+}
+
+void TstBatchService::crashRollbackDone()
+{
+    Env env;
+    const Plan plan = threePlan(env);
+    runAndCrash(env, plan, 2);
+    // Crash during the roll back of step 1: y.txt -> b.txt is done.
+    crashInStep(env, plan, 1, Phase::Rollback, true);
+    const int renames = env.fs.renameCount();
+    const FinishResult f = env.service.recoverRollBack(plan.batchId);
+    QVERIFY2(f.error.isEmpty(), qPrintable(f.error));
+    QCOMPARE(f.state, BatchState::RolledBack);
+    QCOMPARE(env.fs.names("/f"), (QStringList{"a.txt", "b.txt", "c.txt"}));
+    QCOMPARE(env.fs.renameCount(), renames + 1); // only step 0 is rolled back now
+}
+
+void TstBatchService::crashBothNamesTaken()
+{
+    Env env;
+    const Plan plan = swapPlan(env);
+    runAndCrash(env, plan, 0);
+    crashInStep(env, plan, 0, Phase::Forward, false);
+    // An item at the temporary name and the item at the old name: CTRM cannot tell.
+    env.fs.addFile(plan.steps[0].to, "T");
+    const FinishResult f = env.service.recoverRollBack(plan.batchId);
+    QCOMPARE(f.state, BatchState::Incomplete);
+    const ReportRow *row = rowOf(f.report, 1);
+    QCOMPARE(row->result, ReportRow::Result::Failed);
+    QVERIFY(row->errorText.contains(plan.steps[0].to)); // the temporary name is shown
+    QCOMPARE(env.fs.content("/f/a.txt"), QByteArray("A"));
+    QCOMPARE(env.fs.content(plan.steps[0].to), QByteArray("T"));
 }
 
 void TstBatchService::recoveryRefusesFinishedBatch()

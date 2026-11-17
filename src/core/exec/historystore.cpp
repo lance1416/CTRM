@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "exec/historystore.h"
 
+#include "fs/filesystem.h"
+
 #include <QDir>
 #include <QFile>
 #include <QHash>
@@ -31,7 +33,7 @@ BatchSummary summarize(const BatchRecord &r)
     s.state = r.state();
     s.undoOf = r.header.undoOf;
     for (const StepRecord &step : r.steps) {
-        if (step.phase == Phase::Forward && !step.ok)
+        if (step.phase == Phase::Forward && !step.ok && step.errorCode != ErrorCode::Interrupted)
             ++s.failedCount;
     }
     return s;
