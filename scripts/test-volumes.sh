@@ -31,13 +31,16 @@ core/tst_batchservice core/tst_undo app/tst_app_itemadder app/tst_app_acceptance
 work=$(mktemp -d "${TMPDIR:-/tmp}/ctrm-volumes.XXXXXX")
 mounts=""
 
+# shellcheck disable=SC2329 # called by the trap below
 cleanup() {
     for m in $mounts; do
         hdiutil detach -quiet -force "$m" 2>/dev/null || true
     done
     rm -rf "$work"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 failed=0
 
@@ -48,8 +51,9 @@ run_on() {
     mount="$work/$label"
     mkdir -p "$mount"
     hdiutil create -quiet -size 256m -fs "$2" -volname "ctrm-$label" "$image"
-    hdiutil attach -quiet -nobrowse -mountpoint "$mount" "$image"
+    # Record the mount first: cleanup also detaches a mount when attach fails late.
     mounts="$mounts $mount"
+    hdiutil attach -quiet -nobrowse -mountpoint "$mount" "$image"
     mkdir -p "$mount/tmp"
     echo "== $label ($2)"
     for t in $tests; do

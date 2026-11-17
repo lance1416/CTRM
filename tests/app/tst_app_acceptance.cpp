@@ -18,7 +18,9 @@
 //                tests/core/tst_previewengine.cpp numberingFollowsOrder
 //   AC3.4        tests/app/tst_app_mainwindow.cpp sortByNewNameStable;
 //                tests/app/tst_app_tableview.cpp headerClickSortsOnce
-//   AC-B3 core   tests/core/tst_previewengine.cpp skipBlockedCascade, skipKeepsNumbering
+//   AC-B1, AC-B2 tests/app/tst_app_batch.cpp renameNoConfirm, skipAsksWithCount
+//   AC-B3 core   tests/core/tst_previewengine.cpp skipBlockedCascade, skipKeepsNumbering;
+//                UI: tests/app/tst_app_batch.cpp skipShowsCascade and this file
 //   AC4.1-AC4.7  tests/core/tst_replacerule.cpp, tst_casenumbering.cpp, tst_insertremove.cpp,
 //                tst_extcleanup.cpp (edgeInputs and named tests)
 //   AC11.1-11.9  tests/core/tst_previewengine.cpp, tst_namevalidator.cpp
@@ -36,6 +38,7 @@
 //   Manual       tests/manual/v0.1-checklist.md (AC-G2, AC-G3, AC13.5 readable)
 
 #include "appcontext.h"
+#include "controllers/batchcontroller.h"
 #include "controllers/itemadder.h"
 #include "exec/batchservice.h"
 #include "fs/filesystem.h"
@@ -62,6 +65,7 @@
 #include <QtTest>
 
 #include <memory>
+#include <optional>
 
 using namespace ctrm;
 using namespace ctrm::app;
@@ -85,7 +89,8 @@ struct Fixture
     }
 
     // Drops the paths on the visible drop target (the empty state or the table), as the OS does.
-    void drop(const QStringList &paths)
+    // Returns true when the target accepts both events.
+    [[nodiscard]] bool drop(const QStringList &paths)
     {
         QMimeData mime;
         QList<QUrl> urls;
@@ -98,9 +103,11 @@ struct Fixture
         const QPointF pos(target->rect().center());
         QDragEnterEvent enter(pos, Qt::CopyAction, &mime, Qt::LeftButton, {});
         QCoreApplication::sendEvent(target, &enter);
-        QVERIFY(enter.isAccepted());
+        if (!enter.isAccepted())
+            return false;
         QDropEvent dropEvent(pos, Qt::CopyAction, &mime, Qt::LeftButton, {});
         QCoreApplication::sendEvent(target, &dropEvent);
+        return dropEvent.isAccepted();
     }
 
     QStringList oldNames()
@@ -131,6 +138,7 @@ private slots:
     void ac1_4_duplicateOnce();
     void ac2_1_preview10kUnder500msNoFreeze();
     void ac2_4_previewEqualsDisk();
+    void acB3_skipCascadeKeepsNumbering();
 };
 
 void TestAcceptance::ac1_1_drop1000Under2s()
@@ -142,14 +150,18 @@ void TestAcceptance::ac1_1_drop1000Under2s()
         paths.append(f.tree.file(QStringLiteral("photo %1.jpg").arg(i), "x"));
     QElapsedTimer clock;
     clock.start();
-    f.drop(paths);
+    QVERIFY(f.drop(paths));
     // All items show in the list, with their preview.
-    QTRY_VERIFY_WITH_TIMEOUT(f.window.previewIsCurrent(), 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(f.window.previewIsCurrent(), 30'000);
     const qint64 ms = clock.elapsed();
     QCOMPARE(f.window.itemModel().rowCount(), 1000);
     QCOMPARE(f.window.currentPreview().items.size(), 1000);
     QCOMPARE(f.window.tableView()->model()->rowCount(), 1000);
+    qInfo("AC1.1: 1000 items added and previewed in %lld ms", ms);
+#ifdef NDEBUG
+    // Timing in a Debug build proves nothing (same rule as AC2.1). The perf job checks it.
     QVERIFY2(ms < 2000, qPrintable(QStringLiteral("%1 ms").arg(ms)));
+#endif
 }
 
 void TestAcceptance::ac1_2_folderQuestionBothChoices()
@@ -163,7 +175,7 @@ void TestAcceptance::ac1_2_folderQuestionBothChoices()
     const QString loose = f.tree.file(QStringLiteral("loose.txt"), "x");
 
     f.reply.choice = FolderDropReply::Choice::RenameFolder;
-    f.drop({folder, loose});
+    QVERIFY(f.drop({folder, loose}));
     QCOMPARE(f.questions.size(), 1);
     QCOMPARE(f.questions[0].folders, QStringList{QStringLiteral("Trip")});
     QCOMPARE(f.oldNames(), (QStringList{QStringLiteral("Trip"), QStringLiteral("loose.txt")}));
@@ -171,7 +183,7 @@ void TestAcceptance::ac1_2_folderQuestionBothChoices()
 
     f.window.itemModel().clear();
     f.reply.choice = FolderDropReply::Choice::AddContents;
-    f.drop({folder});
+    QVERIFY(f.drop({folder}));
     QCOMPARE(f.questions.size(), 2);
     QCOMPARE(f.oldNames(), (QStringList{QStringLiteral("a.jpg"), QStringLiteral("b.jpg"),
                                         QStringLiteral("sub")}));
@@ -182,8 +194,8 @@ void TestAcceptance::ac1_4_duplicateOnce()
     Fixture f;
     QVERIFY(QTest::qWaitForWindowExposed(&f.window));
     const QString file = f.tree.file(QStringLiteral("a.txt"), "x");
-    f.drop({file});
-    f.drop({file});
+    QVERIFY(f.drop({file}));
+    QVERIFY(f.drop({file}));
     QCOMPARE(f.oldNames(), QStringList{QStringLiteral("a.txt")});
     QCOMPARE(f.window.statusBar()->currentMessage(),
              QStringLiteral("1 item was already in the list."));
@@ -241,9 +253,9 @@ void TestAcceptance::ac2_4_previewEqualsDisk()
     const QString photo = f.tree.file(QStringLiteral("photo.JPG"), "j");
     const QString dir = f.tree.mkdir(QStringLiteral("album"));
     const QString inside = f.tree.file(QStringLiteral("album/Inside.txt"), "i");
-    f.drop({folder}); // Add Its Contents
+    QVERIFY(f.drop({folder})); // Add Its Contents
     f.reply.choice = FolderDropReply::Choice::RenameFolder;
-    f.drop({one, two, photo, dir, inside});
+    QVERIFY(f.drop({one, two, photo, dir, inside}));
     QCOMPARE(f.window.itemModel().rowCount(), 55);
 
     // Swap one.txt and two.txt; lower-case the rest; number the "file" items.
@@ -319,6 +331,62 @@ void TestAcceptance::ac2_4_previewEqualsDisk()
     QVERIFY(QDir(root).entryList(QDir::Files).contains(QStringLiteral("photo.jpg")));
     QVERIFY(!QDir(root).entryList(QDir::Files).contains(QStringLiteral("photo.JPG")));
     QCOMPARE(contentOf(root + QStringLiteral("/Album 2026/inside.txt")), QByteArray("i"));
+}
+
+void TestAcceptance::acB3_skipCascadeKeepsNumbering()
+{
+    Fixture f;
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    BatchController batch(f.window, f.ctx, nullptr);
+    std::optional<SkipQuestion> question;
+    batch.confirmSkip = [&](const SkipQuestion &q) {
+        question = q;
+        return true;
+    };
+    batch.askFailure = [](const FailureInfo &) { return FailureChoice::RollBack; };
+    batch.showReport = [](const FinishResult &) {};
+
+    QStringList paths;
+    for (const char *name : {"1", "b", "c", "d"})
+        paths.append(f.tree.file(QLatin1StringView(name), name));
+    QVERIFY(f.drop(paths));
+
+    // Number all items, then "1_1" becomes "" (A is invalid) and "b_2" becomes "1" (B wants the
+    // old name of A).
+    auto numbering = std::make_unique<NumberingRule>();
+    auto invalid = std::make_unique<ReplaceRule>();
+    invalid->find = QStringLiteral("^1_1$");
+    invalid->mode = ReplaceRule::Mode::Regex;
+    auto wantsOld = std::make_unique<ReplaceRule>();
+    wantsOld->find = QStringLiteral("^b_2$");
+    wantsOld->mode = ReplaceRule::Mode::Regex;
+    wantsOld->replace = QStringLiteral("1");
+    RuleListModel &rules = f.window.ruleModel();
+    rules.insertRule(0, std::move(numbering));
+    rules.insertRule(1, std::move(invalid));
+    rules.insertRule(2, std::move(wantsOld));
+    QTRY_VERIFY(f.window.previewIsCurrent());
+    QCOMPARE(f.oldNames(), (QStringList{QStringLiteral("1"), QStringLiteral("b"),
+                                        QStringLiteral("c"), QStringLiteral("d")}));
+    const PreviewResult before = f.window.currentPreview();
+    QCOMPARE(before.items[2].newName, QStringLiteral("c_3"));
+    QCOMPARE(before.items[3].newName, QStringLiteral("d_4"));
+
+    QSignalSpy finished(&batch, &BatchController::batchFinished);
+    f.window.actions().skipAndRename->trigger();
+    QVERIFY(finished.wait(30'000) || finished.count() > 0);
+
+    // The question names B as skipped only because of another item.
+    QVERIFY(question.has_value());
+    QCOMPARE(question->skipCount, 2);
+    QCOMPARE(question->invalid, 1);
+    QCOMPARE(question->cascadeCount, 1);
+    QCOMPARE(question->renameCount, 2);
+
+    // A and B keep their names. The other items keep the numbers of the first preview.
+    const QStringList onDisk = QDir(f.tree.root()).entryList(QDir::Files, QDir::Name);
+    QCOMPARE(onDisk, (QStringList{QStringLiteral("1"), QStringLiteral("b"), QStringLiteral("c_3"),
+                                  QStringLiteral("d_4")}));
 }
 
 QTEST_MAIN(TestAcceptance)
