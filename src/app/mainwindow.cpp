@@ -311,6 +311,11 @@ void MainWindow::changeEvent(QEvent *e)
     QMainWindow::changeEvent(e);
     if (e->type() == QEvent::PaletteChange || e->type() == QEvent::StyleChange)
         updateToolIcons();
+    if (e->type() != QEvent::ActivationChange || !isActiveWindow() || m_running ||
+        m_itemModel.rowCount() == 0)
+        return;
+    m_folderCache.invalidate();
+    requestPreview();
 }
 
 void MainWindow::closeEvent(QCloseEvent *e)
@@ -829,16 +834,6 @@ void MainWindow::clearFilter()
     m_filter->clear();
     setShowMode(ShowMode::All);
     focus(m_table);
-}
-
-void MainWindow::changeEvent(QEvent *e)
-{
-    QMainWindow::changeEvent(e);
-    if (e->type() != QEvent::ActivationChange || !isActiveWindow() || m_running ||
-        m_itemModel.rowCount() == 0)
-        return;
-    m_folderCache.invalidate();
-    requestPreview();
 }
 
 void MainWindow::refresh()

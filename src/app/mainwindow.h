@@ -67,10 +67,10 @@ public:
     void setPresetTitle(const QString &name, bool modified); // "CTRM - <name>" + modified mark
 
 protected:
-    void changeEvent(QEvent *e) override;     // updates the tool icons
-    void closeEvent(QCloseEvent *e) override; // saves geometry, state, splitters
-    // Activation reads the folders again: files can change while CTRM is not active.
+    // Updates the tool icons. Activation also reads the folders again: files can change
+    // while CTRM is not active.
     void changeEvent(QEvent *e) override;
+    void closeEvent(QCloseEvent *e) override; // saves geometry, state, splitters
 
 private:
     void buildMenus();
