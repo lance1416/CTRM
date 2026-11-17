@@ -334,8 +334,13 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     // Rule actions. The panel holds the window shortcuts of the actions that have one.
     addActions({actions.duplicateRule, actions.moveRuleUp, actions.moveRuleDown,
                 actions.addRuleMenu->menuAction()});
-    connect(actions.addRuleMenu->menuAction(), &QAction::triggered, m_addRule,
-            &QPushButton::showMenu);
+    connect(actions.addRuleMenu->menuAction(), &QAction::triggered, this,
+            &RulePanel::openAddRuleMenu);
+    // The primary Add Rule has no menu of its own (see updateAddRuleLook).
+    connect(m_addRule, &QPushButton::clicked, this, [this] {
+        if (!m_addRule->menu())
+            openAddRuleMenu();
+    });
     connect(actions.duplicateRule, &QAction::triggered, this, [this] {
         const int row = currentRow();
         if (row < 0)
@@ -654,7 +659,18 @@ void RulePanel::updateEmptyState()
 void RulePanel::updateAddRuleLook()
 {
     m_addRule->setProperty("primary", m_primary);
-    setPrimary(m_addRule, m_primary); // ui-design 5.1
+    // The macOS style draws a pull-down button with no accent. The primary Add Rule is a plain
+    // default button that opens the menu on click (ui-design 5.1, 5.4).
+    m_addRule->setMenu(m_primary ? nullptr : m_actions.addRuleMenu);
+    setPrimary(m_addRule, m_primary);
+}
+
+void RulePanel::openAddRuleMenu()
+{
+    if (m_addRule->menu())
+        m_addRule->showMenu();
+    else
+        m_actions.addRuleMenu->popup(m_addRule->mapToGlobal(m_addRule->rect().bottomLeft()));
 }
 
 void RulePanel::updateIcons()

@@ -57,6 +57,7 @@ private:
     void updateActions();
     void updateEmptyState();
     void updateAddRuleLook();
+    void openAddRuleMenu();
     void updateIcons();
     int currentRow() const;
     void selectRow(int row);

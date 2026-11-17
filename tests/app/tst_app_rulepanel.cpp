@@ -104,6 +104,7 @@ private slots:
     void inactiveSelectionContrast();
     void listFollowsRows();
     void presetsUnderAddRule();
+    void primaryAddRuleIsPlainButton();
 };
 
 void TestAppRulePanel::factory()
@@ -549,4 +550,25 @@ void TestAppRulePanel::presetsUnderAddRule()
 }
 
 QTEST_MAIN(TestAppRulePanel)
+void TestAppRulePanel::primaryAddRuleIsPlainButton()
+{
+    // O1: the macOS style draws no accent on a pull-down button, so the primary Add Rule is a
+    // plain default button that opens the menu below it on click (ui-design 5.1, 5.4).
+    Fixture f;
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    QPushButton *add = f.panel->addRuleButton();
+    f.panel->setPrimaryAddRule(true);
+    QCOMPARE(add->menu(), nullptr);
+    QVERIFY(add->isDefault());
+    QVERIFY(!f.actions.addRuleMenu->isVisible());
+    QTest::mouseClick(add, Qt::LeftButton);
+    QTRY_VERIFY(f.actions.addRuleMenu->isVisible());
+    QCOMPARE(f.actions.addRuleMenu->pos(), add->mapToGlobal(add->rect().bottomLeft()));
+    f.actions.addRuleMenu->hide();
+
+    f.panel->setPrimaryAddRule(false);
+    QCOMPARE(add->menu(), f.actions.addRuleMenu);
+    QVERIFY(!add->isDefault());
+}
+
 #include "tst_app_rulepanel.moc"
