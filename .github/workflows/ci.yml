@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # CTRM continuous integration.
-#   lint:       always. Commit messages, clang-format, EditorConfig, shell scripts.
+#   lint:       always. Runs scripts/lint.sh (the same checks as the local hooks).
 #   build-test: only when code changed and a root CMakeLists.txt exists.
 name: CI
 
@@ -19,9 +19,11 @@ permissions:
   contents: read
 
 env:
-  # Keep in sync with expected_cf_major in .githooks/pre-commit.
+  # Keep in sync with expected_cf_major in scripts/lint.sh.
   CLANG_FORMAT_VERSION: "23.1.5"
-  EDITORCONFIG_CHECKER_VERSION: "3.11.1"
+  # Keep in sync with the Homebrew version (brew install editorconfig-checker).
+  EDITORCONFIG_CHECKER_VERSION: "4.0.2"
+  EDITORCONFIG_CHECKER_SHA256: "44efaef3ed14c6ab52eb87481d78e5e5c204796dccf26e2f4598a61ba17f8003"
   QT_VERSION: "6.8.*"
 
 jobs:
@@ -56,6 +58,7 @@ jobs:
               - '!.clang-tidy'
               - '!.githooks/**'
               - '!scripts/setup-dev.*'
+              - '!scripts/lint.sh'
 
       - name: Check for root CMakeLists.txt
         id: cmake
@@ -75,7 +78,22 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check commit messages
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+
+      - name: Install lint tools
+        run: |
+          python -m pip install --disable-pip-version-check "clang-format==$CLANG_FORMAT_VERSION"
+          base=https://github.com/editorconfig-checker/editorconfig-checker/releases/download
+          archive=editorconfig-checker-linux-amd64.tar.gz
+          curl -fsSL -o "$RUNNER_TEMP/$archive" "$base/v$EDITORCONFIG_CHECKER_VERSION/$archive"
+          echo "$EDITORCONFIG_CHECKER_SHA256  $RUNNER_TEMP/$archive" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/ec"
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/ec" editorconfig-checker
+          echo "$RUNNER_TEMP/ec" >> "$GITHUB_PATH"
+
+      - name: Run scripts/lint.sh
         env:
           EVENT: ${{ github.event_name }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
@@ -92,46 +110,14 @@ jobs:
                 range="$PUSH_BEFORE..$PUSH_AFTER"
               fi
               ;;
-            *) echo "No commit range for $EVENT. Skipped."; exit 0 ;;
+            *) range="" ;;
           esac
-          echo "Commit range: $range"
-          status=0
-          merges=$(git rev-list --merges "$range")
-          if [ -n "$merges" ]; then
-            echo "::error::Merge commits are not allowed (linear history): $merges"
-            status=1
+          if [ -n "$range" ]; then
+            echo "Commit range: $range"
+            sh scripts/lint.sh --range "$range"
+          else
+            sh scripts/lint.sh
           fi
-          msg_file=$(mktemp)
-          for sha in $(git rev-list --no-merges "$range"); do
-            git log -1 --format=%B "$sha" > "$msg_file"
-            if ! sh .githooks/commit-msg "$msg_file"; then
-              echo "::error::Commit $sha has a bad message."
-              status=1
-            fi
-          done
-          exit "$status"
-
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.x"
-
-      - name: Install lint tools
-        run: |
-          python -m pip install --disable-pip-version-check \
-            "clang-format==$CLANG_FORMAT_VERSION" \
-            "editorconfig-checker==$EDITORCONFIG_CHECKER_VERSION"
-
-      - name: clang-format
-        run: |
-          clang-format --version
-          git ls-files -z -- '*.c' '*.cc' '*.cpp' '*.cxx' '*.h' '*.hh' '*.hpp' '*.hxx' \
-            '*.ipp' '*.inl' '*.mm' | xargs -0 -r clang-format --dry-run --Werror
-
-      - name: EditorConfig
-        run: ec
-
-      - name: ShellCheck
-        run: shellcheck -s sh .githooks/* scripts/*.sh
 
   build-test:
     name: Build and test (${{ matrix.name }})
