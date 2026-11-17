@@ -18,6 +18,7 @@
 #include "widgets/emptystate.h"
 #include "widgets/flowstrip.h"
 #include "widgets/itemtableview.h"
+#include "widgets/menutoolbutton.h"
 #include "widgets/messagebar.h"
 #include "widgets/rulepanel.h"
 #include "widgets/tertiarybutton.h"
@@ -141,6 +142,8 @@ private slots:
     void presetTitle();
     void listActionsAtStart();
     void pendingPreviewBlocksRename();
+    void viewShowColumns();
+    void toolbarPresetsArrowOnTextLine();
     void toolbarIcons();
     void tertiaryButtonsHaveNoFrame();
     void ruleMenuButtonsArePushButtons();
@@ -536,16 +539,11 @@ void TestMainWindow::tertiaryButtonsHaveNoFrame()
 
 void TestMainWindow::ruleMenuButtonsArePushButtons()
 {
-    // D5: Add Rule and Presets are push buttons with a menu (the style draws the indicator).
-    // PresetController is the one owner of the Presets menu (tst_app_presets), so the window
-    // alone does not set it.
+    // D5: Add Rule is a push button with a menu (the style draws the indicator).
     Fixture f;
     QPushButton *add = f.window.rulePanel()->addRuleButton();
-    QPushButton *presets = f.window.rulePanel()->presetsButton();
     QVERIFY(add->menu());
-    QCOMPARE(presets->menu(), nullptr);
     QVERIFY(!add->autoDefault());
-    QVERIFY(!presets->autoDefault());
 }
 
 void TestMainWindow::filterBarSameHeight()
@@ -635,6 +633,49 @@ void TestMainWindow::namesShownAtMinimumWidth()
     f.window.resize(1600, f.window.height());
     QApplication::processEvents();
     QCOMPARE(header->sectionSize(ItemTableModel::OldName), userWidth);
+}
+
+void TestMainWindow::viewShowColumns()
+{
+    // M04: View > Show Columns has the four optional columns, and they show or hide them.
+    Fixture f;
+    auto *menu = f.child<QMenu>("showColumnsMenu");
+    QVERIFY(menu);
+    QStringList texts;
+    for (QAction *a : menu->actions())
+        texts.append(a->text());
+    QCOMPARE(texts, QStringList({QStringLiteral("Message"), QStringLiteral("Folder"),
+                                 QStringLiteral("Size"), QStringLiteral("Date modified")}));
+    auto *table = f.child<ItemTableView>("itemTable");
+    QAction *size = menu->actions().at(2);
+    QVERIFY(!size->isChecked());
+    QVERIFY(table->isColumnHidden(ItemTableModel::Size));
+    size->trigger();
+    QVERIFY(!table->isColumnHidden(ItemTableModel::Size));
+    // The same items as the header menu.
+    QCOMPARE(menu->actions(), table->findChild<QMenu *>(QStringLiteral("columnsMenu"))->actions());
+}
+
+void TestMainWindow::toolbarPresetsArrowOnTextLine()
+{
+    // M17: the Presets arrow is inside the button on the text line; toolbar text uses the body
+    // font.
+    Fixture f;
+    f.window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    auto *presets = f.child<MenuToolButton>("toolBarPresets");
+    QVERIFY(presets);
+    const QRect arrow = presets->arrowRect();
+    QVERIFY(presets->rect().contains(arrow));
+    QVERIFY2(qAbs(arrow.center().y() - presets->rect().center().y()) <= 1,
+             qPrintable(QStringLiteral("%1 %2").arg(arrow.center().y()).arg(presets->height())));
+    QVERIFY(presets->sizeHint().width() >=
+            presets->fontMetrics().horizontalAdvance(presets->text()) + arrow.width());
+    const qreal body = QApplication::font().pointSizeF();
+    auto *bar = f.child<QToolBar>("mainToolBar");
+    for (QAction *a : {f.window.actions().addFiles, f.window.actions().addFolder})
+        QCOMPARE(bar->widgetForAction(a)->font().pointSizeF(), body);
+    QCOMPARE(presets->font().pointSizeF(), body);
 }
 
 QTEST_MAIN(TestMainWindow)

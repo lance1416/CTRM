@@ -1,19 +1,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "widgets/emptystate.h"
 
+#include "text/plural.h"
 #include "theme/icons.h"
 #include "theme/typography.h"
 #include "widgets/buttonstyle.h"
 
 #include <QAction>
+#include <QApplication>
 #include <QDragEnterEvent>
 #include <QEvent>
+#include <QFontMetrics>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMimeData>
 #include <QPainter>
 #include <QPushButton>
 #include <QStyle>
+#include <QStyleOptionButton>
 #include <QUrl>
 #include <QVBoxLayout>
 
@@ -30,8 +34,8 @@ bool hasFixedButtonHeight(const QStyle *style)
     return style->name().compare(QLatin1StringView("macos"), Qt::CaseInsensitive) == 0;
 }
 
-// The primary button of the empty state (ui-design 5.2): one type step bigger, with two times
-// the padding. On a style with a fixed button height: bold, and two times the side padding only.
+// The primary button of the empty state (ui-design 5.2, audit M15): one type step bigger, with
+// two times the padding. On a style with a fixed button height, two times the side padding only.
 class LargeButton : public QPushButton
 {
 public:
@@ -43,8 +47,25 @@ public:
 private:
     QSize withPadding(QSize size) const
     {
-        const int margin = style()->pixelMetric(QStyle::PM_ButtonMargin, nullptr, this);
-        return size + QSize(2 * margin, hasFixedButtonHeight(style()) ? 0 : margin);
+        // The style padding is the part of the hint that is not text. Add it one more time.
+        const QFontMetrics metrics = fontMetrics();
+        const int textWidth = metrics.size(Qt::TextShowMnemonic, text()).width();
+        const int sidePadding = qMax(0, size.width() - textWidth);
+        const int verticalPadding = qMax(0, size.height() - metrics.height());
+        if (!hasFixedButtonHeight(style()))
+            return size + QSize(sidePadding, verticalPadding);
+        return {size.width() + sidePadding, nativeHeight()};
+    }
+
+    // The height of a normal button: the bigger font must not make the native bezel taller.
+    int nativeHeight() const
+    {
+        QStyleOptionButton option;
+        initStyleOption(&option);
+        const QFont base = parentWidget() ? parentWidget()->font() : QApplication::font();
+        option.fontMetrics = QFontMetrics(base);
+        const QSize label = option.fontMetrics.size(Qt::TextShowMnemonic, text());
+        return style()->sizeFromContents(QStyle::CT_PushButton, &option, label, this).height();
     }
 };
 
@@ -140,9 +161,7 @@ void EmptyState::updateLook()
 {
     m_icon->setPixmap(appIcon().pixmap(QSize(kIconSize, kIconSize), devicePixelRatioF()));
     m_title->setFont(typeStyle(TypeToken::Display, font()));
-    m_addFiles->setFont(typeStyle(hasFixedButtonHeight(m_addFiles->style()) ? TypeToken::LabelStrong
-                                                                            : TypeToken::Heading,
-                                  font()));
+    m_addFiles->setFont(typeStyle(TypeToken::Heading, font()));
     setPrimary(m_addFiles, true);
     setPrimary(m_addFolder, false);
 }
@@ -169,8 +188,7 @@ void EmptyState::dragEnterEvent(QDragEnterEvent *event)
     }
     event->setDropAction(Qt::CopyAction);
     event->accept();
-    m_dragOver = true;
-    update();
+    setDropCount(int(localDropPaths(event->mimeData()).size()));
 }
 
 void EmptyState::dragMoveEvent(QDragMoveEvent *event)
@@ -183,20 +201,28 @@ void EmptyState::dragMoveEvent(QDragMoveEvent *event)
 
 void EmptyState::dragLeaveEvent(QDragLeaveEvent *)
 {
-    m_dragOver = false;
-    update();
+    setDropCount(0);
 }
 
 void EmptyState::dropEvent(QDropEvent *event)
 {
-    m_dragOver = false;
-    update();
+    setDropCount(0);
     const QStringList paths = localDropPaths(event->mimeData());
     if (paths.isEmpty())
         return;
     event->setDropAction(Qt::CopyAction);
     event->accept();
     emit pathsDropped(paths);
+}
+
+// The drag-over text (ui-design 9.2) takes the place of the title, so it does not cover the
+// buttons in the centre.
+void EmptyState::setDropCount(int count)
+{
+    m_dragOver = count > 0;
+    m_title->setText(m_dragOver ? numerus(tr("Drop to add %n item(s)", nullptr, count), count)
+                                : tr("Drop files or folders here"));
+    update();
 }
 
 void EmptyState::paintEvent(QPaintEvent *event)

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "dialogs/reportdialog.h"
 
+#include "models/historymodel.h"
 #include "text/plural.h"
 #include "theme/colors.h"
 #include "theme/icons.h"
@@ -61,7 +62,9 @@ ReportDialog::ReportDialog(const FinishResult &result, const QDateTime &when, QW
     , m_table(new QTableView(this))
 {
     setAttribute(Qt::WA_DeleteOnClose);
-    setWindowTitle(tr("Rename Report - %1").arg(QLocale().toString(when, QLocale::ShortFormat)));
+    // M12: the time as in the History window ("Today 22:21").
+    setWindowTitle(tr("Rename Report - %1")
+                           .arg(HistoryModel::whenText(when, QDateTime::currentDateTime())));
 
     auto *summary = new QLabel(summaryText(result), this);
     summary->setObjectName(QStringLiteral("reportSummary"));
@@ -92,10 +95,15 @@ ReportDialog::ReportDialog(const FinishResult &result, const QDateTime &when, QW
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_table->setTextElideMode(Qt::ElideMiddle);
     m_table->verticalHeader()->hide();
-    m_table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-    m_table->horizontalHeader()->setStretchLastSection(true);
-    m_table->resizeColumnToContents(1);
-    m_table->resizeColumnToContents(2);
+    m_table->setShowGrid(false); // G1, as the other tables
+    // M12: the names get the free width; State and Result are as wide as their content.
+    QHeaderView *header = m_table->horizontalHeader();
+    header->setStretchLastSection(false);
+    header->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    header->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    header->setSectionResizeMode(1, QHeaderView::Stretch);
+    header->setSectionResizeMode(2, QHeaderView::Stretch);
+    header->setSectionResizeMode(3, QHeaderView::ResizeToContents);
 
     auto *buttons = new QDialogButtonBox(this);
     QPushButton *copy = buttons->addButton(tr("Copy Report"), QDialogButtonBox::ActionRole);

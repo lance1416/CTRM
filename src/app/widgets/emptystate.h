@@ -41,6 +41,7 @@ protected:
 
 private:
     void updateLook();
+    void setDropCount(int count); // 0 = no drag over the widget
 
     QLabel *m_icon;
     QLabel *m_title;

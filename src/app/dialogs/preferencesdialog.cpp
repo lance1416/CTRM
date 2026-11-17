@@ -70,10 +70,11 @@ PreferencesDialog::PreferencesDialog(Settings &settings, ApplyMode mode, QWidget
     auto *sync = new LabelColumnSync(this);
     const auto addSection = [&](const QString &title) {
         layout->addWidget(sectionTitle(title, this));
-        auto *page = new QWidget;
-        QFormLayout *form = makeForm(page);
+        // M30: the form is in the dialog layout, not in a page widget with no margins. The
+        // macOS style draws a check box past its layout rect, and such a page cut the text.
+        QFormLayout *form = makeForm(nullptr);
         form->setContentsMargins(0, 0, 0, 0);
-        layout->addWidget(page);
+        layout->addLayout(form);
         sync->addForm(form);
         return form;
     };

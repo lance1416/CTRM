@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "appcontext.h"
 #include "controllers/batchcontroller.h"
+#include "controllers/helpcontroller.h"
 #include "controllers/historycontroller.h"
 #include "controllers/preferencescontroller.h"
 #include "controllers/presetcontroller.h"
@@ -45,6 +46,7 @@ int main(int argc, char *argv[])
     ctrm::app::RecoveryController recovery(window, context, history, &window);
     ctrm::app::PresetController presets(window, context, &window);
     ctrm::app::PreferencesController preferences(window, context, &window);
+    ctrm::app::HelpController help(window, &window);
     window.show();
     // Before the user can use the window (ui-design 9.10): recovery, then history retention.
     QMetaObject::invokeMethod(

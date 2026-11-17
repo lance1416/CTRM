@@ -19,12 +19,18 @@ void HistoryModel::setBatches(const QList<BatchSummary> &batches)
 {
     beginResetModel();
     m_batches = batches;
+    m_whenTexts = whenTexts(m_batches);
     endResetModel();
 }
 
 const BatchSummary &HistoryModel::batch(int row) const
 {
     return m_batches.at(row);
+}
+
+const QList<BatchSummary> &HistoryModel::batches() const
+{
+    return m_batches;
 }
 
 int HistoryModel::rowOf(const QString &batchId) const
@@ -36,19 +42,60 @@ int HistoryModel::rowOf(const QString &batchId) const
     return -1;
 }
 
-QString HistoryModel::whenText(const QDateTime &time, const QDateTime &now)
+QString HistoryModel::whenText(const QDateTime &time, const QDateTime &now, bool withSeconds)
 {
     if (!time.isValid())
         return tr("Unknown"); // a damaged journal whose file name has no time
     const QLocale locale = QLocale::system();
     const QDateTime local = time.toLocalTime();
     const QDate today = now.toLocalTime().date();
-    const QString clock = locale.toString(local.time(), QLocale::ShortFormat);
+    QString clock = locale.toString(local.time(), QLocale::ShortFormat);
+    if (withSeconds) {
+        // The short format of the locale with seconds: insert ":ss" after the minutes.
+        QString format = locale.timeFormat(QLocale::ShortFormat);
+        const qsizetype minutes = format.indexOf(QLatin1StringView("mm"));
+        if (minutes >= 0 && !format.contains(u's'))
+            format.insert(minutes + 2, QLatin1StringView(":ss"));
+        clock = locale.toString(local.time(), format);
+    }
     if (local.date() == today)
         return tr("Today %1").arg(clock);
     if (local.date() == today.addDays(-1))
         return tr("Yesterday %1").arg(clock);
     return tr("%1 %2").arg(locale.toString(local.date(), QStringLiteral("d MMM")), clock);
+}
+
+QHash<QString, QString> HistoryModel::whenTexts(const QList<BatchSummary> &all)
+{
+    // One pass for the texts and their counts, so that a long history stays fast.
+    const QDateTime now = QDateTime::currentDateTime();
+    QList<QString> texts;
+    texts.reserve(all.size());
+    QHash<QString, int> counts;
+    for (const BatchSummary &s : all) {
+        texts.append(whenText(s.started, now));
+        ++counts[texts.constLast()];
+    }
+    QHash<QString, QString> result;
+    for (qsizetype i = 0; i < all.size(); ++i) {
+        const BatchSummary &s = all.at(i);
+        result.insert(s.batchId,
+                      counts.value(texts.at(i)) > 1 ? whenText(s.started, now, true) : texts.at(i));
+    }
+    return result;
+}
+
+QString HistoryModel::whenText(const BatchSummary &s, const QList<BatchSummary> &all)
+{
+    const QHash<QString, QString> texts = whenTexts(all);
+    const auto it = texts.constFind(s.batchId);
+    return it != texts.constEnd() ? *it : whenText(s.started, QDateTime::currentDateTime());
+}
+
+QString HistoryModel::whenText(const BatchSummary &s) const
+{
+    const auto it = m_whenTexts.constFind(s.batchId);
+    return it != m_whenTexts.constEnd() ? *it : whenText(s.started, QDateTime::currentDateTime());
 }
 
 QString HistoryModel::displayPath(const QString &path)
@@ -78,7 +125,7 @@ QString HistoryModel::foldersText(const BatchSummary &s, const QList<BatchSummar
     if (!s.undoOf.isEmpty()) {
         for (const BatchSummary &other : all) {
             if (other.batchId == s.undoOf)
-                return tr("Undo of %1").arg(whenText(other.started, QDateTime::currentDateTime()));
+                return tr("Undo of %1").arg(whenText(other, all));
         }
         return tr("Undo of %1").arg(s.undoOf);
     }
@@ -137,9 +184,8 @@ QVariant HistoryModel::data(const QModelIndex &index, int role) const
     const BatchSummary &s = m_batches.at(index.row());
     if (role == Qt::DisplayRole || role == Qt::ToolTipRole) {
         switch (index.column()) {
-        case When: {
-            return whenText(s.started, QDateTime::currentDateTime());
-        }
+        case When:
+            return whenText(s);
         case Items:
             return s.damaged ? QString() : QLocale().toString(s.itemCount);
         case Folders:
@@ -149,6 +195,8 @@ QVariant HistoryModel::data(const QModelIndex &index, int role) const
                     shown.append(displayPath(f));
                 return shown.join(u'\n');
             }
+            if (!s.undoOf.isEmpty() && m_whenTexts.contains(s.undoOf))
+                return tr("Undo of %1").arg(m_whenTexts.value(s.undoOf));
             return foldersText(s, m_batches);
         case State:
             return stateText(s);
@@ -171,7 +219,12 @@ QVariant HistoryModel::data(const QModelIndex &index, int role) const
 
 QVariant HistoryModel::headerData(int section, Qt::Orientation orientation, int role) const
 {
-    if (orientation != Qt::Horizontal || role != Qt::DisplayRole)
+    if (orientation != Qt::Horizontal)
+        return {};
+    // M13: the header text has the alignment of the cells.
+    if (role == Qt::TextAlignmentRole)
+        return QVariant((section == Items ? Qt::AlignRight : Qt::AlignLeft) | Qt::AlignVCenter);
+    if (role != Qt::DisplayRole)
         return {};
     switch (section) {
     case When:

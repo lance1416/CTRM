@@ -93,7 +93,13 @@ HistoryWindow::HistoryWindow(HistoryStore &store, QWidget *parent)
     m_operationTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_operationTable->verticalHeader()->hide();
     m_operationTable->setShowGrid(false);
-    m_operationTable->horizontalHeader()->setStretchLastSection(true);
+    // M08: the names get the width; Result is as wide as its text.
+    QHeaderView *operationsHeader = m_operationTable->horizontalHeader();
+    operationsHeader->setStretchLastSection(false);
+    operationsHeader->setSectionResizeMode(0, QHeaderView::Stretch);
+    operationsHeader->setSectionResizeMode(1, QHeaderView::Stretch);
+    operationsHeader->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+    operationsHeader->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter); // M13
     m_operationTable->setTextElideMode(Qt::ElideMiddle);
 
     m_detail->setObjectName(QStringLiteral("historyDetail"));
@@ -101,6 +107,11 @@ HistoryWindow::HistoryWindow(HistoryStore &store, QWidget *parent)
     m_detail->setTextFormat(Qt::PlainText);
     m_detail->setTextInteractionFlags(Qt::TextSelectableByMouse);
     m_loadRules->setFlat(true); // tertiary
+    // M13: the macOS style places a normal button by its bezel, but a flat button by its widget
+    // rect, so Load Rules was 2 px higher. All buttons of the row use the widget rect.
+    for (QPushButton *b :
+         {m_loadRules, m_clear, m_showFile, m_markComplete, m_rollBack, m_retryRollBack, m_undo})
+        b->setAttribute(Qt::WA_LayoutUsesWidgetRect);
 
     auto *detailPane = new QWidget(this);
     auto *detailLayout = new QVBoxLayout(detailPane);
@@ -262,6 +273,10 @@ void HistoryWindow::showDetail(const BatchSummary *s)
     const std::optional<BatchRecord> rec = m_store.load(s->batchId, &error, ReadMode::BestEffort);
     QStringList lines;
     if (undoBatch) {
+        // M13: an undo batch also has its "Batch:" line.
+        lines.append(tr("Batch: %1 - %2")
+                             .arg(m_model->whenText(*s),
+                                  HistoryModel::foldersText(*s, m_model->batches())));
         lines.append(tr("This batch is an undo. It cannot be undone."));
     } else {
         QStringList names;
@@ -273,7 +288,7 @@ void HistoryWindow::showDetail(const BatchSummary *s)
                     names.append(ruleDisplayName(parsed.preset->chain.at(i)->type()));
             }
         }
-        const QString when = HistoryModel::whenText(s->started, QDateTime::currentDateTime());
+        const QString when = m_model->whenText(*s);
         lines.append(
                 names.isEmpty()
                         ? tr("Batch: %1").arg(when)

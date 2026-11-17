@@ -117,6 +117,7 @@ private:
     QMenu *m_presetsMenu = nullptr;
     QToolBar *m_toolBar = nullptr;
     QToolButton *m_toolBarPresets = nullptr;
+    QMenu *m_showColumnsMenu = nullptr;
     QWidget *m_flowStripSlot = nullptr;
     QWidget *m_rulePanelSlot = nullptr;
     QWidget *m_tableSlot = nullptr;

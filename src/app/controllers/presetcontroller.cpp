@@ -3,6 +3,7 @@
 
 #include "appcontext.h"
 #include "dialogs/managepresetsdialog.h"
+#include "dialogs/savepresetdialog.h"
 #include "mainwindow.h"
 #include "rules/ruleregistry.h"
 #include "widgets/rulepanel.h"
@@ -10,7 +11,6 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
-#include <QInputDialog>
 #include <QJsonArray>
 #include <QMenu>
 #include <QMessageBox>
@@ -45,10 +45,14 @@ PresetController::PresetController(MainWindow &w, AppContext &ctx, QObject *pare
         return box.clickedButton() == replace;
     };
     askPresetName = [this](const QString &suggested) {
-        bool ok = false;
-        const QString name = QInputDialog::getText(&m_window, tr("Save Preset"), tr("Name:"),
-                                                   QLineEdit::Normal, suggested, &ok);
-        return ok ? name.trimmed() : QString();
+        QStringList userNames;
+        for (const PresetEntry &e : m_ctx.presets().userPresets())
+            userNames.append(e.name);
+        QStringList builtInNames;
+        for (const PresetEntry &e : m_ctx.presets().builtIns())
+            builtInNames.append(e.name);
+        SavePresetDialog dialog(userNames, builtInNames, suggested, &m_window);
+        return dialog.exec() == QDialog::Accepted ? dialog.name() : QString();
     };
     askImportPath = [this] {
         return QFileDialog::getOpenFileName(&m_window, tr("Import Preset"), QString(), kFileFilter);
@@ -72,7 +76,6 @@ PresetController::PresetController(MainWindow &w, AppContext &ctx, QObject *pare
     connect(m_menu, &QMenu::aboutToShow, this, &PresetController::rebuildMenu);
     connect(&w.ruleModel(), &RuleListModel::chainChanged, this, &PresetController::updateTitle);
 
-    w.rulePanel()->presetsButton()->setMenu(m_menu);
     rebuildMenu();
     updateTitle();
 }
@@ -138,8 +141,16 @@ void PresetController::saveAs()
     Preset preset;
     preset.name = name;
     preset.chain = m_window.ruleModel().chain();
+    // A user preset with the same name is replaced (audit S09); the dialog said so.
+    QString path;
+    for (const PresetEntry &e : m_ctx.presets().userPresets()) {
+        if (e.name.compare(name, Qt::CaseInsensitive) == 0) {
+            path = e.filePath;
+            break;
+        }
+    }
     QString error;
-    const std::optional<PresetEntry> entry = m_ctx.presets().save(preset, QString(), &error);
+    const std::optional<PresetEntry> entry = m_ctx.presets().save(preset, path, &error);
     if (!entry) {
         showError(error);
         return;

@@ -13,8 +13,8 @@ class QPushButton;
 
 namespace ctrm::app {
 
-// Manage Presets (ui-design 11.2): the user presets, then the built-ins marked "(B)". Built-ins
-// are read-only: only Duplicate works for them.
+// Manage Presets (ui-design 11.2, audit S08): the "My Presets" group, then the "Built-in"
+// group, each under a dimmed header. Built-ins are read-only: only Duplicate works for them.
 class ManagePresetsDialog : public QDialog
 {
     Q_OBJECT

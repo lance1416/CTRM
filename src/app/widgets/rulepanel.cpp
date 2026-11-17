@@ -27,6 +27,7 @@
 #include <QApplication>
 #include <QBoxLayout>
 #include <QEvent>
+#include <QFocusEvent>
 #include <QFormLayout>
 #include <QKeyEvent>
 #include <QLabel>
@@ -215,7 +216,6 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     , m_model(model)
     , m_actions(actions)
     , m_addRule(new QPushButton)
-    , m_presets(new QPushButton)
     , m_emptyPage(new QWidget)
     , m_emptyText(new QLabel)
     , m_list(new RuleListView)
@@ -227,7 +227,6 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     , m_labelSync(new LabelColumnSync(this))
 {
     m_addRule->setObjectName(QStringLiteral("addRuleButton"));
-    m_presets->setObjectName(QStringLiteral("presetsButton"));
     m_emptyText->setObjectName(QStringLiteral("emptyText"));
     m_list->setObjectName(QStringLiteral("ruleList"));
 
@@ -247,28 +246,12 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     m_addRule->setAutoDefault(false);
     m_addRule->setMenu(actions.addRuleMenu);
     m_addRule->setToolTip(actions.addRuleMenu->menuAction()->toolTip());
-    m_presets->setText(tr("Presets"));
-    m_presets->setAutoDefault(false);
 
     // The empty rule list (ui-design 5.4).
     m_emptyText->setWordWrap(true);
     m_emptyText->setAlignment(Qt::AlignHCenter);
-    auto *orLabel = new QLabel(tr("or"));
-    // The Presets button is centred under Add Rule; "or" is at its left. A hidden copy of "or"
-    // at its right keeps the button on the centre line.
-    auto *orBalance = new QLabel(tr("or"));
-    QSizePolicy balancePolicy = orBalance->sizePolicy();
-    balancePolicy.setRetainSizeWhenHidden(true);
-    orBalance->setSizePolicy(balancePolicy);
-    orBalance->hide();
-    auto *presetsRow = new QHBoxLayout;
-    presetsRow->addStretch();
-    presetsRow->addWidget(orLabel);
-    presetsRow->addWidget(m_presets);
-    presetsRow->addWidget(orBalance);
-    presetsRow->addStretch();
+    // S06: no Presets button here; the toolbar has it.
     m_emptyButtons = new QVBoxLayout;
-    m_emptyButtons->addLayout(presetsRow);
     auto *emptyLayout = new QVBoxLayout(m_emptyPage);
     emptyLayout->addStretch();
     emptyLayout->addWidget(m_emptyText);
@@ -479,11 +462,6 @@ QPushButton *RulePanel::addRuleButton() const
     return m_addRule;
 }
 
-QPushButton *RulePanel::presetsButton() const
-{
-    return m_presets;
-}
-
 void RulePanel::setPrimaryAddRule(bool primary)
 {
     m_primary = primary;
@@ -510,6 +488,14 @@ bool RulePanel::eventFilter(QObject *watched, QEvent *event)
             return true;
         }
     }
+    // M28: the menu shows the rule-list keys only while the list has the focus. A fixed
+    // shortcut would be a native key equivalent on macOS that works for any focus widget.
+    if (watched == m_list && event->type() == QEvent::FocusIn)
+        setListShortcuts(true);
+    // An open popup menu (not native) takes the focus for a short time: keep the keys.
+    if (watched == m_list && event->type() == QEvent::FocusOut &&
+        static_cast<QFocusEvent *>(event)->reason() != Qt::PopupFocusReason)
+        setListShortcuts(false);
     if (watched == m_list && event->type() == QEvent::KeyPress) {
         const auto *key = static_cast<QKeyEvent *>(event);
         if (key->key() == Qt::Key_Space && key->modifiers() == Qt::NoModifier) {
@@ -522,6 +508,20 @@ bool RulePanel::eventFilter(QObject *watched, QEvent *event)
         }
     }
     return QWidget::eventFilter(watched, event);
+}
+
+void RulePanel::setListShortcuts(bool on)
+{
+    // The list handles the keys itself (eventFilter): the shortcuts only show in the menu.
+    QList<QKeySequence> deleteKeys;
+    if (on) {
+        deleteKeys.append(QKeySequence(Qt::Key_Delete));
+#ifdef Q_OS_MACOS
+        deleteKeys.append(QKeySequence(Qt::CTRL | Qt::Key_Backspace));
+#endif
+    }
+    m_actions.deleteRule->setShortcuts(deleteKeys);
+    m_actions.toggleRule->setShortcut(on ? QKeySequence(Qt::Key_Space) : QKeySequence());
 }
 
 void RulePanel::changeEvent(QEvent *event)
@@ -718,7 +718,6 @@ void RulePanel::updateIcons()
 {
     const QPalette p = palette();
     m_addRule->setIcon(toolIcon(ToolIcon::Add, p));
-    m_presets->setIcon(toolIcon(ToolIcon::Presets, p));
     const QHash<QAction *, ToolIcon> icons{{m_actions.moveRuleUp, ToolIcon::MoveUp},
                                            {m_actions.moveRuleDown, ToolIcon::MoveDown},
                                            {m_actions.duplicateRule, ToolIcon::Duplicate},

@@ -3,6 +3,7 @@
 #include "controllers/itemadder.h"
 #include "controllers/presetcontroller.h"
 #include "dialogs/managepresetsdialog.h"
+#include "dialogs/savepresetdialog.h"
 #include "fs/filesystem.h"
 #include "mainwindow.h"
 #include "models/rulelistmodel.h"
@@ -19,6 +20,7 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QLabel>
+#include <QLineEdit>
 #include <QListWidget>
 #include <QMenu>
 #include <QPushButton>
@@ -152,6 +154,8 @@ private slots:
     void builtInReadOnly();
     void manageRenameDeleteDuplicate();
     void controllerFollowsManage();
+    void savePresetDialog();
+    void saveSameNameReplaces();
 };
 
 void TestAppPresets::menuLayout()
@@ -175,7 +179,11 @@ void TestAppPresets::menuLayout()
 void TestAppPresets::presetsButtonHasMenu()
 {
     Fixture f;
-    QCOMPARE(f.window.rulePanel()->presetsButton()->menu(), f.presets.menu());
+    // S06: the toolbar has the one Presets button.
+    auto *button = f.window.findChild<QToolButton *>(QStringLiteral("toolBarPresets"));
+    QVERIFY(button);
+    QCOMPARE(button->menu(), f.presets.menu());
+    QVERIFY(!f.window.rulePanel()->findChild<QPushButton *>(QStringLiteral("presetsButton")));
 }
 
 void TestAppPresets::saveThenLoadIdentical()
@@ -360,9 +368,18 @@ void TestAppPresets::builtInReadOnly()
     ManagePresetsDialog dialog(f.ctx.presets(), nullptr);
     auto *list = dialog.findChild<QListWidget *>(QStringLiteral("presetList"));
     QVERIFY(list);
-    QCOMPARE(list->count(), 4);
-    QVERIFY(list->item(0)->text().endsWith(QStringLiteral(" (B)")));
-    list->setCurrentRow(0);
+    // Audit S08: a dimmed group header that cannot be selected, no "(B)", a tooltip instead.
+    // With no user preset, the "My Presets" group does not show.
+    QCOMPARE(list->count(), 5);
+    QCOMPARE(list->item(0)->text(), QStringLiteral("Built-in"));
+    QVERIFY(!(list->item(0)->flags() & (Qt::ItemIsSelectable | Qt::ItemIsEnabled)));
+    QCOMPARE(list->currentRow(), 1);
+    for (int row = 1; row < list->count(); ++row) {
+        QVERIFY(!list->item(row)->text().contains(QStringLiteral("(B)")));
+        QCOMPARE(list->item(row)->toolTip(),
+                 QStringLiteral("Built-in. Duplicate it to change it."));
+    }
+    list->setCurrentRow(1);
     QVERIFY(!dialog.findChild<QPushButton *>(QStringLiteral("renameButton"))->isEnabled());
     QVERIFY(!dialog.findChild<QPushButton *>(QStringLiteral("deleteButton"))->isEnabled());
     QVERIFY(!dialog.findChild<QPushButton *>(QStringLiteral("showFileButton"))->isEnabled());
@@ -385,9 +402,13 @@ void TestAppPresets::manageRenameDeleteDuplicate()
     dialog.askName = [](const QString &current) { return current + QStringLiteral(" 2"); };
     dialog.confirmDelete = [](const QString &) { return true; };
     auto *list = dialog.findChild<QListWidget *>(QStringLiteral("presetList"));
-    QCOMPARE(list->count(), 5);
-    QCOMPARE(list->item(0)->text(), QStringLiteral("Photo Trip"));
-    list->setCurrentRow(0);
+    QCOMPARE(list->count(), 7);
+    QCOMPARE(list->item(0)->text(), QStringLiteral("My Presets"));
+    QVERIFY(!(list->item(0)->flags() & Qt::ItemIsSelectable));
+    QCOMPARE(list->item(1)->text(), QStringLiteral("Photo Trip"));
+    QVERIFY(list->item(1)->toolTip().isEmpty());
+    QCOMPARE(list->item(2)->text(), QStringLiteral("Built-in"));
+    QCOMPARE(list->currentRow(), 1);
     QVERIFY(dialog.findChild<QPushButton *>(QStringLiteral("renameButton"))->isEnabled());
 
     dialog.findChild<QPushButton *>(QStringLiteral("renameButton"))->click();
@@ -398,7 +419,7 @@ void TestAppPresets::manageRenameDeleteDuplicate()
     list->setCurrentRow(list->count() - 1); // a built-in
     dialog.findChild<QPushButton *>(QStringLiteral("duplicateButton"))->click();
     QCOMPARE(f.ctx.presets().userPresets().size(), 2);
-    QCOMPARE(list->count(), 6);
+    QCOMPARE(list->count(), 8);
 
     const QString name = QStringLiteral("Photo Trip 2");
     list->setCurrentItem(list->findItems(name, Qt::MatchExactly).first());
@@ -443,6 +464,64 @@ void TestAppPresets::controllerFollowsManage()
     QCOMPARE(f.window.windowTitle(), QStringLiteral("CTRM"));
     QVERIFY(!f.menuTexts().join(QLatin1Char('|')).contains(QStringLiteral("Update")));
     QCOMPARE(f.window.ruleModel().rowCount(), 3); // the rules stay
+}
+
+void TestAppPresets::savePresetDialog()
+{
+    // ui-design 11.3: "Preset name:", Cancel and Save (primary); Save is off for an empty name,
+    // becomes Replace for a name that exists, and is off for a built-in name.
+    SavePresetDialog dialog({QStringLiteral("Photo Trip")},
+                            {QStringLiteral("Lower-case extensions")}, QStringLiteral("My Rules"),
+                            nullptr);
+    QCOMPARE(dialog.windowTitle(), QStringLiteral("Save Preset"));
+    auto *edit = dialog.findChild<QLineEdit *>(QStringLiteral("presetNameEdit"));
+    auto *save = dialog.findChild<QPushButton *>(QStringLiteral("saveButton"));
+    auto *note = dialog.findChild<QLabel *>(QStringLiteral("presetNameNote"));
+    QVERIFY(edit && save && note);
+    QCOMPARE(edit->text(), QStringLiteral("My Rules"));
+    QCOMPARE(edit->selectedText(), QStringLiteral("My Rules"));
+    QCOMPARE(save->text(), QStringLiteral("Save"));
+    QVERIFY(save->isDefault() && save->isEnabled());
+    QVERIFY(note->isHidden());
+    QCOMPARE(note->foregroundRole(), QPalette::PlaceholderText);
+    QVERIFY(dialog.findChild<QPushButton *>(QStringLiteral("cancelButton")));
+
+    edit->setText(QStringLiteral("   "));
+    QVERIFY(!save->isEnabled());
+
+    edit->setText(QStringLiteral(" photo trip "));
+    QVERIFY(save->isEnabled());
+    QCOMPARE(save->text(), QStringLiteral("Replace"));
+    QVERIFY(!note->isHidden());
+    QCOMPARE(note->text(), QStringLiteral("A preset with this name exists. Replace replaces it."));
+    QCOMPARE(dialog.name(), QStringLiteral("photo trip"));
+
+    edit->setText(QStringLiteral("lower-case EXTENSIONS"));
+    QVERIFY(!save->isEnabled());
+    QCOMPARE(save->text(), QStringLiteral("Save"));
+    QVERIFY(!note->isHidden());
+    QCOMPARE(note->text(), QStringLiteral("This is a built-in preset name. Use a different name."));
+
+    edit->setText(QStringLiteral("Beach"));
+    QVERIFY(save->isEnabled());
+    QCOMPARE(save->text(), QStringLiteral("Save"));
+    QVERIFY(note->isHidden());
+}
+
+void TestAppPresets::saveSameNameReplaces()
+{
+    Fixture f;
+    f.window.ruleModel().setChain(threeRules());
+    f.saveAs(QStringLiteral("Photo Trip"));
+    const QString path = f.ctx.presets().userPresets().first().filePath;
+    f.window.ruleModel().setEnabled(0, false);
+    f.saveAs(QStringLiteral("Photo Trip"));
+    QCOMPARE(f.ctx.presets().userPresets().size(), 1);
+    QCOMPARE(f.ctx.presets().userPresets().first().filePath, path);
+    const PresetParseResult loaded = f.ctx.presets().load(f.ctx.presets().userPresets().first());
+    QVERIFY(loaded.preset);
+    QVERIFY(!loaded.preset->chain.at(0)->enabled);
+    QVERIFY(!f.presets.isModified());
 }
 
 QTEST_MAIN(TestAppPresets)

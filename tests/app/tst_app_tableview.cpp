@@ -482,15 +482,21 @@ void TestAppTableView::emptyStatePrimary()
     QVERIFY(addFiles->isDefault());
     QVERIFY(!addFolder->isDefault());
     QCOMPARE(addFiles->text(), QStringLiteral("Add Files..."));
-    // Larger than the secondary button (ui-design 5.2). The macOS style keeps the native height,
-    // so the accent bezel stays; there the button is bold and wider.
-    if (addFiles->style()->name() == QLatin1StringView("macos")) {
-        QVERIFY(addFiles->font().weight() > addFolder->font().weight());
-    } else {
-        QVERIFY(addFiles->font().pointSizeF() > addFolder->font().pointSizeF());
+    // One type step bigger with two times the padding (ui-design 5.2, audit M15). The macOS
+    // style keeps the native height, so the accent bezel stays.
+    QVERIFY(addFiles->font().pointSizeF() > addFolder->font().pointSizeF());
+    QVERIFY(addFiles->font().weight() > addFolder->font().weight());
+    if (addFiles->style()->name() == QLatin1StringView("macos"))
+        QCOMPARE(addFiles->sizeHint().height(), addFolder->sizeHint().height());
+    else
         QVERIFY(addFiles->sizeHint().height() > addFolder->sizeHint().height());
-    }
-    QVERIFY(addFiles->sizeHint().width() > addFolder->sizeHint().width());
+    const auto sidePadding = [](const QPushButton *b) {
+        return b->sizeHint().width() - b->fontMetrics().horizontalAdvance(b->text());
+    };
+    QVERIFY2(sidePadding(addFiles) >= 2 * sidePadding(addFolder),
+             qPrintable(QStringLiteral("%1 %2")
+                                .arg(sidePadding(addFiles))
+                                .arg(sidePadding(addFolder))));
 
     QSignalSpy files(actions.addFiles, &QAction::triggered);
     QSignalSpy folder(actions.addFolder, &QAction::triggered);
@@ -542,10 +548,25 @@ void TestAppTableView::emptyStateDrop()
     QDragEnterEvent enter(test::DragPos(5, 5), Qt::CopyAction, &mime, Qt::LeftButton, {});
     QCoreApplication::sendEvent(&empty, &enter);
     QVERIFY(enter.isAccepted());
+    // ui-design 9.2 (audit M16): the drag-over text, counting only the local files.
+    auto *title = empty.findChild<QLabel *>(QStringLiteral("emptyTitle"));
+    QCOMPARE(title->text(), QStringLiteral("Drop to add 1 item"));
+    QDragLeaveEvent leave;
+    QCoreApplication::sendEvent(&empty, &leave);
+    QCOMPARE(title->text(), QStringLiteral("Drop files or folders here"));
+    QMimeData two;
+    two.setUrls({QUrl::fromLocalFile(QStringLiteral("/tmp/x.txt")),
+                 QUrl::fromLocalFile(QStringLiteral("/tmp/y.txt"))});
+    QDragEnterEvent enterTwo(test::DragPos(5, 5), Qt::CopyAction, &two, Qt::LeftButton, {});
+    QCoreApplication::sendEvent(&empty, &enterTwo);
+    QCOMPARE(title->text(), QStringLiteral("Drop to add 2 items"));
+    QCoreApplication::sendEvent(&empty, &leave);
+    QCoreApplication::sendEvent(&empty, &enter);
     QDropEvent drop(QPointF(5, 5), Qt::CopyAction, &mime, Qt::LeftButton, {});
     QCoreApplication::sendEvent(&empty, &drop);
     QCOMPARE(spy.size(), 1);
     QCOMPARE(spy.at(0).at(0).toStringList(), QStringList{QStringLiteral("/tmp/x.txt")});
+    QCOMPARE(title->text(), QStringLiteral("Drop files or folders here"));
 
     // No local file: the drop is refused.
     QMimeData web;

@@ -4,6 +4,7 @@
 #include "controllers/historycontroller.h"
 #include "controllers/itemadder.h"
 #include "dialogs/historywindow.h"
+#include "dialogs/reportdialog.h"
 #include "dialogs/undopreviewdialog.h"
 #include "exec/batchservice.h"
 #include "exec/historystore.h"
@@ -176,6 +177,8 @@ private slots:
     void damagedRow();
     void undoOfLabel();
     void undoOlderBatch();
+    void secondsWhenSameMinute();
+    void reportLayout();
     void partlyUndoneUi();
     void loadRules();
     void clearHistoryConfirms();
@@ -441,6 +444,51 @@ void TestHistory::tablesLayout()
              QHeaderView::ResizeToContents);
     QCOMPARE(HistoryModel::displayPath(QDir::homePath() + QStringLiteral("/Pictures/Trip")),
              QDir::toNativeSeparators(QStringLiteral("~/Pictures/Trip")));
+    // M08: the names share the free width; Result is as wide as its text.
+    QHeaderView *ops = operations->horizontalHeader();
+    QVERIFY(!ops->stretchLastSection());
+    QCOMPARE(ops->sectionResizeMode(0), QHeaderView::Stretch);
+    QCOMPARE(ops->sectionResizeMode(1), QHeaderView::Stretch);
+    QCOMPARE(ops->sectionResizeMode(2), QHeaderView::ResizeToContents);
+    // M13: header text has the alignment of the cells.
+    QCOMPARE(int(ops->defaultAlignment()), int(Qt::AlignLeft | Qt::AlignVCenter));
+    const QAbstractItemModel *model = batches->model();
+    for (int c = 0; c < HistoryModel::ColumnCount; ++c) {
+        const auto align =
+                Qt::Alignment(model->headerData(c, Qt::Horizontal, Qt::TextAlignmentRole).toInt());
+        QCOMPARE(align & Qt::AlignHorizontal_Mask,
+                 c == HistoryModel::Items ? Qt::AlignRight : Qt::AlignLeft);
+    }
+    // M13: Load Rules and Clear History are on one line.
+    w.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&w));
+    QPushButton *load = button(&w, "loadRules");
+    QPushButton *clear = button(&w, "clearHistory");
+    load->show();
+    QApplication::processEvents();
+    QCOMPARE(load->mapTo(&w, QPoint()).y(), clear->mapTo(&w, QPoint()).y());
+    QCOMPARE(load->height(), clear->height());
+}
+
+void TestHistory::secondsWhenSameMinute()
+{
+    // M13: two batches in the same minute show the seconds; others do not.
+    const QDateTime now = QDateTime::currentDateTime();
+    const QDateTime base(now.date(), QTime(9, 30, 5));
+    BatchSummary a;
+    a.batchId = QStringLiteral("a");
+    a.started = base;
+    BatchSummary b = a;
+    b.batchId = QStringLiteral("b");
+    b.started = base.addSecs(40);
+    BatchSummary c = a;
+    c.batchId = QStringLiteral("c");
+    c.started = base.addSecs(-3600);
+    const QList<BatchSummary> all{a, b, c};
+    QVERIFY(HistoryModel::whenText(a, all).contains(QStringLiteral(":05")));
+    QVERIFY(HistoryModel::whenText(b, all).contains(QStringLiteral(":45")));
+    QVERIFY(HistoryModel::whenText(a, all) != HistoryModel::whenText(b, all));
+    QCOMPARE(HistoryModel::whenText(c, all), HistoryModel::whenText(c.started, now));
 }
 
 void TestHistory::undoOfLabel()
@@ -452,16 +500,19 @@ void TestHistory::undoOfLabel()
     QCOMPARE(all.size(), 2);
     const BatchSummary undo = all.first().undoOf.isEmpty() ? all.last() : all.first();
     QCOMPARE(undo.undoOf, original);
-    QCOMPARE(HistoryModel::foldersText(undo, all),
-             QStringLiteral("Undo of %1")
-                     .arg(HistoryModel::whenText(f.summary(original).started,
-                                                 QDateTime::currentDateTime())));
+    // The two batches are in the same minute: the times have seconds (M13).
+    const QString originalWhen = HistoryModel::whenText(f.summary(original), all);
+    QCOMPARE(originalWhen, HistoryModel::whenText(f.summary(original).started,
+                                                  QDateTime::currentDateTime(), true));
+    QCOMPARE(HistoryModel::foldersText(undo, all), QStringLiteral("Undo of %1").arg(originalWhen));
     HistoryWindow w(f.ctx.history(), nullptr);
     w.refresh();
     w.selectBatch(undo.batchId);
     QVERIFY(!shown(&w, "undoBatch"));
+    // M13: an undo batch also has its "Batch:" line.
     QCOMPARE(w.findChild<QLabel *>(QStringLiteral("historyDetail"))->text(),
-             QStringLiteral("This batch is an undo. It cannot be undone."));
+             QStringLiteral("Batch: %1 - Undo of %2\nThis batch is an undo. It cannot be undone.")
+                     .arg(HistoryModel::whenText(undo, all), originalWhen));
     QCOMPARE(f.summary(original).state, BatchState::Undone);
 }
 
@@ -700,6 +751,31 @@ void TestHistory::focusAfterRunAndUndo()
     QVERIFY(g.exists(QStringLiteral("old_a.txt")));
     QTRY_COMPARE(g.window.focusWidget(), g.window.tableView());
     QVERIFY(g.window.tableView()->isEnabled());
+}
+
+void TestHistory::reportLayout()
+{
+    // M12: no grid, the names get the width, and the title time is as in History.
+    FinishResult result;
+    result.state = BatchState::Complete;
+    ReportRow row;
+    row.oldPath = QStringLiteral("/tmp/IMG_0001.JPG");
+    row.finalPath = QStringLiteral("/tmp/Trip_001.jpg");
+    row.result = ReportRow::Result::Renamed;
+    result.report = {row};
+    const QDateTime when = QDateTime::currentDateTime();
+    ReportDialog d(result, when, nullptr);
+    QCOMPARE(d.windowTitle(),
+             QStringLiteral("Rename Report - %1").arg(HistoryModel::whenText(when, when)));
+    QVERIFY(d.windowTitle().contains(QStringLiteral("Today")));
+    auto *table = d.findChild<QTableView *>();
+    QVERIFY(table && !table->showGrid());
+    QHeaderView *h = table->horizontalHeader();
+    QVERIFY(!h->stretchLastSection());
+    QCOMPARE(h->sectionResizeMode(1), QHeaderView::Stretch);
+    QCOMPARE(h->sectionResizeMode(2), QHeaderView::Stretch);
+    QCOMPARE(h->sectionResizeMode(3), QHeaderView::ResizeToContents);
+    QCOMPARE(int(h->defaultAlignment()), int(Qt::AlignLeft | Qt::AlignVCenter));
 }
 
 QTEST_MAIN(TestHistory)

@@ -26,7 +26,8 @@ public:
     PresetController(MainWindow &w, AppContext &ctx, QObject *parent);
 
     std::function<bool()> confirmReplaceRules; // "Replace the current rules?" [Cancel] [Replace]
-    std::function<QString(const QString &suggested)> askPresetName; // QInputDialog; empty = cancel
+    std::function<QString(const QString &suggested)>
+            askPresetName; // SavePresetDialog; empty = cancel
     std::function<QString()> askImportPath;
     std::function<QString(const QString &suggested)> askExportPath;
     // An error for the user (a bad preset file, a failed save). The default is

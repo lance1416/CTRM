@@ -20,6 +20,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLabel>
 #include <QPushButton>
 #include <QSettings>
 #include <QSpinBox>
@@ -112,6 +113,7 @@ private slots:
     void highlightFollowsAction();
     void retentionUsesSettings();
     void formOneFieldEdge();
+    void nothingCut();
 };
 
 void TestPreferences::loadsSettings()
@@ -266,6 +268,32 @@ void TestPreferences::formOneFieldEdge()
     QCOMPARE(edges.size(), 5);
     for (const int e : std::as_const(edges))
         QCOMPARE(e, edges.first());
+}
+
+void TestPreferences::nothingCut()
+{
+    // M30 (ui-design 6.1 r8): every control has at least its size hint, and is inside the
+    // dialog.
+    Fixture f;
+    PreferencesDialog *d = f.open();
+    QVERIFY(QTest::qWaitForWindowExposed(d));
+    QApplication::processEvents();
+    for (QWidget *w : d->findChildren<QWidget *>()) {
+        if (!w->isVisible() || !(qobject_cast<QCheckBox *>(w) || qobject_cast<QComboBox *>(w) ||
+                                 qobject_cast<QSpinBox *>(w) || qobject_cast<QLabel *>(w)))
+            continue;
+        const QString what = w->objectName() + u' ' + w->metaObject()->className();
+        QVERIFY2(w->width() >= w->sizeHint().width(),
+                 qPrintable(QStringLiteral("%1 %2 < %3")
+                                    .arg(what)
+                                    .arg(w->width())
+                                    .arg(w->sizeHint().width())));
+        // Each parent clips its children: the control must be inside each of them.
+        for (QWidget *p = w; p != d; p = p->parentWidget()) {
+            const QRect inParent(p->mapTo(p->parentWidget(), QPoint()), p->size());
+            QVERIFY2(p->parentWidget()->rect().contains(inParent), qPrintable(what));
+        }
+    }
 }
 
 QTEST_MAIN(TestPreferences)

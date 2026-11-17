@@ -33,9 +33,6 @@ public:
     QListView *ruleList() const;
     QWidget *currentEditor() const;
     QPushButton *addRuleButton() const;
-    // The "or Presets" button of the empty rule list (ui-design 5.4). It has no menu; the
-    // presets code sets one.
-    QPushButton *presetsButton() const;
     void setPrimaryAddRule(bool primary); // empty-with-items state (ui-design 5.4)
     void setNumberedCount(int n);         // forwards to NumberingEditor
 
@@ -59,13 +56,13 @@ private:
     void updateAddRuleLook();
     void openAddRuleMenu();
     void updateIcons();
+    void setListShortcuts(bool on);
     int currentRow() const;
     void selectRow(int row);
 
     RuleListModel &m_model;
     const Actions &m_actions;
     QPushButton *m_addRule;
-    QPushButton *m_presets;
     QBoxLayout *m_headerLayout;
     QBoxLayout *m_emptyButtons;
     QWidget *m_emptyPage;

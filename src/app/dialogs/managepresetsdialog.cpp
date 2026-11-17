@@ -2,6 +2,7 @@
 #include "managepresetsdialog.h"
 
 #include "rules/rulesummary.h"
+#include "theme/typography.h"
 
 #include <QDesktopServices>
 #include <QDialogButtonBox>
@@ -95,23 +96,42 @@ void ManagePresetsDialog::reload(const QString &selectPath)
 {
     m_entries = m_store.userPresets() + m_store.builtIns();
     m_list->clear();
-    int select = m_entries.isEmpty() ? -1 : 0;
+    QListWidgetItem *select = nullptr;
+    bool builtInHeader = false;
+    // Audit S08: two groups, each under a dimmed header that the user cannot select.
+    const auto addHeader = [this](const QString &text) {
+        auto *header = new QListWidgetItem(text, m_list);
+        header->setFlags(Qt::NoItemFlags);
+        header->setFont(typeStyle(TypeToken::LabelStrong, m_list->font()));
+    };
+    if (!m_store.userPresets().isEmpty())
+        addHeader(tr("My Presets"));
     for (int i = 0; i < m_entries.size(); ++i) {
         const PresetEntry &e = m_entries.at(i);
-        m_list->addItem(e.builtIn ? tr("%1 (B)").arg(e.name) : e.name);
-        if (!selectPath.isEmpty() && e.filePath == selectPath)
-            select = i;
+        if (e.builtIn && !builtInHeader) {
+            addHeader(tr("Built-in"));
+            builtInHeader = true;
+        }
+        auto *item = new QListWidgetItem(e.name, m_list);
+        item->setData(Qt::UserRole, i);
+        if (e.builtIn)
+            item->setToolTip(tr("Built-in. Duplicate it to change it."));
+        if (!select || (!selectPath.isEmpty() && e.filePath == selectPath))
+            select = item;
     }
-    m_list->setCurrentRow(select);
+    m_list->setCurrentItem(select);
     updateSelection();
 }
 
 std::optional<PresetEntry> ManagePresetsDialog::selected() const
 {
-    const int row = m_list->currentRow();
-    if (row < 0 || row >= m_entries.size())
+    const QListWidgetItem *item = m_list->currentItem();
+    if (!item || !item->data(Qt::UserRole).isValid())
         return std::nullopt;
-    return m_entries.at(row);
+    const int index = item->data(Qt::UserRole).toInt();
+    if (index < 0 || index >= m_entries.size())
+        return std::nullopt;
+    return m_entries.at(index);
 }
 
 void ManagePresetsDialog::updateSelection()

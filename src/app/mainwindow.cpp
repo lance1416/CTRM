@@ -9,6 +9,7 @@
 #include "widgets/emptystate.h"
 #include "widgets/flowstrip.h"
 #include "widgets/itemtableview.h"
+#include "widgets/menutoolbutton.h"
 #include "widgets/messagebar.h"
 #include "widgets/rulepanel.h"
 
@@ -104,6 +105,9 @@ MainWindow::MainWindow(AppContext &ctx, QWidget *parent)
     buildCentralWidget();
     buildPanels();
     statusBar();
+    // M04: View > Show Columns has the column items of the table header.
+    m_showColumnsMenu->addActions(
+            m_table->findChild<QMenu *>(QStringLiteral("columnsMenu"))->actions());
 
     connect(m_actions.closeWindow, &QAction::triggered, this, &QWidget::close);
     connect(m_actions.quit, &QAction::triggered, qApp, &QApplication::closeAllWindows,
@@ -388,8 +392,8 @@ void MainWindow::buildMenus()
 
     QMenu *view = bar->addMenu(tr("&View"));
     view->addAction(a.showSteps);
-    QMenu *columns = view->addMenu(tr("Show Columns"));
-    columns->setObjectName(QStringLiteral("showColumnsMenu"));
+    m_showColumnsMenu = view->addMenu(tr("Show Columns"));
+    m_showColumnsMenu->setObjectName(QStringLiteral("showColumnsMenu"));
     view->addAction(a.highlightChanged);
     view->addSeparator();
     view->addActions({a.showAllItems, a.showChangedOnly, a.showProblemsOnly});
@@ -422,15 +426,15 @@ void MainWindow::buildToolBar()
         m_toolBar->addAction(action);
         auto *button = qobject_cast<QToolButton *>(m_toolBar->widgetForAction(action));
         button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        useBodyFont(button); // M17
     }
     // A button of its own: an icon on the menu action would replace the menu bar title.
-    m_toolBarPresets = new QToolButton(m_toolBar);
+    m_toolBarPresets = new MenuToolButton(m_toolBar); // M17: the arrow on the text line
     m_toolBarPresets->setObjectName(QStringLiteral("toolBarPresets"));
     m_toolBarPresets->setText(tr("Presets"));
     m_toolBarPresets->setToolTip(tr("Presets"));
     m_toolBarPresets->setMenu(m_presetsMenu);
-    m_toolBarPresets->setPopupMode(QToolButton::InstantPopup);
-    m_toolBarPresets->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    useBodyFont(m_toolBarPresets);
     m_toolBar->addWidget(m_toolBarPresets);
 
     auto *stretch = new QWidget(m_toolBar);

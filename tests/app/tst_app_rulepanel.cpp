@@ -107,7 +107,8 @@ private slots:
     void numberedCountForwarded();
     void inactiveSelectionContrast();
     void listFollowsRows();
-    void presetsUnderAddRule();
+    void addRuleCentredAlone();
+    void listShortcutsOnlyWithFocus();
     void primaryAddRuleIsPlainButton();
     void editorsFitPanelWidth();
 };
@@ -386,7 +387,7 @@ void TestAppRulePanel::emptyStates()
                                           "change their names."));
     QVERIFY(!f.panel->ruleList()->isVisible());
     QVERIFY(f.panel->addRuleButton()->isVisible());
-    QVERIFY(f.panel->presetsButton()->isVisible());
+    QVERIFY(!f.panel->findChild<QPushButton *>(QStringLiteral("presetsButton"))); // S06
     QVERIFY(!f.panel->addRuleButton()->property("primary").toBool());
     QVERIFY(!f.panel->findChild<ChainOptionsWidget *>()->isVisible());
 
@@ -404,7 +405,6 @@ void TestAppRulePanel::emptyStates()
     QVERIFY(!text->isVisible());
     QVERIFY(f.panel->ruleList()->isVisible());
     QVERIFY(f.panel->addRuleButton()->isVisible());
-    QVERIFY(!f.panel->presetsButton()->isVisible());
     QVERIFY(f.panel->findChild<ChainOptionsWidget *>()->isVisible());
 
     f.panel->setPrimaryAddRule(false);
@@ -535,23 +535,59 @@ void TestAppRulePanel::listFollowsRows()
     QCOMPARE(list->sizeHint().height(), 5 * row + 2 * list->frameWidth());
 }
 
-void TestAppRulePanel::presetsUnderAddRule()
+void TestAppRulePanel::addRuleCentredAlone()
 {
-    // D11: the Presets button is centred under Add Rule; "or" is at its left.
+    // S06: the empty rule list has Add Rule only, centred; no "or Presets".
     Fixture f;
     QVERIFY(QTest::qWaitForWindowExposed(&f.window));
     QPushButton *add = f.panel->addRuleButton();
-    QPushButton *presets = f.panel->presetsButton();
     const int addCentre = add->mapTo(f.panel, add->rect().center()).x();
-    const int presetsCentre = presets->mapTo(f.panel, presets->rect().center()).x();
-    QVERIFY2(qAbs(addCentre - presetsCentre) <= 1,
-             qPrintable(QStringLiteral("%1 %2").arg(addCentre).arg(presetsCentre)));
-    QLabel *orLabel = nullptr;
+    QVERIFY2(qAbs(addCentre - f.panel->rect().center().x()) <= 1,
+             qPrintable(QString::number(addCentre)));
     for (QLabel *l : f.panel->findChildren<QLabel *>())
-        if (l->text() == QStringLiteral("or") && l->isVisible())
-            orLabel = l;
-    QVERIFY(orLabel);
-    QVERIFY(orLabel->mapTo(f.panel, QPoint()).x() < presets->mapTo(f.panel, QPoint()).x());
+        QVERIFY(l->text() != QStringLiteral("or"));
+}
+
+void TestAppRulePanel::listShortcutsOnlyWithFocus()
+{
+    // M28: the menu shows Delete and Space for the rule while the rule list has the focus.
+    // At other times the actions have no shortcut, so the keys go to the other widgets.
+    Fixture f({"replace", "numbering"});
+    auto *other = new QLineEdit(&f.window);
+    f.window.layout()->addWidget(other);
+    f.window.addActions({f.actions.deleteRule, f.actions.toggleRule, f.actions.removeFromList});
+    QVERIFY(QTest::qWaitForWindowActive(&f.window));
+    other->setFocus();
+    QTRY_VERIFY(other->hasFocus());
+    QVERIFY(f.actions.deleteRule->shortcut().isEmpty());
+    QVERIFY(f.actions.toggleRule->shortcut().isEmpty());
+
+    f.select(0);
+    f.panel->ruleList()->setFocus();
+    QTRY_VERIFY(f.panel->ruleList()->hasFocus());
+    QCOMPARE(f.actions.deleteRule->shortcut(), QKeySequence(Qt::Key_Delete));
+    QCOMPARE(f.actions.toggleRule->shortcut(), QKeySequence(Qt::Key_Space));
+    // One key press does one thing, also with the shortcuts on the window.
+    QSignalSpy removeItems(f.actions.removeFromList, &QAction::triggered);
+    QTest::keyClick(f.panel->ruleList(), Qt::Key_Space);
+    QVERIFY(!f.model.chain().at(0)->enabled);
+    QTest::keyClick(f.panel->ruleList(), Qt::Key_Delete);
+    QCOMPARE(f.model.rowCount(), 1);
+    QCOMPARE(removeItems.count(), 0);
+
+    // An open popup menu takes the focus for a short time; the menu keeps the keys.
+    QFocusEvent popupOut(QEvent::FocusOut, Qt::PopupFocusReason);
+    QCoreApplication::sendEvent(f.panel->ruleList(), &popupOut);
+    QCOMPARE(f.actions.toggleRule->shortcut(), QKeySequence(Qt::Key_Space));
+
+    other->setFocus();
+    QTRY_VERIFY(other->hasFocus());
+    QVERIFY(f.actions.deleteRule->shortcut().isEmpty());
+    QVERIFY(f.actions.toggleRule->shortcut().isEmpty());
+    QTest::keyClick(other, Qt::Key_Space);
+    QCOMPARE(other->text(), QStringLiteral(" "));
+    QCOMPARE(f.model.rowCount(), 1);
+    QVERIFY(f.model.chain().at(0)->enabled);
 }
 
 QTEST_MAIN(TestAppRulePanel)
