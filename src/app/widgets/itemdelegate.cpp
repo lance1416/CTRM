@@ -3,6 +3,7 @@
 
 #include "models/itemtablemodel.h"
 #include "text/messages.h"
+#include "widgets/itemviewpaint.h"
 
 #include <QApplication>
 #include <QPainter>
@@ -150,7 +151,9 @@ void ItemDelegate::initStyleOption(QStyleOptionViewItem *option, const QModelInd
 void ItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option,
                          const QModelIndex &index) const
 {
-    QStyledItemDelegate::paint(painter, option, index);
+    QStyleOptionViewItem item = option;
+    initStyleOption(&item, index);
+    paintItemViewItem(painter, item);
     if (!m_highlightChanged || index.column() != ItemTableModel::NewName)
         return;
     const RowFacts f = rowFacts(index);

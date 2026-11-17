@@ -19,6 +19,7 @@
 #include "theme/typography.h"
 #include "widgets/buttonstyle.h"
 #include "widgets/formutils.h"
+#include "widgets/itemviewpaint.h"
 #include "widgets/tertiarybutton.h"
 
 #include <QAbstractButton>
@@ -95,7 +96,7 @@ public:
         if (!on && !accentSelection) // a rule that is off is dimmed (ui-design 4.4)
             first.palette.setColor(selected ? QPalette::HighlightedText : QPalette::Text,
                                    opt.palette.color(QPalette::PlaceholderText));
-        style->drawControl(QStyle::CE_ItemViewItem, &first, painter, widget);
+        paintItemViewItem(painter, first);
 
         const QRect textRect = style->subElementRect(QStyle::SE_ItemViewItemText, &first, widget);
         QRect summaryRect(textRect.left(), first.rect.bottom() + 1 + kSummarySpacing,

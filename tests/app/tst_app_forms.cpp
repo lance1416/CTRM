@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "rules/ruleeditor.h"
 #include "widgets/formutils.h"
+#include "widgets/itemviewpaint.h"
 #include "widgets/tertiarybutton.h"
 
 #include <QApplication>
@@ -12,6 +13,8 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPainter>
+#include <QProxyStyle>
 #include <QRadioButton>
 #include <QSignalSpy>
 #include <QStyle>
@@ -163,6 +166,7 @@ private slots:
     void syncedLabelTextAlignment();
     void inlineSubFieldsAligned();
     void tertiaryButtonFrame();
+    void itemCheckAtOrigin();
 };
 
 void TestAppForms::baselineMatches_data()
@@ -513,6 +517,80 @@ void TestAppForms::tertiaryButtonFrame()
     button->setDown(false);
     button->setFocus(Qt::TabFocusReason);
     QVERIFY(button->framed());
+}
+
+namespace {
+
+// Records where the item view check indicators are drawn.
+class CheckRecorder : public QProxyStyle
+{
+public:
+    struct Draw
+    {
+        QRect rect;
+        QPointF origin;
+        bool on = false;
+    };
+    QList<Draw> checks;
+    int itemsWithCheck = 0;
+
+    void drawPrimitive(PrimitiveElement pe, const QStyleOption *option, QPainter *painter,
+                       const QWidget *widget) const override
+    {
+        if (pe == PE_IndicatorItemViewItemCheck)
+            const_cast<CheckRecorder *>(this)->checks.append({option->rect,
+                                                              painter->transform().map(QPointF()),
+                                                              bool(option->state & State_On)});
+        QProxyStyle::drawPrimitive(pe, option, painter, widget);
+    }
+
+    void drawControl(ControlElement ce, const QStyleOption *option, QPainter *painter,
+                     const QWidget *widget) const override
+    {
+        if (ce == CE_ItemViewItem) {
+            const auto *item = qstyleoption_cast<const QStyleOptionViewItem *>(option);
+            if (item && item->features & QStyleOptionViewItem::HasCheckIndicator)
+                ++const_cast<CheckRecorder *>(this)->itemsWithCheck;
+        }
+        QProxyStyle::drawControl(ce, option, painter, widget);
+    }
+};
+
+} // namespace
+
+void TestAppForms::itemCheckAtOrigin()
+{
+    // D9: the macOS style draws the check indicator of an item view only in the first row. The
+    // indicator is drawn at the painter origin, and the style never gets an item with one.
+    auto *recorder = new CheckRecorder;
+    QWidget widget;
+    widget.setStyle(recorder);
+    QImage image(200, 200, QImage::Format_ARGB32);
+    image.fill(Qt::white);
+    QPainter painter(&image);
+    QStyleOptionViewItem option;
+    option.initFrom(&widget);
+    option.widget = &widget;
+    option.features = QStyleOptionViewItem::HasCheckIndicator | QStyleOptionViewItem::HasDisplay;
+    option.text = QStringLiteral("x2.txt");
+    option.rect = QRect(0, 60, 200, 24);
+    option.checkState = Qt::Checked;
+    const QRect check =
+            recorder->subElementRect(QStyle::SE_ItemViewItemCheckIndicator, &option, &widget);
+    paintItemViewItem(&painter, option);
+    option.checkState = Qt::Unchecked;
+    paintItemViewItem(&painter, option);
+    painter.end();
+
+    QCOMPARE(recorder->itemsWithCheck, 0);
+    QCOMPARE(recorder->checks.size(), 2);
+    for (const CheckRecorder::Draw &d : std::as_const(recorder->checks)) {
+        QCOMPARE(d.rect.topLeft(), QPoint(0, 0));
+        QCOMPARE(d.rect.size(), check.size());
+        QCOMPARE(d.origin, QPointF(check.topLeft()));
+    }
+    QVERIFY(recorder->checks.at(0).on);
+    QVERIFY(!recorder->checks.at(1).on);
 }
 
 QTEST_MAIN(TestAppForms)
