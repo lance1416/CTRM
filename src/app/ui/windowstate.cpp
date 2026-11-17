@@ -1,18 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "ui/windowstate.h"
 
+#include "text/plural.h"
+
 #include <QCoreApplication>
 #include <QStringList>
 
 namespace ctrm::app {
 
 namespace {
-
-// Without a translation, Qt keeps "(s)" in a "%n" text. This makes the English plural.
-QString numerus(QString text, int n)
-{
-    return text.replace(QLatin1StringView("(s)"), n == 1 ? QString() : QStringLiteral("s"));
-}
 
 QString renameText(const WindowStateInput &in)
 {

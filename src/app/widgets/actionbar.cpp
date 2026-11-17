@@ -4,6 +4,7 @@
 #include "theme/colors.h"
 #include "theme/icons.h"
 #include "theme/typography.h"
+#include "widgets/buttonstyle.h"
 
 #include <QAccessible>
 #include <QAction>
@@ -150,7 +151,6 @@ void ActionBar::setState(const WindowStateInfo &info, const ctrm::PreviewSummary
     m_rename->setText(info.renameText);
     m_rename->setEnabled(info.renameEnabled);
     m_rename->setVisible(!running);
-    m_rename->setDefault(info.state == WindowState::Ready);
     if (info.renameEnabled) {
         m_rename->setToolTip(m_actions.rename->toolTip());
         m_rename->setAccessibleDescription(QString());
@@ -277,17 +277,7 @@ void ActionBar::updateReasonIcon()
 
 void ActionBar::updateAccent()
 {
-    // Fusion does not draw the default button with the accent colour (ui-design 5.1).
-    const bool fusion = m_rename->style()->name().compare(QLatin1StringView("fusion"),
-                                                          Qt::CaseInsensitive) == 0;
-    if (fusion && m_rename->isDefault()) {
-        QPalette accent;
-        accent.setColor(QPalette::Button, palette().color(QPalette::Accent));
-        accent.setColor(QPalette::ButtonText, palette().color(QPalette::HighlightedText));
-        m_rename->setPalette(accent);
-    } else {
-        m_rename->setPalette(QPalette());
-    }
+    setPrimary(m_rename, m_info.state == WindowState::Ready);
 }
 
 void ActionBar::changeEvent(QEvent *event)
