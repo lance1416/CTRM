@@ -1,0 +1,28 @@
+<!DOCTYPE RCC>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<RCC version="1.0">
+    <qresource prefix="/">
+        <file>icons/app-toast.svg</file>
+        <file>icons/state-change.svg</file>
+        <file>icons/state-conflict.svg</file>
+        <file>icons/state-done.svg</file>
+        <file>icons/state-error.svg</file>
+        <file>icons/state-excluded.svg</file>
+        <file>icons/state-rolled-back.svg</file>
+        <file>icons/state-warning.svg</file>
+        <file>icons/tool-add-files.svg</file>
+        <file>icons/tool-add-folder.svg</file>
+        <file>icons/tool-add.svg</file>
+        <file>icons/tool-clear.svg</file>
+        <file>icons/tool-delete.svg</file>
+        <file>icons/tool-down.svg</file>
+        <file>icons/tool-duplicate.svg</file>
+        <file>icons/tool-history.svg</file>
+        <file>icons/tool-info.svg</file>
+        <file>icons/tool-presets.svg</file>
+        <file>icons/tool-refresh.svg</file>
+        <file>icons/tool-remove.svg</file>
+        <file>icons/tool-undo.svg</file>
+        <file>icons/tool-up.svg</file>
+    </qresource>
+</RCC>

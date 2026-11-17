@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "appcontext.h"
 #include "mainwindow.h"
+#include "theme/icons.h"
 #include "version.h"
 
 #include <QApplication>
@@ -20,6 +21,8 @@ int main(int argc, char *argv[])
     if (QApplication::style()->name().isEmpty())
         QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
 #endif
+
+    QApplication::setWindowIcon(ctrm::app::appIcon());
 
     ctrm::app::AppContext context;
     ctrm::app::MainWindow window(context);
