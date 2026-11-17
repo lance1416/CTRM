@@ -31,6 +31,21 @@ BatchSummary summarize(const BatchRecord &r)
             s.folders.append(req.folder);
     }
     s.state = r.state();
+    for (const StartRecord &start : r.openStarts) {
+        const PlanStep &step = r.plan.steps[start.step];
+        const bool forward = start.phase == Phase::Forward;
+        // Forward: ToTemp goes to a temporary name, FromTemp comes from one.
+        const bool fromTemp = step.kind == StepKind::FromTemp;
+        const bool toTemp = step.kind == StepKind::ToTemp;
+        OpenStep open;
+        open.step = start.step;
+        open.phase = start.phase;
+        open.from = forward ? step.from : step.to;
+        open.to = forward ? step.to : step.from;
+        open.fromIsTemp = forward ? fromTemp : toTemp;
+        open.toIsTemp = forward ? toTemp : fromTemp;
+        s.openSteps.append(open);
+    }
     s.undoOf = r.header.undoOf;
     for (const StepRecord &step : r.steps) {
         if (step.phase == Phase::Forward && !step.ok && step.errorCode != ErrorCode::Interrupted)

@@ -201,6 +201,7 @@ private slots:
     void crashFromTempDone();
     void crashRollbackDone();
     void crashBothNamesTaken();
+    void pendingListsOpenSteps();
     void recoveryMarkComplete();
     void reportRows();
     void secondRollBackInSession();
@@ -701,6 +702,46 @@ void TstBatchService::crashBothNamesTaken()
     QVERIFY(row->errorText.contains(plan.steps[0].to)); // the temporary name is shown
     QCOMPARE(env.fs.content("/f/a.txt"), QByteArray("A"));
     QCOMPARE(env.fs.content(plan.steps[0].to), QByteArray("T"));
+}
+
+// Before "Mark as Complete", the user must see the steps that were running when CTRM stopped.
+void TstBatchService::pendingListsOpenSteps()
+{
+    Env env;
+    const Plan plan = swapPlan(env);
+    QCOMPARE(plan.steps[0].kind, StepKind::ToTemp);
+    QCOMPARE(plan.steps[2].kind, StepKind::FromTemp);
+    runAndCrash(env, plan, 0);
+    QVERIFY(env.service.pendingRecovery().first().openSteps.isEmpty());
+
+    crashInStep(env, plan, 0, Phase::Forward, false);
+    QList<BatchSummary> pending = env.service.pendingRecovery();
+    QCOMPARE(pending.size(), 1);
+    QCOMPARE(pending.first().openSteps.size(), 1);
+    OpenStep open = pending.first().openSteps.first();
+    QCOMPARE(open.step, 0);
+    QCOMPARE(open.phase, Phase::Forward);
+    QCOMPARE(open.from, QStringLiteral("/f/a.txt"));
+    QCOMPARE(open.to, plan.steps[0].to);
+    QVERIFY(!open.fromIsTemp);
+    QVERIFY(open.toIsTemp);
+
+    // The roll back of a FromTemp step goes back to the temporary name.
+    crashInStep(env, plan, 2, Phase::Rollback, false);
+    pending = env.service.pendingRecovery();
+    QCOMPARE(pending.first().openSteps.size(), 2);
+    open = pending.first().openSteps[1];
+    QCOMPARE(open.step, 2);
+    QCOMPARE(open.phase, Phase::Rollback);
+    QCOMPARE(open.from, plan.steps[2].to);
+    QCOMPARE(open.to, plan.steps[2].from);
+    QVERIFY(!open.fromIsTemp);
+    QVERIFY(open.toIsTemp);
+
+    // Mark as Complete does not change them: History still shows them.
+    QString error;
+    QVERIFY2(env.service.markComplete(plan.batchId, &error), qPrintable(error));
+    QCOMPARE(env.history.list().first().openSteps.size(), 2);
 }
 
 void TstBatchService::recoveryRefusesFinishedBatch()

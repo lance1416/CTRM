@@ -13,6 +13,19 @@
 
 namespace ctrm {
 
+// A step that was running when CTRM stopped: its start record has no result. The rename may
+// or may not have happened. from and to are the rename of this phase (for Rollback, the reverse
+// rename). A temporary name is a name only CTRM uses (".ctrm-tmp-...").
+struct OpenStep
+{
+    int step = 0;
+    Phase phase = Phase::Forward;
+    QString from;
+    QString to;
+    bool fromIsTemp = false;
+    bool toIsTemp = false;
+};
+
 struct BatchSummary
 {
     QString batchId;
@@ -27,6 +40,9 @@ struct BatchSummary
     // The journal cannot be read in full. The fields come from a best-effort read; when not
     // even the header can be read, batchId and started come from the file name and the state
     // is InProgress (not known to be finished). error: the text of the strict read.
+    // Steps that were running when CTRM stopped (shown before "Mark as Complete"), in journal
+    // order. Empty for a journal with no readable header.
+    QList<OpenStep> openSteps;
     bool damaged = false;
     QString error;
 };
