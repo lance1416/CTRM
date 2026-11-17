@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "appcontext.h"
+#include "mainwindow.h"
 #include "version.h"
 
 #include <QApplication>
-#include <QMainWindow>
+#include <QStyle>
+#include <QStyleFactory>
 
 int main(int argc, char *argv[])
 {
@@ -12,8 +15,14 @@ int main(int argc, char *argv[])
     QApplication::setApplicationVersion(QStringLiteral(CTRM_VERSION));
     QGuiApplication::setDesktopFileName(QStringLiteral(CTRM_APP_ID));
 
-    QMainWindow window;
-    window.setWindowTitle(QStringLiteral("CTRM"));
+#ifdef Q_OS_LINUX
+    // Use the platform style. Use Fusion only when the platform theme gives no style.
+    if (QApplication::style()->name().isEmpty())
+        QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
+#endif
+
+    ctrm::app::AppContext context;
+    ctrm::app::MainWindow window(context);
     window.show();
 
     return QApplication::exec();

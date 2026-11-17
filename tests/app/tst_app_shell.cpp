@@ -1,0 +1,379 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#include "actions.h"
+#include "appcontext.h"
+#include "fakefilesystem.h"
+#include "mainwindow.h"
+#include "settings.h"
+
+#include <QAction>
+#include <QApplication>
+#include <QCoreApplication>
+#include <QDir>
+#include <QLineEdit>
+#include <QMenu>
+#include <QMenuBar>
+#include <QSettings>
+#include <QSplitter>
+#include <QTemporaryDir>
+#include <QToolBar>
+#include <QtTest>
+
+#include <memory>
+
+using namespace ctrm::app;
+
+namespace {
+
+QList<QAction *> allActions(const Actions &a)
+{
+    return {a.addFiles,
+            a.addFolder,
+            a.removeFromList,
+            a.clearList,
+            a.refresh,
+            a.closeWindow,
+            a.quit,
+            a.undoRename,
+            a.include,
+            a.exclude,
+            a.selectAll,
+            a.find,
+            a.duplicateRule,
+            a.deleteRule,
+            a.moveRuleUp,
+            a.moveRuleDown,
+            a.toggleRule,
+            a.clearRules,
+            a.saveAsPreset,
+            a.updatePreset,
+            a.managePresets,
+            a.importPreset,
+            a.exportRules,
+            a.showSteps,
+            a.highlightChanged,
+            a.showAllItems,
+            a.showChangedOnly,
+            a.showProblemsOnly,
+            a.showToolbar,
+            a.rename,
+            a.skipAndRename,
+            a.nextProblem,
+            a.previousProblem,
+            a.history,
+            a.cancelBatch,
+            a.focusRules,
+            a.focusTable,
+            a.focusEditor,
+            a.preferences,
+            a.help,
+            a.regexHelp,
+            a.reportProblem,
+            a.about,
+            a.addRuleMenu->menuAction()};
+}
+
+// A context on a fake file system and temporary folders and settings.
+struct TestContext
+{
+    QTemporaryDir dir;
+    std::unique_ptr<QSettings> qsettings;
+    FakeFileSystem *fs = nullptr;
+    std::unique_ptr<AppContext> ctx;
+
+    TestContext()
+    {
+        qsettings = std::make_unique<QSettings>(dir.filePath("settings.ini"), QSettings::IniFormat);
+        auto fake = std::make_unique<FakeFileSystem>();
+        fs = fake.get();
+        ctx = std::make_unique<AppContext>(std::move(fake), dir.filePath("data/history"),
+                                           dir.filePath("config/presets"), qsettings.get());
+    }
+};
+
+} // namespace
+
+class TestAppShell : public QObject
+{
+    Q_OBJECT
+private slots:
+    void testContextUsesDirs();
+    void settingsDefaults();
+    void settingsRoundTrip();
+    void actionsShortcuts();
+    void actionsHaveText();
+    void windowMinimumSize();
+    void splitterRatio();
+    void menusExist();
+    void toolbarHasNoRename();
+    void stateSavedOnClose();
+    void viewTogglesPersist();
+    void editActionsUseFocusWidget();
+    void noNetworkModule();
+};
+
+void TestAppShell::testContextUsesDirs()
+{
+    TestContext t;
+    QVERIFY(QDir(t.dir.filePath("data/history")).exists());
+    QVERIFY(QDir(t.dir.filePath("config/presets")).exists());
+    QCOMPARE(t.ctx->historyDir(), t.dir.filePath("data/history"));
+    QCOMPARE(t.ctx->presetsDir(), t.dir.filePath("config/presets"));
+    QCOMPARE(&t.ctx->fileSystem(), static_cast<ctrm::FileSystem *>(t.fs));
+    t.ctx->settings().setRetentionDays(7);
+    QCOMPARE(t.qsettings->allKeys().size(), 1);
+}
+
+void TestAppShell::settingsDefaults()
+{
+    QTemporaryDir dir;
+    QSettings qs(dir.filePath("s.ini"), QSettings::IniFormat);
+    const Settings s(&qs);
+    QCOMPARE(s.folderDropAnswer(), FolderDropAnswer::Ask);
+    QCOMPARE(s.includeHidden(), false);
+    QCOMPARE(s.highlightChanged(), false);
+    QCOMPARE(s.retentionCount(), 500);
+    QCOMPARE(s.retentionDays(), 180);
+    QCOMPARE(s.showSteps(), true);
+    QVERIFY(s.windowGeometry().isEmpty());
+    QVERIFY(s.windowState().isEmpty());
+    QVERIFY(s.splitterState("main").isEmpty());
+}
+
+void TestAppShell::settingsRoundTrip()
+{
+    QTemporaryDir dir;
+    const QString file = dir.filePath("s.ini");
+    {
+        QSettings qs(file, QSettings::IniFormat);
+        Settings s(&qs);
+        s.setFolderDropAnswer(FolderDropAnswer::AddContents);
+        s.setIncludeHidden(true);
+        s.setHighlightChanged(true);
+        s.setRetentionCount(20);
+        s.setRetentionDays(3);
+        s.setShowSteps(false);
+        s.setWindowGeometry("geo");
+        s.setWindowState("state");
+        s.setSplitterState("main", "a");
+        s.setSplitterState("rules", "b");
+    }
+    QSettings qs(file, QSettings::IniFormat);
+    const Settings s(&qs);
+    QCOMPARE(s.folderDropAnswer(), FolderDropAnswer::AddContents);
+    QCOMPARE(s.includeHidden(), true);
+    QCOMPARE(s.highlightChanged(), true);
+    QCOMPARE(s.retentionCount(), 20);
+    QCOMPARE(s.retentionDays(), 3);
+    QCOMPARE(s.showSteps(), false);
+    QCOMPARE(s.windowGeometry(), QByteArray("geo"));
+    QCOMPARE(s.windowState(), QByteArray("state"));
+    QCOMPARE(s.splitterState("main"), QByteArray("a"));
+    QCOMPARE(s.splitterState("rules"), QByteArray("b"));
+
+    // A bad stored value gives the default.
+    qs.setValue("general/folderDropAnswer", "sometimes");
+    QCOMPARE(s.folderDropAnswer(), FolderDropAnswer::Ask);
+}
+
+void TestAppShell::actionsShortcuts()
+{
+    QObject parent;
+    const Actions a = createActions(&parent);
+    QCOMPARE(a.rename->shortcut(), QKeySequence("Ctrl+Return"));
+    QCOMPARE(a.addFiles->shortcut(), QKeySequence("Ctrl+O"));
+    QCOMPARE(a.addFolder->shortcut(), QKeySequence("Ctrl+Shift+O"));
+    QCOMPARE(a.nextProblem->shortcut(), QKeySequence("F8"));
+    QCOMPARE(a.previousProblem->shortcut(), QKeySequence("Shift+F8"));
+    QCOMPARE(a.undoRename->shortcut(), QKeySequence("Ctrl+Z"));
+    QCOMPARE(a.undoRename->shortcutContext(), Qt::WindowShortcut);
+    QCOMPARE(a.find->shortcut(), QKeySequence("Ctrl+F"));
+    QCOMPARE(a.duplicateRule->shortcut(), QKeySequence("Ctrl+D"));
+    QCOMPARE(a.moveRuleUp->shortcut(), QKeySequence("Ctrl+Alt+Up"));
+    QCOMPARE(a.moveRuleDown->shortcut(), QKeySequence("Ctrl+Alt+Down"));
+    QCOMPARE(a.focusRules->shortcut(), QKeySequence("Ctrl+1"));
+    QCOMPARE(a.focusTable->shortcut(), QKeySequence("Ctrl+2"));
+    QCOMPARE(a.focusEditor->shortcut(), QKeySequence("Ctrl+3"));
+    QCOMPARE(a.saveAsPreset->shortcut(), QKeySequence("Ctrl+S"));
+    QCOMPARE(a.cancelBatch->shortcut(), QKeySequence("Escape"));
+    QCOMPARE(a.removeFromList->shortcut(), QKeySequence("Del"));
+    QCOMPARE(a.addRuleMenu->menuAction()->shortcut(), QKeySequence("Ctrl+Shift+N"));
+#ifdef Q_OS_MACOS
+    QCOMPARE(a.history->shortcut(), QKeySequence("Ctrl+Y"));
+    QCOMPARE(a.refresh->shortcut(), QKeySequence("Ctrl+R"));
+    QCOMPARE(a.clearList->shortcut(), QKeySequence("Ctrl+Shift+Backspace"));
+#else
+    QCOMPARE(a.history->shortcut(), QKeySequence("Ctrl+H"));
+    QCOMPARE(a.refresh->shortcut(), QKeySequence("F5"));
+    QCOMPARE(a.clearList->shortcut(), QKeySequence("Ctrl+Shift+Delete"));
+#endif
+    QCOMPARE(a.about->menuRole(), QAction::AboutRole);
+    QCOMPARE(a.preferences->menuRole(), QAction::PreferencesRole);
+    QCOMPARE(a.quit->menuRole(), QAction::QuitRole);
+    // Only explicit roles move to the macOS application menu.
+    QCOMPARE(a.addFiles->menuRole(), QAction::NoRole);
+
+    // The three Show actions are exclusive; All items is on.
+    QVERIFY(a.showAllItems->isChecked());
+    a.showProblemsOnly->trigger();
+    QVERIFY(!a.showAllItems->isChecked());
+    QVERIFY(a.showProblemsOnly->isChecked());
+
+    // All shortcuts are distinct.
+    QSet<QString> seen;
+    for (QAction *action : allActions(a)) {
+        for (const QKeySequence &k : action->shortcuts()) {
+            const QString key = k.toString();
+            QVERIFY2(!seen.contains(key), qPrintable(key));
+            seen.insert(key);
+        }
+    }
+}
+
+void TestAppShell::actionsHaveText()
+{
+    QObject parent;
+    const Actions a = createActions(&parent);
+    const QList<QAction *> actions = allActions(a);
+    QCOMPARE(actions.size(), 44);
+    for (QAction *action : actions) {
+        QVERIFY(action);
+        QVERIFY2(!action->text().isEmpty(), qPrintable(action->objectName()));
+        QVERIFY2(!action->toolTip().isEmpty(), qPrintable(action->objectName()));
+        QVERIFY2(!action->objectName().isEmpty(), qPrintable(action->text()));
+    }
+}
+
+void TestAppShell::windowMinimumSize()
+{
+    TestContext t;
+    MainWindow w(*t.ctx);
+    QCOMPARE(w.minimumSize(), QSize(900, 560));
+    QVERIFY(w.flowStripSlot());
+    QVERIFY(w.rulePanelSlot());
+    QVERIFY(w.tableSlot());
+    QVERIFY(w.actionBarSlot());
+    QVERIFY(w.messageBarSlot());
+    QCOMPARE(w.windowTitle(), QStringLiteral("CTRM"));
+}
+
+void TestAppShell::splitterRatio()
+{
+    TestContext t;
+    MainWindow w(*t.ctx);
+    w.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&w));
+    QSplitter *s = w.mainSplitter();
+    QCOMPARE(s->orientation(), Qt::Horizontal);
+    QVERIFY(!s->childrenCollapsible());
+    QCOMPARE(s->widget(0), w.rulePanelSlot());
+    QVERIFY(s->widget(1)->isAncestorOf(w.tableSlot()));
+    const QList<int> sizes = s->sizes();
+    QCOMPARE(sizes.size(), 2);
+    const double ratio = double(sizes.at(1)) / sizes.at(0);
+    QVERIFY2(ratio > 1.9 && ratio < 2.1, qPrintable(QString::number(ratio)));
+}
+
+void TestAppShell::menusExist()
+{
+    TestContext t;
+    MainWindow w(*t.ctx);
+    QStringList titles;
+    for (QAction *a : w.menuBar()->actions())
+        titles.append(a->text().remove('&'));
+    QCOMPARE(titles, QStringList({"File", "Edit", "Rules", "Presets", "View", "Rename", "Help"}));
+    QVERIFY(w.menuBar()->actions().at(2)->menu()->actions().contains(
+            w.actions().addRuleMenu->menuAction()));
+}
+
+void TestAppShell::toolbarHasNoRename()
+{
+    TestContext t;
+    MainWindow w(*t.ctx);
+    const QList<QToolBar *> bars = w.findChildren<QToolBar *>();
+    QCOMPARE(bars.size(), 1);
+    const QList<QAction *> actions = bars.first()->actions();
+    QVERIFY(!actions.contains(w.actions().rename));
+    QVERIFY(actions.contains(w.actions().addFiles));
+    QVERIFY(actions.contains(w.actions().addFolder));
+    QVERIFY(actions.contains(w.actions().history));
+    QVERIFY(actions.contains(w.actions().undoRename));
+    QVERIFY(actions.contains(w.actions().removeFromList));
+    QVERIFY(actions.contains(w.actions().clearList));
+    QVERIFY(actions.contains(w.actions().refresh));
+    QCOMPARE(w.actions().showToolbar->isChecked(), bars.first()->isVisible() || !w.isVisible());
+}
+
+void TestAppShell::stateSavedOnClose()
+{
+    TestContext t;
+    {
+        MainWindow w(*t.ctx);
+        w.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&w));
+        w.mainSplitter()->setSizes({300, 700});
+        w.close();
+    }
+    QVERIFY(!t.ctx->settings().windowGeometry().isEmpty());
+    QVERIFY(!t.ctx->settings().windowState().isEmpty());
+    QVERIFY(!t.ctx->settings().splitterState("main").isEmpty());
+
+    MainWindow again(*t.ctx);
+    again.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&again));
+    const QList<int> sizes = again.mainSplitter()->sizes();
+    const double ratio = double(sizes.at(1)) / sizes.at(0);
+    QVERIFY2(ratio > 2.1, qPrintable(QString::number(ratio))); // 700 / 300, not the 1:2 default
+}
+
+void TestAppShell::viewTogglesPersist()
+{
+    TestContext t;
+    {
+        MainWindow w(*t.ctx);
+        QVERIFY(w.actions().showSteps->isChecked());
+        QVERIFY(!w.actions().highlightChanged->isChecked());
+        w.actions().showSteps->trigger();
+        w.actions().highlightChanged->trigger();
+    }
+    QCOMPARE(t.ctx->settings().showSteps(), false);
+    QCOMPARE(t.ctx->settings().highlightChanged(), true);
+    MainWindow again(*t.ctx);
+    QVERIFY(!again.actions().showSteps->isChecked());
+    QVERIFY(again.actions().highlightChanged->isChecked());
+}
+
+void TestAppShell::editActionsUseFocusWidget()
+{
+    TestContext t;
+    MainWindow w(*t.ctx);
+    auto *edit = new QLineEdit(QStringLiteral("hello"), w.tableSlot());
+    w.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&w));
+    w.activateWindow();
+    edit->setFocus();
+    QTRY_COMPARE(QApplication::focusWidget(), edit);
+    edit->selectAll();
+
+    QAction *cut = nullptr;
+    for (QAction *a : w.menuBar()->actions().at(1)->menu()->actions()) {
+        if (a->text() == QStringLiteral("Cut"))
+            cut = a;
+    }
+    QVERIFY(cut);
+    cut->trigger();
+    QCOMPARE(edit->text(), QString());
+}
+
+void TestAppShell::noNetworkModule()
+{
+#ifdef QT_NETWORK_LIB
+    QFAIL("Qt Network must not be linked");
+#endif
+    const QStringList before = QCoreApplication::libraryPaths();
+    TestContext t;
+    MainWindow w(*t.ctx);
+    QCOMPARE(QCoreApplication::libraryPaths(), before);
+}
+
+QTEST_MAIN(TestAppShell)
+#include "tst_app_shell.moc"

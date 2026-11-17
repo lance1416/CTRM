@@ -10,7 +10,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Widgets Test)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Widgets Svg Test)
 qt_standard_project_setup()
 
 function(ctrm_set_warnings target)
