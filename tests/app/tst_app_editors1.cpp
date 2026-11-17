@@ -530,8 +530,8 @@ void TestAppEditors1::fieldEdgeAllEditors()
 QTEST_MAIN(TestAppEditors1)
 void TestAppEditors1::cleanupReplacementFits()
 {
-    // D8: the field is for a few characters and is under the text of its check box, so the
-    // row is not wider than the check box.
+    // D8, O2: the field is for a few characters and is on its own row under the check box, at
+    // the field edge (ui-design 6.1 rules 2 and 7).
     Fixture<CleanUpEditor, CleanUpRule> f;
     QVERIFY(QTest::qWaitForWindowExposed(f.editor.get()));
     auto *box = child<QCheckBox>(f.editor.get(), "replaceInvalid");
@@ -542,7 +542,14 @@ void TestAppEditors1::cleanupReplacementFits()
     const QPoint boxAt = box->mapTo(f.editor.get(), QPoint());
     const QPoint fieldAt = field->mapTo(f.editor.get(), QPoint());
     QVERIFY(fieldAt.y() >= boxAt.y() + box->height());
-    QVERIFY(fieldAt.x() > boxAt.x());
+    // The layout items, not the widgets: the macOS style moves a widget inside its item.
+    QFormLayout *form = f.editor->form();
+    const int boxRow = rowOf(form, box);
+    const int fieldRow = rowOf(form, field);
+    QVERIFY(boxRow >= 0 && fieldRow == boxRow + 1);
+    QCOMPARE(form->itemAt(fieldRow, QFormLayout::FieldRole)->geometry().x(),
+             form->itemAt(boxRow, QFormLayout::FieldRole)->geometry().x());
+    QCOMPARE(form->itemAt(fieldRow, QFormLayout::FieldRole)->widget(), field);
     QVERIFY(fieldAt.x() + field->width() <= boxAt.x() + box->sizeHint().width());
 }
 

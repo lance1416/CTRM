@@ -8,7 +8,6 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QFormLayout>
-#include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 
@@ -50,14 +49,10 @@ CleanUpEditor::CleanUpEditor(QWidget *parent)
     f->addRow(QString(), m_trim);
     f->addRow(QString(), m_collapseSpaces);
     f->addRow(tr("&Spaces:"), m_spacesTo);
-    // The field is under the check box text, so the row fits at the minimum panel width.
+    // The field is on its own row at the field edge, so the row fits at the minimum panel
+    // width (ui-design 6.1 rules 2 and 7). Its fixed width keeps it from growing.
     f->addRow(QString(), m_replaceInvalid);
-    auto *replacementRow = new QWidget;
-    auto *replacementLayout = new QHBoxLayout(replacementRow);
-    replacementLayout->setContentsMargins(checkBoxTextIndent(m_replaceInvalid), 0, 0, 0);
-    replacementLayout->addWidget(m_replacement);
-    replacementLayout->addStretch(1);
-    f->addRow(QString(), replacementRow);
+    f->addRow(QString(), m_replacement);
     f->addRow(QString(), m_portableNote);
     f->addRow(tr("&Apply to:"), m_applyTo);
 

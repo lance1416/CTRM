@@ -4,7 +4,6 @@
 #include "rules/ruleeditor.h"
 #include "theme/typography.h"
 
-#include <QCheckBox>
 #include <QComboBox>
 #include <QEvent>
 #include <QFontDatabase>
@@ -125,18 +124,6 @@ void setCharacterWidth(QLineEdit *field, int chars)
     field->setFixedWidth(field->style()
                                  ->sizeFromContents(QStyle::CT_LineEdit, &option, contents, field)
                                  .width());
-}
-
-int checkBoxTextIndent(const QCheckBox *box)
-{
-    QStyleOptionButton option;
-    option.initFrom(box);
-    option.text = box->text();
-    option.rect = QRect(QPoint(), box->sizeHint());
-    const QStyle *style = box->style();
-    const QRect contents = style->subElementRect(QStyle::SE_CheckBoxContents, &option, box);
-    const QRect item = style->subElementRect(QStyle::SE_CheckBoxLayoutItem, &option, box);
-    return contents.left() - (item.isValid() ? item.left() : 0);
 }
 
 } // namespace ctrm::app
