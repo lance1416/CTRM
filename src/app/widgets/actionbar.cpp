@@ -219,6 +219,18 @@ void ActionBar::updateSummary(const ctrm::PreviewSummary &summary)
         m_summaryParts.append(label);
     };
 
+    if (m_info.state == WindowState::Result) {
+        // ui-design 9.8 (M10): "42 renamed". The preview counts are of the new names.
+        auto *renamed = new QLabel(m_summaryWidget);
+        renamed->setTextFormat(Qt::PlainText);
+        renamed->setText(summaryPartText(SummaryPart::Renamed, m_info.renamedCount));
+        addLabel(renamed);
+        m_previousProblem->hide();
+        m_nextProblem->hide();
+        announce(renamed->text());
+        return;
+    }
+
     struct Part
     {
         SummaryPart part;
@@ -279,8 +291,12 @@ void ActionBar::updateSummary(const ctrm::PreviewSummary &summary)
     m_previousProblem->setVisible(problems);
     m_nextProblem->setVisible(problems);
 
+    announce(countSummaryText(summary));
+}
+
+void ActionBar::announce(const QString &text)
+{
     // The screen reader announces the summary 500 ms after the last change (ui-design 5.5).
-    const QString text = countSummaryText(summary);
     if (m_summaryWidget->accessibleName() != text) {
         m_summaryWidget->setAccessibleName(text);
         m_announceTimer->start();

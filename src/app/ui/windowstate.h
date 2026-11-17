@@ -24,6 +24,7 @@ struct WindowStateInput
     bool allFolders = false;
     bool running = false;
     bool resultShown = false;
+    int renamedCount = 0; // the result state: items the batch renamed
 };
 
 struct WindowStateInfo
@@ -35,6 +36,7 @@ struct WindowStateInfo
     QString reason; // empty when renameEnabled; also empty in the Running state (button hidden)
     bool skipVisible = false;
     QString skipText;               // "Skip 4 and Rename..."
+    int renamedCount = 0;           // the result state only
     std::array<bool, 3> stepDone{}; // Add files, Add rules, Rename (S01)
     int currentStep = 0;            // flow strip, 0-based, -1 when all steps are done
 };
@@ -45,7 +47,7 @@ WindowStateInfo computeWindowState(const WindowStateInput &in);
 QString countSummaryText(const ctrm::PreviewSummary &s);
 
 // The parts of countSummaryText, for the action bar.
-enum class SummaryPart { WillChange, Conflicts, Errors, Warnings, Excluded, Unchanged };
+enum class SummaryPart { WillChange, Conflicts, Errors, Warnings, Excluded, Unchanged, Renamed };
 QString summaryPartText(SummaryPart part, int n);
 
 } // namespace ctrm::app

@@ -63,7 +63,7 @@ public:
     bool previewIsCurrent() const; // no request pending
     void requestPreview();         // builds the input, calls the scheduler
     void setRunning(bool running); // read-only rules, table, toolbar (ui-design 9.5)
-    void setResultShown(bool shown);
+    void setResultShown(bool shown, int renamedCount = 0);
     void setPresetTitle(const QString &name, bool modified); // "CTRM - <name>" + modified mark
 
 protected:
@@ -110,6 +110,7 @@ private:
     WindowStateInfo m_state;
     bool m_running = false;
     bool m_resultShown = false;
+    int m_renamedCount = 0;
     bool m_applyingPreview = false;   // in previewReady
     bool m_previewAfterApply = false; // an activation came while a preview was applied
     QHash<QAction *, bool> m_enabledBeforeRun;

@@ -427,7 +427,7 @@ void BatchController::finished(const FinishResult &result)
     m_w.requestPreview();
     showResultMessage(result);
     if (!undone)
-        m_w.setResultShown(true);
+        m_w.setResultShown(true, renamed);
 
     if (failurePath && !m_closeAfterRun)
         showReport(result);

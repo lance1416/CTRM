@@ -47,6 +47,7 @@ private:
     void updateReasonIcon();
     void revealProgress();
     void updateTip();
+    void announce(const QString &summaryText);
 
     Actions m_actions;
     WindowStateInfo m_info;

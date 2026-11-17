@@ -279,11 +279,12 @@ void MainWindow::setRunning(bool running)
         updateListActions();
 }
 
-void MainWindow::setResultShown(bool shown)
+void MainWindow::setResultShown(bool shown, int renamedCount)
 {
-    if (shown == m_resultShown)
+    if (shown == m_resultShown && renamedCount == m_renamedCount)
         return;
     m_resultShown = shown;
+    m_renamedCount = shown ? renamedCount : 0;
     if (!shown)
         m_messageBar->clear();
     updateWindowState();
@@ -774,6 +775,7 @@ void MainWindow::updateWindowState()
     in.allFolders = files == 0 && folders > 0;
     in.running = m_running;
     in.resultShown = m_resultShown;
+    in.renamedCount = m_renamedCount;
     m_state = computeWindowState(in);
     if (!previewIsCurrent() && !m_running && in.itemCount > 0 && in.enabledRuleCount > 0) {
         // The counts are from the old preview: no rename until the new preview is ready.

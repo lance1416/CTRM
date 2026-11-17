@@ -123,6 +123,9 @@ void TestUndoResult::quickUndoShowsNamesOnDisk()
     f.renameOld({QStringLiteral("old_a.txt"), QStringLiteral("old_b.txt")});
     QCOMPARE(f.barText(), QStringLiteral("Renamed 2 items."));
     QCOMPARE(f.step3()->accessibleName(), QStringLiteral("Step 3 of 3, Rename, done"));
+    // M10: the summary says how many items were renamed.
+    QCOMPARE(f.window.findChild<QWidget *>(QStringLiteral("countSummary"))->accessibleName(),
+             QStringLiteral("2 renamed"));
     QPushButton *undo = f.barButton("resultUndo");
     QVERIFY(undo);
 

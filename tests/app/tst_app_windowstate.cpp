@@ -92,6 +92,7 @@ private slots:
     void flowStripLooks();
     void flowStripClick();
     void oneDefaultButton();
+    void resultSummary();
     void fusionAccent();
     void disabledHasReason();
     void flowStripNoMouseFocus();
@@ -279,6 +280,26 @@ void TestAppWindowState::flowStripClick()
     buttons[2]->click();
     QCOMPARE(spy.size(), 1);
     QCOMPARE(spy.at(0).at(0).toInt(), 2);
+}
+
+void TestAppWindowState::resultSummary()
+{
+    // M10: the result state says how many items were renamed (ui-design 9.8).
+    QWidget parent;
+    const Actions actions = createActions(&parent);
+    ActionBar bar(actions, &parent);
+    WindowStateInput in = input(10, 1, summary(0, 0, 0, 0, 1, 9));
+    in.resultShown = true;
+    in.renamedCount = 6;
+    bar.setState(computeWindowState(in), in.summary);
+    QCOMPARE(bar.findChild<QWidget *>(QStringLiteral("countSummary"))->accessibleName(),
+             QStringLiteral("6 renamed"));
+    QStringList texts;
+    for (QLabel *label :
+         bar.findChild<QWidget *>(QStringLiteral("countSummary"))->findChildren<QLabel *>())
+        if (!label->isHidden())
+            texts.append(label->text());
+    QCOMPARE(texts, QStringList{QStringLiteral("6 renamed")});
 }
 
 void TestAppWindowState::oneDefaultButton()

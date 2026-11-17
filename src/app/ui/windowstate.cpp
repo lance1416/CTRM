@@ -70,6 +70,9 @@ QString summaryPartText(SummaryPart part, int n)
         return numerus(
                 QCoreApplication::translate("ctrm::app::WindowState", "%n excluded", nullptr, n),
                 n);
+    case SummaryPart::Renamed:
+        return numerus(
+                QCoreApplication::translate("ctrm::app::WindowState", "%n renamed", nullptr, n), n);
     case SummaryPart::Unchanged:
         return numerus(
                 QCoreApplication::translate("ctrm::app::WindowState", "%n unchanged", nullptr, n),
@@ -106,6 +109,7 @@ WindowStateInfo computeWindowState(const WindowStateInput &in)
         info.state = WindowState::Running;
     } else if (in.resultShown) {
         info.state = WindowState::Result;
+        info.renamedCount = in.renamedCount;
         info.reason = QCoreApplication::translate("ctrm::app::WindowState", "Nothing to rename.");
     } else if (in.itemCount <= 0) {
         info.state = WindowState::NoItems;
