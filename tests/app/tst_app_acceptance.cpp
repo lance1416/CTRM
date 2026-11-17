@@ -30,16 +30,27 @@
 //   AC12.12      tests/core/tst_batchservice.cpp prepareDetectsIdentityChange;
 //                tests/app/tst_app_mainwindow.cpp refreshDetectsMissing
 //   AC12.13      tests/core/tst_executor.cpp rollBackSkipsReplacedItem
+//   AC12.8 UI    tests/app/tst_app_recovery.cpp rollBackChoice, quitDuringBatchAskedAtNextStart
 //   AC13.1-13.13 tests/core/tst_undo.cpp, tst_journal.cpp, tst_batchservice.cpp
+//   AC13.2 UI    tests/app/tst_app_history.cpp undoAfterRestart
+//   AC13.6 UI    tests/app/tst_app_history.cpp quickUndoNoPreview, quickUndoOpensPreview
+//   AC13.7 UI    tests/app/tst_app_history.cpp partlyUndoneUi
+//   AC13.8 UI    tests/app/tst_app_history.cpp undoOfLabel
+//   AC13.9 UI    tests/app/tst_app_history.cpp quickUndoWeakOpensPreview
+//   AC13.10 UI   tests/app/tst_app_recovery.cpp markCompleteChoice
+//   AC13.12 UI   tests/app/tst_app_history.cpp damagedRow, clearKeepsDamaged
 //   AC14.1-14.4  tests/core/tst_presets.cpp; UI: tests/app/tst_app_presets.cpp
 //                saveThenLoadIdentical, unsupportedRuleBlocks, newerVersionError
-//   AC12.4 case-sensitive, AC13.9 exFAT: scripts/test-volumes.sh (macOS disk images)
+//   AC12.4 case-sensitive, AC13.9 and AC13.13 exFAT: scripts/test-volumes.sh (macOS images)
 //   AC-G1        tests/core/tst_safety.cpp noReplaceEverywhere
-//   Manual       tests/manual/v0.1-checklist.md (AC-G2, AC-G3, AC13.5 readable)
+//   AC-G3        this file acG3_keyboardOnly (all steps); the visible focus is manual
+//   Manual       tests/manual/v0.1-checklist.md (AC-G2, AC-G3 focus, AC13.5 readable)
 
 #include "appcontext.h"
 #include "controllers/batchcontroller.h"
+#include "controllers/historycontroller.h"
 #include "controllers/itemadder.h"
+#include "dialogs/historywindow.h"
 #include "exec/batchservice.h"
 #include "fs/filesystem.h"
 #include "mainwindow.h"
@@ -55,6 +66,8 @@
 
 #include <QDir>
 #include <QElapsedTimer>
+#include <QLineEdit>
+#include <QMenu>
 #include <QMimeData>
 #include <QSettings>
 #include <QSignalSpy>
@@ -139,6 +152,7 @@ private slots:
     void ac2_1_preview10kUnder500msNoFreeze();
     void ac2_4_previewEqualsDisk();
     void acB3_skipCascadeKeepsNumbering();
+    void acG3_keyboardOnly();
 };
 
 void TestAcceptance::ac1_1_drop1000Under2s()
@@ -387,6 +401,108 @@ void TestAcceptance::acB3_skipCascadeKeepsNumbering()
     const QStringList onDisk = QDir(f.tree.root()).entryList(QDir::Files, QDir::Name);
     QCOMPARE(onDisk, (QStringList{QStringLiteral("1"), QStringLiteral("b"), QStringLiteral("c_3"),
                                   QStringLiteral("d_4")}));
+}
+
+void TestAcceptance::acG3_keyboardOnly()
+{
+    // The OS file dialog (Ctrl+O) is not part of this test: the files are added directly. All
+    // other steps use only key presses on the window.
+    Fixture f;
+    BatchController batch(f.window, f.ctx, nullptr);
+    HistoryController history(f.window, f.ctx, batch, nullptr);
+    batch.askFailure = [](const FailureInfo &) { return FailureChoice::RollBack; };
+    batch.showReport = [](const FinishResult &) {};
+    int undoPreviews = 0;
+    history.showUndoPreview = [&](const UndoPreview &) {
+        ++undoPreviews;
+        return true;
+    };
+    f.window.activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(&f.window));
+    const QString a = f.tree.file(QStringLiteral("a.txt"), "a");
+    const QString b = f.tree.file(QStringLiteral("b.txt"), "b");
+    f.window.itemAdder().addPaths({a, b});
+    const auto reactivate = [&] {
+        if (QApplication::activeWindow() != &f.window) {
+            f.window.activateWindow();
+            QVERIFY(QTest::qWaitForWindowActive(&f.window));
+        }
+    };
+    const auto key = [&](Qt::Key k, Qt::KeyboardModifiers m = Qt::ControlModifier) {
+        QWidget *target = QApplication::focusWidget();
+        QTest::keyClick(target ? target : &f.window, k, m);
+    };
+
+    // Add an Insert rule from the Add Rule menu (Ctrl+Shift+N, arrow keys, Return).
+    QString menuError;
+    QTimer::singleShot(0, [&] {
+        auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+        if (!menu) {
+            menuError = QStringLiteral("no Add Rule menu");
+            return;
+        }
+        for (int i = 0; i < 30; ++i) {
+            QTest::keyClick(menu, Qt::Key_Down);
+            if (menu->activeAction() &&
+                menu->activeAction()->objectName() == QStringLiteral("addRule_insert"))
+                break;
+        }
+        if (!menu->activeAction() ||
+            menu->activeAction()->objectName() != QStringLiteral("addRule_insert")) {
+            menuError = QStringLiteral("no Insert item in the menu");
+            menu->close();
+            return;
+        }
+        QTest::keyClick(menu, Qt::Key_Return);
+    });
+    key(Qt::Key_N, Qt::ControlModifier | Qt::ShiftModifier);
+    QTRY_VERIFY2(f.window.ruleModel().rowCount() == 1 || !menuError.isEmpty(),
+                 qPrintable(menuError));
+    QVERIFY2(menuError.isEmpty(), qPrintable(menuError));
+
+    // The focus is in the first field of the rule editor: type the text.
+    // The offscreen platform does not make the window active again when the menu closes.
+    reactivate();
+    QTRY_VERIFY(qobject_cast<QLineEdit *>(QApplication::focusWidget()));
+    auto *field = qobject_cast<QLineEdit *>(QApplication::focusWidget());
+    QTest::keyClicks(field, QStringLiteral("x_"));
+    QTRY_COMPARE(f.window.currentPreview().items.first().newName, QStringLiteral("x_a.txt"));
+    QTRY_VERIFY(f.window.previewIsCurrent());
+
+    // Rename (Ctrl+Return).
+    QSignalSpy finished(&batch, &BatchController::batchFinished);
+    key(Qt::Key_Return);
+    QVERIFY(finished.wait(30'000) || finished.count() > 0);
+    QTRY_VERIFY(QFile::exists(f.tree.root() + QStringLiteral("/x_a.txt")));
+    QVERIFY(QFile::exists(f.tree.root() + QStringLiteral("/x_b.txt")));
+
+    // The batch makes the rules read-only, so the text field loses the focus, and no control gets
+    // it back after the batch. Without a focus widget the offscreen platform also makes the
+    // window inactive: make it active again. The window shortcuts still work.
+    reactivate();
+    // Go to the items (Ctrl+2), then Quick Undo (Ctrl+Z). The items are unchanged: no preview.
+    key(Qt::Key_2);
+    QTRY_COMPARE(QApplication::focusWidget(), f.window.tableView());
+    QTRY_VERIFY(f.window.actions().undoRename->isEnabled());
+    finished.clear();
+    key(Qt::Key_Z);
+    QVERIFY(finished.wait(30'000) || finished.count() > 0);
+    QCOMPARE(undoPreviews, 0);
+    QTRY_VERIFY(QFile::exists(a));
+    QVERIFY(QFile::exists(b));
+    reactivate();
+
+    // Open History (Ctrl+Y on macOS, Ctrl+H on other systems).
+#ifdef Q_OS_MACOS
+    key(Qt::Key_Y);
+#else
+    key(Qt::Key_H);
+#endif
+    auto *historyWindow = f.window.findChild<HistoryWindow *>();
+    QVERIFY(historyWindow);
+    QTRY_VERIFY(historyWindow->isVisible());
+    QCOMPARE(f.ctx.history().list().size(), 2);
+    historyWindow->close();
 }
 
 QTEST_MAIN(TestAcceptance)
