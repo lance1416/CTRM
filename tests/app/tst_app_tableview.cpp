@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "actions.h"
+#include "dragpos.h"
 #include "models/itemfilterproxy.h"
 #include "models/itemtablemodel.h"
 #include "theme/colors.h"
@@ -407,7 +408,7 @@ void TestAppTableView::externalDrop()
     mime.setUrls({QUrl::fromLocalFile(QStringLiteral("/tmp/x.txt")),
                   QUrl::fromLocalFile(QStringLiteral("/tmp/y"))});
     const QPoint pos = f.view->viewport()->rect().center();
-    QDragEnterEvent enter(QPointF(pos), Qt::CopyAction, &mime, Qt::LeftButton, {});
+    QDragEnterEvent enter(test::DragPos(pos), Qt::CopyAction, &mime, Qt::LeftButton, {});
     QCoreApplication::sendEvent(f.view->viewport(), &enter);
     QVERIFY(enter.isAccepted());
     QCOMPARE(f.view->dropText(), QStringLiteral("Drop to add 2 items"));
@@ -488,7 +489,7 @@ void TestAppTableView::emptyStateDrop()
     QMimeData mime;
     mime.setUrls({QUrl::fromLocalFile(QStringLiteral("/tmp/x.txt")),
                   QUrl(QStringLiteral("https://example.com/a"))});
-    QDragEnterEvent enter(QPointF(5, 5), Qt::CopyAction, &mime, Qt::LeftButton, {});
+    QDragEnterEvent enter(test::DragPos(5, 5), Qt::CopyAction, &mime, Qt::LeftButton, {});
     QCoreApplication::sendEvent(&empty, &enter);
     QVERIFY(enter.isAccepted());
     QDropEvent drop(QPointF(5, 5), Qt::CopyAction, &mime, Qt::LeftButton, {});
@@ -499,7 +500,7 @@ void TestAppTableView::emptyStateDrop()
     // No local file: the drop is refused.
     QMimeData web;
     web.setUrls({QUrl(QStringLiteral("https://example.com/a"))});
-    QDragEnterEvent refused(QPointF(5, 5), Qt::CopyAction, &web, Qt::LeftButton, {});
+    QDragEnterEvent refused(test::DragPos(5, 5), Qt::CopyAction, &web, Qt::LeftButton, {});
     refused.setAccepted(false);
     QCoreApplication::sendEvent(&empty, &refused);
     QVERIFY(!refused.isAccepted());

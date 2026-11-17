@@ -52,6 +52,7 @@
 #include "controllers/historycontroller.h"
 #include "controllers/itemadder.h"
 #include "dialogs/historywindow.h"
+#include "dragpos.h"
 #include "exec/batchservice.h"
 #include "fs/filesystem.h"
 #include "mainwindow.h"
@@ -114,13 +115,8 @@ struct Fixture
         QWidget *target = window.findChild<EmptyState *>();
         if (!target || !target->isVisible())
             target = window.tableView()->viewport();
-        // Qt 6.8 has only the QPoint constructor; Qt 6.12 adds QPointF and deprecates QPoint.
-#if QT_VERSION >= QT_VERSION_CHECK(6, 12, 0)
-        const QPointF pos(target->rect().center());
-#else
         const QPoint pos = target->rect().center();
-#endif
-        QDragEnterEvent enter(pos, Qt::CopyAction, &mime, Qt::LeftButton, {});
+        QDragEnterEvent enter(test::DragPos(pos), Qt::CopyAction, &mime, Qt::LeftButton, {});
         QCoreApplication::sendEvent(target, &enter);
         if (!enter.isAccepted())
             return false;
@@ -225,7 +221,7 @@ void TestAcceptance::ac2_1_preview10kUnder500msNoFreeze()
 {
 #ifndef NDEBUG
     QSKIP("timing test runs in release builds only");
-#endif
+#else
     Fixture f;
     QVERIFY(QTest::qWaitForWindowExposed(&f.window));
     QStringList paths;
@@ -257,6 +253,7 @@ void TestAcceptance::ac2_1_preview10kUnder500msNoFreeze()
     qInfo("10,000 items: preview %lld ms, longest event loop gap %lld ms", ms, maxGap);
     QVERIFY2(ms < 500, qPrintable(QStringLiteral("preview %1 ms").arg(ms)));
     QVERIFY2(maxGap <= 100, qPrintable(QStringLiteral("gap %1 ms").arg(maxGap)));
+#endif
 }
 
 void TestAcceptance::ac2_4_previewEqualsDisk()
