@@ -28,6 +28,7 @@
 #include <QPushButton>
 #include <QScopeGuard>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QSignalSpy>
 #include <QSpinBox>
 #include <QSplitter>
@@ -113,6 +114,7 @@ private slots:
     void listShortcutsOnlyWithFocus();
     void primaryAddRuleIsPlainButton();
     void editorsFitPanelWidth();
+    void editorFadeWhenCut();
 };
 
 void TestAppRulePanel::factory()
@@ -684,6 +686,38 @@ void TestAppRulePanel::primaryAddRuleIsPlainButton()
     f.panel->setPrimaryAddRule(false);
     QCOMPARE(add->menu(), f.actions.addRuleMenu);
     QVERIFY(!add->isDefault());
+}
+
+void TestAppRulePanel::editorFadeWhenCut()
+{
+    // M06 (ui-design 4.4): a fade at the bottom of the editor while the page is cut there. It
+    // takes no mouse events and goes when the page is scrolled to the end.
+    Fixture f({"numbering"});
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    auto *scroll = f.panel->findChild<QScrollArea *>(QStringLiteral("editorScroll"));
+    auto *fade = scroll->findChild<QWidget *>(QStringLiteral("editorFade"));
+    QVERIFY(fade);
+    QVERIFY(fade->testAttribute(Qt::WA_TransparentForMouseEvents));
+
+    f.window.resize(f.window.width(), 1200);
+    QApplication::processEvents();
+    QTRY_COMPARE(scroll->verticalScrollBar()->maximum(), 0);
+    QVERIFY(!fade->isVisible());
+
+    f.window.resize(f.window.width(), 1); // the minimum height
+    QApplication::processEvents();
+    QScrollBar *bar = scroll->verticalScrollBar();
+    QTRY_VERIFY(bar->maximum() > 0);
+    QTRY_VERIFY(fade->isVisible());
+    const QRect viewport = scroll->viewport()->geometry();
+    QCOMPARE(fade->geometry().bottom(), viewport.bottom());
+    QCOMPARE(fade->width(), viewport.width());
+    QVERIFY(fade->height() >= 12 && fade->height() <= 20);
+
+    bar->setValue(bar->maximum());
+    QVERIFY(!fade->isVisible());
+    bar->setValue(0);
+    QVERIFY(fade->isVisible());
 }
 
 void TestAppRulePanel::editorsFitPanelWidth()

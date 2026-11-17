@@ -32,6 +32,7 @@
 #include <QFormLayout>
 #include <QKeyEvent>
 #include <QLabel>
+#include <QLinearGradient>
 #include <QListView>
 #include <QMenu>
 #include <QPainter>
@@ -181,10 +182,41 @@ bool isDeleteKey(const QKeyEvent *event)
 
 // The editor area scrolls only up and down. Its minimum width is that of the widest editor, so
 // the rule panel cannot be narrower than an editor (ui-design 4.4).
+// A fade at the bottom edge of the editor viewport while the page is cut there (ui-design 4.4,
+// M06): from transparent to the window colour. It takes no mouse events.
+class BottomFade : public QWidget
+{
+public:
+    static constexpr int kHeight = 16;
+
+    explicit BottomFade(QWidget *parent)
+        : QWidget(parent)
+    {
+        setObjectName(QStringLiteral("editorFade"));
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        setFocusPolicy(Qt::NoFocus);
+        hide();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        QColor end = palette().color(QPalette::Window);
+        QColor start = end;
+        start.setAlpha(0);
+        QLinearGradient gradient(0, 0, 0, height());
+        gradient.setColorAt(0, start);
+        gradient.setColorAt(1, end);
+        painter.fillRect(rect(), gradient);
+    }
+};
+
 class EditorScrollArea : public QScrollArea
 {
 public:
     EditorScrollArea()
+        : m_fade(new BottomFade(this))
     {
         setObjectName(QStringLiteral("editorScroll"));
         setWidgetResizable(true);
@@ -193,6 +225,9 @@ public:
         // No focus stop of its own: it shows no focus ring. Its fields take the focus and
         // ensureWidgetVisible scrolls to them (M09, ui-design 14).
         setFocusPolicy(Qt::NoFocus);
+        QScrollBar *bar = verticalScrollBar();
+        connect(bar, &QScrollBar::valueChanged, m_fade, [this] { updateFade(); });
+        connect(bar, &QScrollBar::rangeChanged, m_fade, [this] { updateFade(); });
     }
 
     QSize minimumSizeHint() const override
@@ -214,8 +249,23 @@ protected:
         // An editor changed its size (font, style, label column): the minimum width changes.
         if (event->type() == QEvent::LayoutRequest)
             updateGeometry();
+        if (event->type() == QEvent::Resize)
+            updateFade();
         return QScrollArea::viewportEvent(event);
     }
+
+private:
+    void updateFade()
+    {
+        const QRect area = viewport()->geometry();
+        m_fade->setGeometry(area.left(), area.bottom() + 1 - BottomFade::kHeight, area.width(),
+                            BottomFade::kHeight);
+        const QScrollBar *bar = verticalScrollBar();
+        m_fade->setVisible(bar->value() < bar->maximum());
+        m_fade->raise();
+    }
+
+    BottomFade *m_fade;
 };
 
 // The editor pages. The width is that of the widest page, so the panel width does not change
