@@ -20,6 +20,7 @@
 #include "widgets/buttonstyle.h"
 #include "widgets/formutils.h"
 #include "widgets/itemviewpaint.h"
+#include "widgets/plainsplitter.h"
 #include "widgets/tertiarybutton.h"
 
 #include <QAbstractButton>
@@ -257,13 +258,13 @@ private:
 // The rule list over the editor (ui-design 4.4). The list is as high as its rows (at least 3)
 // and the editor gets the rest. When the editor page does not fit, the list gives its empty rows
 // to the editor first (M06). After the user moves the handle, the splitter keeps the sizes.
-class RuleSplitter : public QSplitter
+class RuleSplitter : public PlainSplitter
 {
 public:
     // editor is a scroll area with pages: QScrollArea keeps an old size hint of its widget, so
     // the splitter asks the pages.
     RuleSplitter(QWidget *list, QScrollArea *editor)
-        : QSplitter(Qt::Vertical)
+        : PlainSplitter(Qt::Vertical)
         , m_editor(editor)
     {
         setChildrenCollapsible(false);
@@ -277,7 +278,7 @@ public:
 protected:
     bool event(QEvent *e) override
     {
-        const bool result = QSplitter::event(e);
+        const bool result = PlainSplitter::event(e);
         if (e->type() == QEvent::LayoutRequest)
             fit(); // a hint changed: rows added or removed, another editor page
         return result;
@@ -285,7 +286,7 @@ protected:
 
     void resizeEvent(QResizeEvent *e) override
     {
-        QSplitter::resizeEvent(e);
+        PlainSplitter::resizeEvent(e);
         fit();
     }
 

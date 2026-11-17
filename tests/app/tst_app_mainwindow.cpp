@@ -39,6 +39,7 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSettings>
+#include <QSplitter>
 #include <QStatusBar>
 #include <QTableView>
 #include <QTemporaryDir>
@@ -130,6 +131,7 @@ class TestMainWindow : public QObject
 private slots:
     void contextStores();
     void editorGetsHeightAtMinimum();
+    void splitterHandlesPlain();
     void emptyStateShown();
     void addRulePrimaryWithItems();
     void prefixFlowUnder60s();
@@ -854,6 +856,33 @@ void TestMainWindow::editorGetsHeightAtMinimum()
     f.window.resize(f.window.width(), 1000);
     QTRY_COMPARE(list->height(), list->sizeHint().height());
     QCOMPARE(list->height(), 3 * list->sizeHintForRow(0) + 2 * list->frameWidth());
+}
+
+void TestMainWindow::splitterHandlesPlain()
+{
+    // M20: the splitter handles draw no grip in the empty space between the panels.
+    Fixture f;
+    f.window.show();
+    f.window.resize(f.window.minimumSize());
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    f.addRuleAction(QStringLiteral("replace"))->trigger();
+    QApplication::processEvents();
+    const QList<QSplitter *> splitters = f.window.findChildren<QSplitter *>();
+    QVERIFY(splitters.size() >= 2);
+    for (QSplitter *splitter : splitters) {
+        for (int i = 1; i < splitter->count(); ++i) {
+            QSplitterHandle *handle = splitter->handle(i);
+            const QImage image = handle->grab().toImage();
+            QVERIFY(!image.isNull());
+            const QRgb first = image.pixel(0, 0);
+            bool plain = true;
+            for (int y = 0; y < image.height() && plain; ++y) {
+                for (int x = 0; x < image.width() && plain; ++x)
+                    plain = image.pixel(x, y) == first;
+            }
+            QVERIFY2(plain, qPrintable(splitter->objectName()));
+        }
+    }
 }
 
 void TestMainWindow::namesShownAtMinimumWidth()

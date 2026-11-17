@@ -12,6 +12,7 @@
 #include "widgets/itemtableview.h"
 #include "widgets/menutoolbutton.h"
 #include "widgets/messagebar.h"
+#include "widgets/plainsplitter.h"
 #include "widgets/rulepanel.h"
 
 #include <QAction>
@@ -484,7 +485,7 @@ void MainWindow::buildCentralWidget()
     m_flowStripSlot = makeSlot("flowStripSlot", central);
     layout->addWidget(m_flowStripSlot);
 
-    m_mainSplitter = new QSplitter(Qt::Horizontal, central);
+    m_mainSplitter = new PlainSplitter(Qt::Horizontal, central); // no grip (M20)
     m_mainSplitter->setObjectName(QStringLiteral("mainSplitter"));
     m_mainSplitter->setChildrenCollapsible(false);
     m_rulePanelSlot = makeSlot("rulePanelSlot", m_mainSplitter);
