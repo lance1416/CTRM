@@ -727,6 +727,10 @@ void TestHistory::focusAfterRunAndUndo()
     auto *w = f.window.findChild<HistoryWindow *>();
     QVERIFY(w);
     QVERIFY(QTest::qWaitForWindowActive(w));
+    // The offscreen platform can give the activation back to the main window after the run.
+    QTest::qWait(50);
+    w->activateWindow();
+    QTRY_COMPARE(QApplication::activeWindow(), w);
     QPushButton *undo = button(w, "undoBatch");
     QVERIFY(undo->isVisible());
     undo->setFocus();
