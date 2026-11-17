@@ -110,6 +110,8 @@ private:
     WindowStateInfo m_state;
     bool m_running = false;
     bool m_resultShown = false;
+    bool m_applyingPreview = false;   // in previewReady
+    bool m_previewAfterApply = false; // an activation came while a preview was applied
     bool m_tipShown = false;
     bool m_tipClosed = false; // the user closed the tip; shown again after the conflicts change
     QHash<QAction *, bool> m_enabledBeforeRun;

@@ -89,8 +89,10 @@ void MessageBar::showMessage(StateIcon icon, const QString &text,
         // Secondary buttons (ui-design 5.1): never default.
         button->setAutoDefault(false);
         button->setDefault(false);
-        button->show();
+        // Into the bar first: a button with no parent shows as its own window and takes the
+        // activation from the main window (M01).
         m_buttonLayout->addWidget(button);
+        button->show();
         m_buttons.append(button);
     }
     updateColors();

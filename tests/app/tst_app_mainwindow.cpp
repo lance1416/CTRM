@@ -138,6 +138,8 @@ private slots:
     void addReadsFolderAgain();
     void activationReadsFolderAgain();
     void conflictTipShown();
+    void conflictInActiveWindow();
+    void activationWhileApplyingPreview();
     void tabOrder();
     void presetTitle();
     void listActionsAtStart();
@@ -400,6 +402,49 @@ void TestMainWindow::conflictTipShown()
     f.window.actions().refresh->trigger(); // the folder cache reads y.txt
     QCOMPARE(f.window.currentPreview().summary.conflicts, 3);
     QVERIFY(!f.shown(tip));
+}
+
+void TestMainWindow::conflictInActiveWindow()
+{
+    // M01: the conflict tip in an active window. Showing the tip changed the activation, and the
+    // activation made a new preview while the window applied a preview (stack overflow).
+    Fixture f;
+    f.window.show();
+    f.window.activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(&f.window));
+    f.addFiles({QStringLiteral("x1.txt"), QStringLiteral("x2.txt"), QStringLiteral("y.txt")});
+    f.window.ruleModel().insertRule(0, regexRemoveDigits());
+    QCOMPARE(f.window.currentPreview().summary.conflicts, 2);
+    QTest::qWait(50);
+    QVERIFY(f.window.isActiveWindow());
+    QCOMPARE(f.window.currentPreview().summary.conflicts, 2);
+}
+
+void TestMainWindow::activationWhileApplyingPreview()
+{
+    // M01: an activation while the window applies a preview does not apply a preview inside it.
+    Fixture f;
+    f.window.show();
+    f.window.activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(&f.window));
+    f.addFiles({QStringLiteral("a1.txt"), QStringLiteral("a2.txt")});
+    f.window.ruleModel().insertRule(0, regexRemoveDigits());
+    int depth = 0;
+    int maxDepth = 0;
+    connect(&f.window.itemModel(), &QAbstractItemModel::dataChanged, &f.window, [&] {
+        ++depth;
+        maxDepth = qMax(maxDepth, depth);
+        if (depth < 5) {
+            QEvent activation(QEvent::ActivationChange);
+            QCoreApplication::sendEvent(&f.window, &activation);
+        }
+        --depth;
+    });
+    f.window.requestPreview(); // only the preview changes the table
+    QCOMPARE(maxDepth, 1);
+    // The activation reads the folders again after the preview.
+    QTRY_VERIFY(f.window.previewIsCurrent());
+    QCOMPARE(f.window.currentPreview().summary.conflicts, 2);
 }
 
 void TestMainWindow::tabOrder()

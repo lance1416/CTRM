@@ -27,6 +27,7 @@
 #include <QMenuBar>
 #include <QMetaMethod>
 #include <QPushButton>
+#include <QScopedValueRollback>
 #include <QSizePolicy>
 #include <QSplitter>
 #include <QStackedWidget>
@@ -38,6 +39,7 @@
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <utility>
 
 namespace ctrm::app {
 
@@ -323,6 +325,12 @@ void MainWindow::changeEvent(QEvent *e)
         m_itemModel.rowCount() == 0)
         return;
     m_folderCache.invalidate();
+    // A window change while a preview is applied (a message bar shows) must not start a new
+    // preview in the middle of it: that preview applies again (M01, stack overflow).
+    if (m_applyingPreview) {
+        m_previewAfterApply = true;
+        return;
+    }
     requestPreview();
 }
 
@@ -729,6 +737,7 @@ void MainWindow::contentChanged()
 
 void MainWindow::previewReady(const ctrm::PreviewResult &result, quint64 generation)
 {
+    const QScopedValueRollback applying(m_applyingPreview, true);
     m_preview = result;
     m_previewGeneration = generation;
     m_itemModel.setPreview(result);
@@ -739,6 +748,8 @@ void MainWindow::previewReady(const ctrm::PreviewResult &result, quint64 generat
     updateWindowState();
     updateConflictTip();
     updateTablePage();
+    if (std::exchange(m_previewAfterApply, false))
+        QMetaObject::invokeMethod(this, &MainWindow::requestPreview, Qt::QueuedConnection);
 }
 
 void MainWindow::updateWindowState()
