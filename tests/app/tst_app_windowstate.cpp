@@ -13,6 +13,7 @@
 #include <QSignalSpy>
 #include <QStyle>
 #include <QToolButton>
+#include <QVBoxLayout>
 #include <QtTest>
 
 using namespace ctrm;
@@ -100,6 +101,7 @@ private slots:
     void problemLinks();
     void summaryAnnouncedAfterDelay();
     void messageBar();
+    void messageBarOneLine();
 };
 
 void TestAppWindowState::states_data()
@@ -519,6 +521,38 @@ void TestAppWindowState::messageBar()
     bar.clear();
     QVERIFY(!bar.isVisibleTo(&parent));
     QCOMPARE(closed.size(), 1); // clear() is not a close by the user
+}
+
+void TestAppWindowState::messageBarOneLine()
+{
+    // M11, mockup .msgbar: icon, text, buttons and close on one centre line; padding 6 px.
+    QWidget parent;
+    auto *layout = new QVBoxLayout(&parent);
+    auto *bar = new MessageBar(&parent);
+    layout->addWidget(bar);
+    layout->addStretch(1);
+    parent.resize(800, 300);
+    auto *undo = new QPushButton(QStringLiteral("Undo"));
+    bar->showMessage(StateIcon::Done, QStringLiteral("Renamed 6 items."), {undo});
+    parent.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&parent));
+
+    auto *icon = bar->findChild<QLabel *>(QStringLiteral("messageBarIcon"));
+    auto *text = bar->findChild<QLabel *>(QStringLiteral("messageBarText"));
+    auto *close = bar->findChild<QToolButton *>(QStringLiteral("messageBarClose"));
+    const auto centreY = [bar](QWidget *w) { return w->mapTo(bar, w->rect().center()).y(); };
+    const auto textCentre = [&] {
+        // The centre of the text line, not of the label.
+        const int line = text->fontMetrics().height();
+        const QRect r = QStyle::alignedRect(text->layoutDirection(), text->alignment(),
+                                            QSize(text->width(), line), text->contentsRect());
+        return text->mapTo(bar, r.center()).y();
+    };
+    QVERIFY(qAbs(centreY(icon) - textCentre()) <= 1);
+    QVERIFY(qAbs(centreY(undo) - textCentre()) <= 1);
+    QVERIFY(qAbs(centreY(close) - textCentre()) <= 1);
+    const int tallest = qMax(undo->height(), close->height());
+    QVERIFY2(bar->height() <= tallest + 2 * 6 + 2, qPrintable(QString::number(bar->height())));
 }
 
 QTEST_MAIN(TestAppWindowState)

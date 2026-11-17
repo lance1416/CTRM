@@ -11,10 +11,15 @@
 #include <QPushButton>
 #include <QStyle>
 #include <QToolButton>
+#include <QVBoxLayout>
 
 namespace ctrm::app {
 
 namespace {
+
+constexpr int kPaddingX = 10;
+constexpr int kPaddingY = 6;
+constexpr int kGap = 10;
 
 QColor stateColor(StateIcon icon, const CtrmColors &c)
 {
@@ -45,7 +50,7 @@ MessageBar::MessageBar(QWidget *parent)
     , m_close(new TertiaryButton(this))
 {
     setObjectName(QStringLiteral("messageBar"));
-    setFrameShape(QFrame::StyledPanel);
+    setFrameShape(QFrame::NoFrame);
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     setAccessibleName(tr("Message"));
 
@@ -53,6 +58,7 @@ MessageBar::MessageBar(QWidget *parent)
     m_text->setObjectName(QStringLiteral("messageBarText"));
     m_text->setTextFormat(Qt::PlainText);
     m_text->setWordWrap(true);
+    m_text->setAlignment(Qt::AlignLeading | Qt::AlignVCenter);
     m_text->setTextInteractionFlags(Qt::TextSelectableByMouse);
     m_text->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 
@@ -66,12 +72,26 @@ MessageBar::MessageBar(QWidget *parent)
         emit closed();
     });
 
+    // Mockup .msgbar (M11): one centre line, padding 6 px x 10 px, a separator under it.
     m_buttonLayout->setContentsMargins(0, 0, 0, 0);
-    auto *layout = new QHBoxLayout(this);
-    layout->addWidget(m_icon, 0, Qt::AlignTop);
-    layout->addWidget(m_text, 1);
-    layout->addLayout(m_buttonLayout);
-    layout->addWidget(m_close, 0, Qt::AlignTop);
+    auto *row = new QHBoxLayout;
+    row->setContentsMargins(kPaddingX, kPaddingY, kPaddingX, kPaddingY);
+    row->setSpacing(kGap);
+    row->addWidget(m_icon, 0, Qt::AlignVCenter);
+    row->addWidget(m_text, 1);
+    row->addLayout(m_buttonLayout);
+    row->addWidget(m_close, 0, Qt::AlignVCenter);
+    auto *separator = new QFrame(this);
+    separator->setObjectName(QStringLiteral("messageBarSeparator"));
+    separator->setFrameShape(QFrame::HLine);
+    separator->setFrameShadow(QFrame::Plain);
+    separator->setForegroundRole(QPalette::Mid);
+    separator->setFixedHeight(1);
+    auto *layout = new QVBoxLayout(this);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
+    layout->addLayout(row);
+    layout->addWidget(separator);
 
     hide();
 }
