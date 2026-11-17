@@ -133,11 +133,14 @@ void MessageBar::updateColors()
     setPalette(QPalette());
     const QPalette base = palette();
     const CtrmColors colors = CtrmColors::fromPalette(base);
-    QPalette tint;
-    tint.setColor(QPalette::Window,
-                  mix(stateColor(m_stateIcon, colors), base.color(QPalette::Base), 0.12));
-    setPalette(tint);
-    setAutoFillBackground(true);
+    // A high-contrast theme has no tints (design-tokens 2.6): the palette only.
+    if (colors.tintsEnabled) {
+        QPalette tint;
+        tint.setColor(QPalette::Window,
+                      mix(stateColor(m_stateIcon, colors), base.color(QPalette::Base), 0.12));
+        setPalette(tint);
+    }
+    setAutoFillBackground(colors.tintsEnabled);
 
     m_close->setIcon(style()->standardIcon(QStyle::SP_TitleBarCloseButton, nullptr, this));
     const int size = style()->pixelMetric(QStyle::PM_SmallIconSize, nullptr, this);
