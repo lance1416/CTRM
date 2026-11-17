@@ -566,6 +566,18 @@ void TestAppRulePanel::primaryAddRuleIsPlainButton()
     QTRY_VERIFY(f.actions.addRuleMenu->isVisible());
     QCOMPARE(f.actions.addRuleMenu->pos(), add->mapToGlobal(add->rect().bottomLeft()));
     f.actions.addRuleMenu->hide();
+    // The menu action (its shortcut) opens the menu also in this state.
+    f.actions.addRuleMenu->menuAction()->trigger();
+    QTRY_VERIFY(f.actions.addRuleMenu->isVisible());
+    f.actions.addRuleMenu->hide();
+    // Right to left: the menu ends at the right edge of the button.
+    f.window.setLayoutDirection(Qt::RightToLeft);
+    QTest::mouseClick(add, Qt::LeftButton);
+    QTRY_VERIFY(f.actions.addRuleMenu->isVisible());
+    QCOMPARE(f.actions.addRuleMenu->geometry().right(),
+             add->mapToGlobal(add->rect().bottomRight()).x());
+    f.actions.addRuleMenu->hide();
+    f.window.setLayoutDirection(Qt::LeftToRight);
 
     f.panel->setPrimaryAddRule(false);
     QCOMPARE(add->menu(), f.actions.addRuleMenu);

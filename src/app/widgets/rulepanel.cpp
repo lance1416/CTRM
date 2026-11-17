@@ -702,10 +702,16 @@ void RulePanel::updateAddRuleLook()
 
 void RulePanel::openAddRuleMenu()
 {
-    if (m_addRule->menu())
+    if (m_addRule->menu()) {
         m_addRule->showMenu();
-    else
-        m_actions.addRuleMenu->popup(m_addRule->mapToGlobal(m_addRule->rect().bottomLeft()));
+        return;
+    }
+    // Below the button, on the same start edge (as QPushButton::showMenu).
+    QMenu *menu = m_actions.addRuleMenu;
+    QPoint at = m_addRule->rect().bottomLeft();
+    if (m_addRule->isRightToLeft())
+        at = m_addRule->rect().bottomRight() - QPoint(menu->sizeHint().width() - 1, 0);
+    menu->popup(m_addRule->mapToGlobal(at));
 }
 
 void RulePanel::updateIcons()
