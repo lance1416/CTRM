@@ -59,6 +59,9 @@ public:
     QToolButton *button() const;
     void setOpen(bool open);
 
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
 private:
     QPointer<QFormLayout> m_form;
     QToolButton *m_button;

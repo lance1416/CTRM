@@ -26,6 +26,7 @@
 #include <QMenu>
 #include <QPainter>
 #include <QPushButton>
+#include <QScopeGuard>
 #include <QScrollArea>
 #include <QSignalSpy>
 #include <QSpinBox>
@@ -103,6 +104,7 @@ private slots:
     void emptyStates();
     void chainOptionsAtBottom();
     void chainOptionsForwarded();
+    void chainOptionsStableAndTitleAligned();
     void setChainResetsEditor();
     void numberedCountForwarded();
     void inactiveSelectionContrast();
@@ -431,6 +433,56 @@ void TestAppRulePanel::chainOptionsAtBottom()
     QVERIFY(scroll && splitter->isAncestorOf(scroll));
     QVERIFY(scroll->isAncestorOf(f.panel->currentEditor()));
     QVERIFY(splitter->isAncestorOf(f.panel->ruleList()));
+}
+
+void TestAppRulePanel::chainOptionsStableAndTitleAligned()
+{
+    // M19: Chain options has the body font and does not move when another editor shows. The
+    // editor title starts on the line of the "Rules" header.
+    const QStringList types{"replace",   "insert",    "remove", "changeCase",
+                            "numbering", "extension", "cleanup"};
+    // The macOS platform theme gives tool buttons a smaller font.
+    const QFont appFont = QApplication::font();
+    QFont small = appFont;
+    small.setPointSizeF(appFont.pointSizeF() - 3);
+    QApplication::setFont(small, "QToolButton");
+    const auto restore = qScopeGuard([&] { QApplication::setFont(appFont, "QToolButton"); });
+    Fixture f(types);
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    auto *header = f.panel->findChild<QToolButton *>(QStringLiteral("chainOptionsHeader"));
+    QVERIFY(header);
+    QCOMPARE(header->font().pointSizeF(), f.panel->font().pointSizeF());
+    f.select(types.indexOf(QStringLiteral("changeCase")));
+    auto *more = f.panel->currentEditor()->findChild<QToolButton *>(QStringLiteral("moreOptions"));
+    QVERIFY(more);
+    QCOMPARE(more->font().pointSizeF(), f.panel->font().pointSizeF());
+    QLabel *rules = nullptr;
+    for (QLabel *label : f.panel->findChildren<QLabel *>()) {
+        if (label->text() == QStringLiteral("Rules"))
+            rules = label;
+    }
+    QVERIFY(rules);
+    const int rulesX = rules->mapTo(f.panel, QPoint()).x();
+    for (const int height : {800, 420}) {
+        f.window.resize(f.window.width(), height);
+        QApplication::processEvents();
+        int headerY = -1;
+        for (int row = 0; row < types.size(); ++row) {
+            f.select(row);
+            QApplication::processEvents();
+            const int y = header->mapTo(f.panel, QPoint()).y();
+            if (headerY < 0)
+                headerY = y;
+            QVERIFY2(
+                    y == headerY,
+                    qPrintable(
+                            QStringLiteral("%1: %2 != %3").arg(types.at(row)).arg(y).arg(headerY)));
+            auto *title = f.panel->currentEditor()->findChild<QLabel *>(
+                    QStringLiteral("ruleEditorTitle"));
+            QVERIFY(title);
+            QCOMPARE(title->mapTo(f.panel, QPoint()).x(), rulesX);
+        }
+    }
 }
 
 void TestAppRulePanel::chainOptionsForwarded()

@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "chainoptionswidget.h"
 
+#include "theme/typography.h"
 #include "widgets/formutils.h"
 #include "widgets/tertiarybutton.h"
 
 #include <QCheckBox>
+#include <QEvent>
 #include <QFormLayout>
 #include <QLabel>
 #include <QToolButton>
@@ -30,6 +32,8 @@ ChainOptionsWidget::ChainOptionsWidget(QWidget *parent)
     m_header->setAutoRaise(true);
     m_header->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     m_header->setArrowType(Qt::RightArrow);
+    // The body font, not the small tool button font of macOS (M19).
+    m_header->setFont(typeStyle(TypeToken::Body, font()));
 
     m_form->setContentsMargins(0, 0, 0, 0);
     for (QCheckBox *check : {m_portableNames, m_autoResolveDuplicates, m_folderExtensions}) {
@@ -74,6 +78,13 @@ void ChainOptionsWidget::setOpen(bool open)
     m_header->setChecked(open);
     m_header->setArrowType(open ? Qt::DownArrow : Qt::RightArrow);
     m_body->setVisible(open);
+}
+
+void ChainOptionsWidget::changeEvent(QEvent *event)
+{
+    QWidget::changeEvent(event);
+    if (event->type() == QEvent::FontChange)
+        m_header->setFont(typeStyle(TypeToken::Body, font()));
 }
 
 QFormLayout *ChainOptionsWidget::form() const

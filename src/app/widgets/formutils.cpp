@@ -2,6 +2,7 @@
 #include "formutils.h"
 
 #include "tertiarybutton.h"
+#include "theme/typography.h"
 
 #include <QApplication>
 #include <QComboBox>
@@ -257,8 +258,12 @@ MoreOptions::MoreOptions(QFormLayout *form, const QString &text, QWidget *parent
     , m_form(form)
     , m_button(new TertiaryButton(parent))
 {
+    m_button->setObjectName(QStringLiteral("moreOptions"));
     m_button->setText(text);
     m_button->setAccessibleName(text);
+    // A text button has the font of the form, not the small tool button font of macOS (M19).
+    m_button->setFont(typeStyle(TypeToken::Body, parent->font()));
+    parent->installEventFilter(this);
     m_button->setCheckable(true);
     m_button->setAutoRaise(true);
     m_button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
@@ -281,6 +286,13 @@ void MoreOptions::addRow(int row)
     }
     m_rows.append(field);
     m_form->setRowVisible(field, m_button->isChecked());
+}
+
+bool MoreOptions::eventFilter(QObject *watched, QEvent *event)
+{
+    if (event->type() == QEvent::FontChange)
+        m_button->setFont(typeStyle(TypeToken::Body, static_cast<QWidget *>(watched)->font()));
+    return QObject::eventFilter(watched, event);
 }
 
 QToolButton *MoreOptions::button() const

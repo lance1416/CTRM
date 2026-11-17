@@ -62,6 +62,10 @@ RuleEditor::RuleEditor(QWidget *parent)
     m_title->setObjectName(QStringLiteral("ruleEditorTitle"));
     m_title->setTextFormat(Qt::PlainText);
     auto *layout = new QVBoxLayout(this);
+    // The rule panel gives the side margins: the title starts on the line of the "Rules"
+    // header, and the form on the line of Chain options (M19).
+    const QMargins margins = layout->contentsMargins();
+    layout->setContentsMargins(0, margins.top(), 0, margins.bottom());
     layout->addWidget(m_title);
     auto *formWidget = new QWidget(this);
     m_form = makeForm(formWidget);

@@ -26,6 +26,9 @@ public:
 signals:
     void optionsChanged(const ctrm::ChainOptions &o);
 
+protected:
+    void changeEvent(QEvent *event) override;
+
 private:
     void updateHeader();
 

@@ -413,6 +413,8 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     unsupportedText->setObjectName(QStringLiteral("unsupportedText"));
     unsupportedText->setWordWrap(true);
     auto *unsupportedLayout = new QVBoxLayout(m_unsupportedPage);
+    unsupportedLayout->setContentsMargins(0, unsupportedLayout->contentsMargins().top(), 0,
+                                          unsupportedLayout->contentsMargins().bottom());
     unsupportedLayout->addWidget(unsupportedText);
     unsupportedLayout->addStretch();
     m_editors->addWidget(m_unsupportedPage);
