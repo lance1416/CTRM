@@ -65,6 +65,8 @@ FlowStrip::FlowStrip(QWidget *parent)
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
 
     auto *layout = new QHBoxLayout(this);
+    // Mockup .flow (M22): a thin row, padding 5 px x 12 px.
+    layout->setContentsMargins(12, 5, 12, 5);
     layout->setSpacing(0);
     for (int i = 0; i < kSteps; ++i) {
         if (i > 0) {

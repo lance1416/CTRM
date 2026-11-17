@@ -36,6 +36,7 @@
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QSettings>
+#include <QStatusBar>
 #include <QTableView>
 #include <QTemporaryDir>
 #include <QToolBar>
@@ -141,6 +142,10 @@ private slots:
     void conflictInActiveWindow();
     void activationWhileApplyingPreview();
     void tabOrder();
+    void problemActionsNeedProblems();
+    void noEmptyStatusBar();
+    void flowStripIsThin();
+    void clearListUndo();
     void presetTitle();
     void listActionsAtStart();
     void pendingPreviewBlocksRename();
@@ -457,6 +462,86 @@ void TestMainWindow::activationWhileApplyingPreview()
     // The activation reads the folders again after the preview.
     QTRY_VERIFY(f.window.previewIsCurrent());
     QCOMPARE(f.window.currentPreview().summary.conflicts, 2);
+}
+
+void TestMainWindow::problemActionsNeedProblems()
+{
+    // M27: Next and Previous Problem only when there are problems (ui-design 5.5).
+    Fixture f;
+    f.addFiles({QStringLiteral("x1.txt"), QStringLiteral("x2.txt")});
+    QVERIFY(!f.window.actions().nextProblem->isEnabled());
+    QVERIFY(!f.window.actions().previousProblem->isEnabled());
+    f.window.ruleModel().insertRule(0, regexRemoveDigits());
+    QVERIFY(f.window.currentPreview().summary.conflicts > 0);
+    QVERIFY(f.window.actions().nextProblem->isEnabled());
+    QVERIFY(f.window.actions().previousProblem->isEnabled());
+    f.window.ruleModel().removeRule(0);
+    QVERIFY(!f.window.actions().nextProblem->isEnabled());
+    QVERIFY(!f.window.actions().previousProblem->isEnabled());
+}
+
+void TestMainWindow::noEmptyStatusBar()
+{
+    // M21: the action bar is the last row. The status bar shows only with a message.
+    Fixture f;
+    f.window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    QVERIFY(!f.window.statusBar()->isVisible());
+    f.addFiles({QStringLiteral("a.txt")});
+    f.addFiles({QStringLiteral("a.txt")}); // already in the list: a status message
+    QVERIFY(f.window.statusBar()->isVisible());
+    QVERIFY(!f.window.statusBar()->currentMessage().isEmpty());
+    f.window.statusBar()->clearMessage();
+    QVERIFY(!f.window.statusBar()->isVisible());
+}
+
+void TestMainWindow::flowStripIsThin()
+{
+    // M22, mockup .flow: one row of steps, padding 5 px, a separator under it.
+    Fixture f;
+    f.window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    QWidget *slot = f.window.flowStripSlot();
+    auto *step = f.child<QToolButton>("flowStep1");
+    QVERIFY(f.child<QFrame>("flowStripSeparator"));
+    QVERIFY(slot->isAncestorOf(f.child<QFrame>("flowStripSeparator")));
+    QVERIFY2(slot->height() <= step->height() + 2 * 5 + 1,
+             qPrintable(QStringLiteral("%1 %2").arg(slot->height()).arg(step->height())));
+}
+
+void TestMainWindow::clearListUndo()
+{
+    // S07: Clear List has no question. The message bar has Undo, which puts the same items back
+    // in the same order with the same Include states.
+    Fixture f;
+    f.window.show();
+    f.addFiles({QStringLiteral("c.txt"), QStringLiteral("a.txt"), QStringLiteral("b.txt")});
+    const ItemId a = f.window.itemModel().items().at(1).id;
+    f.window.itemModel().setIncluded({a}, false);
+    f.window.actions().clearList->trigger();
+    QCOMPARE(f.window.itemModel().rowCount(), 0);
+    MessageBar *bar = f.window.messageBar();
+    QVERIFY(f.shown(bar));
+    QCOMPARE(bar->findChild<QLabel *>(QStringLiteral("messageBarText"))->text(),
+             QStringLiteral("Cleared 3 items."));
+    auto *undo = bar->findChild<QPushButton *>(QStringLiteral("clearListUndo"));
+    QVERIFY(undo);
+    QCOMPARE(undo->text(), QStringLiteral("Undo"));
+    QVERIFY(!undo->isDefault());
+    undo->click();
+    QCOMPARE(f.oldNames(), QStringList({QStringLiteral("c.txt"), QStringLiteral("a.txt"),
+                                        QStringLiteral("b.txt")}));
+    const QList<Item> items = f.window.itemModel().items();
+    QCOMPARE(items.at(0).included, true);
+    QCOMPARE(items.at(1).included, false);
+    QCOMPARE(items.at(2).included, true);
+    QVERIFY(!f.shown(bar));
+
+    // The bar closes at the next list change.
+    f.window.actions().clearList->trigger();
+    QVERIFY(f.shown(bar));
+    f.addFiles({QStringLiteral("d.txt")});
+    QVERIFY(!f.shown(bar));
 }
 
 void TestMainWindow::tabOrder()

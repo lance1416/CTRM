@@ -92,6 +92,7 @@ private:
     void setShowMode(ShowMode mode);
     void clearFilter();
     void refresh();
+    void clearList();
     void focusStep(int step);
     void focusRules();
     void focusTable();
@@ -111,6 +112,7 @@ private:
     bool m_running = false;
     bool m_resultShown = false;
     int m_renamedCount = 0;
+    bool m_clearMessageShown = false; // "Cleared N items." with Undo
     bool m_applyingPreview = false;   // in previewReady
     bool m_previewAfterApply = false; // an activation came while a preview was applied
     QHash<QAction *, bool> m_enabledBeforeRun;

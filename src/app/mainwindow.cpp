@@ -4,6 +4,7 @@
 #include "appcontext.h"
 #include "controllers/itemadder.h"
 #include "fs/itemsource.h"
+#include "text/plural.h"
 #include "theme/icons.h"
 #include "widgets/actionbar.h"
 #include "widgets/emptystate.h"
@@ -106,7 +107,10 @@ MainWindow::MainWindow(AppContext &ctx, QWidget *parent)
     updateToolIcons();
     buildCentralWidget();
     buildPanels();
-    statusBar();
+    // M21: the action bar is the last row. The status bar shows only with a message.
+    statusBar()->hide();
+    connect(statusBar(), &QStatusBar::messageChanged, this,
+            [this](const QString &text) { statusBar()->setVisible(!text.isEmpty()); });
     // M04: View > Show Columns has the column items of the table header.
     m_showColumnsMenu->addActions(
             m_table->findChild<QMenu *>(QStringLiteral("columnsMenu"))->actions());
@@ -513,6 +517,14 @@ void MainWindow::buildPanels()
     // filter, table, action bar.
     m_flowStrip = new FlowStrip(m_flowStripSlot);
     m_flowStripSlot->layout()->addWidget(m_flowStrip);
+    // Mockup .flow (M22): a separator under the strip.
+    auto *flowSeparator = new QFrame(m_flowStripSlot);
+    flowSeparator->setObjectName(QStringLiteral("flowStripSeparator"));
+    flowSeparator->setFrameShape(QFrame::HLine);
+    flowSeparator->setFrameShadow(QFrame::Plain);
+    flowSeparator->setForegroundRole(QPalette::Mid);
+    flowSeparator->setFixedHeight(1);
+    m_flowStripSlot->layout()->addWidget(flowSeparator);
 
     m_rulePanel = new RulePanel(m_ruleModel, m_actions, m_rulePanelSlot);
     m_rulePanelSlot->layout()->addWidget(m_rulePanel);
@@ -642,7 +654,7 @@ void MainWindow::connectActions()
     // The list.
     connect(a.removeFromList, &QAction::triggered, this,
             [this] { m_itemModel.removeItems(m_table->selectedIds()); });
-    connect(a.clearList, &QAction::triggered, &m_itemModel, &ItemTableModel::clear);
+    connect(a.clearList, &QAction::triggered, this, &MainWindow::clearList);
     connect(a.refresh, &QAction::triggered, this, &MainWindow::refresh);
     connect(a.include, &QAction::triggered, this,
             [this] { m_itemModel.setIncluded(m_table->selectedIds(), true); });
@@ -725,8 +737,30 @@ void MainWindow::connectActions()
     });
 }
 
+void MainWindow::clearList()
+{
+    // S07: no question; Undo in the message bar puts the same items back (same order, same
+    // Include states). The bar closes at the next list change.
+    const QList<ctrm::Item> cleared = m_itemModel.items();
+    if (cleared.isEmpty())
+        return;
+    m_itemModel.clear();
+    auto *undo = new QPushButton(tr("Undo"));
+    undo->setObjectName(QStringLiteral("clearListUndo"));
+    connect(undo, &QPushButton::clicked, this, [this, cleared] {
+        if (m_itemModel.rowCount() == 0)
+            m_itemModel.addItems(cleared);
+    });
+    const int n = int(cleared.size());
+    m_messageBar->showMessage(StateIcon::Done, numerus(tr("Cleared %n item(s).", nullptr, n), n),
+                              {undo});
+    m_clearMessageShown = true;
+}
+
 void MainWindow::contentChanged()
 {
+    if (std::exchange(m_clearMessageShown, false))
+        m_messageBar->clear();
     setResultShown(false);
     requestPreview();
     updateListActions();
@@ -785,6 +819,10 @@ void MainWindow::updateWindowState()
         if (m_state.primary == PrimaryTarget::Rename)
             m_state.primary = PrimaryTarget::None;
     }
+    // M27: Next and Previous Problem only when there are problems.
+    const bool problems = !m_running && in.itemCount > 0 && m_preview.summary.blocked() > 0;
+    m_actions.nextProblem->setEnabled(problems);
+    m_actions.previousProblem->setEnabled(problems);
     m_flowStrip->setState(m_state);
     m_actionBar->setState(m_state, m_preview.summary);
     m_rulePanel->setPrimaryAddRule(m_state.primary == PrimaryTarget::AddRule);
