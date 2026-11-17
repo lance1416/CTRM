@@ -353,6 +353,8 @@ protected:
     {
         PlainSplitter::resizeEvent(e);
         fit();
+        if (m_userSizes) // the user sizes change in proportion: keep the current rule visible
+            m_list->scrollTo(m_list->currentIndex());
     }
 
 private:
@@ -370,8 +372,10 @@ private:
         const int listHeight = std::clamp(total - editorHint, listMin, listHint);
         const QList<int> wanted{listHeight, std::max(0, total - listHeight)};
         if (sizes() != wanted) {
-            setSizes(wanted);
-            m_list->scrollTo(m_list->currentIndex());
+            const int before = sizes().value(0);
+            setSizes(wanted); // QSplitter can clamp the sizes: compare the result
+            if (sizes().value(0) != before)
+                m_list->scrollTo(m_list->currentIndex());
         }
     }
 
@@ -382,7 +386,10 @@ private:
             return m_editor->widget() ? m_editor->widget()->sizeHint().height() : 0;
         int tallest = 0;
         for (int i = 0; i < pages->count(); ++i)
-            tallest = std::max(tallest, pages->widget(i)->sizeHint().height());
+            tallest = std::max(tallest, pages->widget(i)
+                                                ->sizeHint()
+                                                .expandedTo(pages->widget(i)->minimumSize())
+                                                .height()); // as EditorStack::pageSize
         return tallest;
     }
 
