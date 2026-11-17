@@ -4,6 +4,7 @@
 #include "theme/colors.h"
 #include "theme/icons.h"
 #include "theme/typography.h"
+#include "widgets/tertiarybutton.h"
 
 #include <QEvent>
 #include <QHBoxLayout>
@@ -73,7 +74,7 @@ FlowStrip::FlowStrip(QWidget *parent)
             separator->setAccessibleName(QString());
             layout->addWidget(separator);
         }
-        auto *button = new QToolButton(this);
+        auto *button = new TertiaryButton(this);
         button->setObjectName(QStringLiteral("flowStep%1").arg(i + 1));
         button->setAutoRaise(true);
         button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);

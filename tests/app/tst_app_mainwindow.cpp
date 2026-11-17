@@ -20,6 +20,7 @@
 #include "widgets/itemtableview.h"
 #include "widgets/messagebar.h"
 #include "widgets/rulepanel.h"
+#include "widgets/tertiarybutton.h"
 
 #include <QAction>
 #include <QComboBox>
@@ -29,6 +30,7 @@
 #include <QLineEdit>
 #include <QListView>
 #include <QMenu>
+#include <QMenuBar>
 #include <QPushButton>
 #include <QSettings>
 #include <QTemporaryDir>
@@ -135,6 +137,9 @@ private slots:
     void presetTitle();
     void listActionsAtStart();
     void pendingPreviewBlocksRename();
+    void toolbarIcons();
+    void tertiaryButtonsHaveNoFrame();
+    void ruleMenuButtonsArePushButtons();
 };
 
 void TestMainWindow::contextStores()
@@ -480,6 +485,60 @@ void TestMainWindow::pendingPreviewBlocksRename()
     QTRY_VERIFY_WITH_TIMEOUT(f.window.previewIsCurrent(), 30'000);
     QVERIFY(f.window.actionBar()->renameButton()->isEnabled());
     QVERIFY(f.window.actionBar()->renameButton()->isDefault());
+}
+
+void TestMainWindow::toolbarIcons()
+{
+    // D3: each toolbar button has an icon, and the icon follows the palette.
+    Fixture f;
+    auto *bar = f.child<QToolBar>("mainToolBar");
+    QList<QToolButton *> buttons;
+    for (QAction *action : bar->actions()) {
+        if (auto *b = qobject_cast<QToolButton *>(bar->widgetForAction(action)))
+            buttons.append(b);
+    }
+    QCOMPARE(buttons.size(), 8);
+    QCOMPARE(bar->iconSize(), QSize(16, 16));
+    QVERIFY(buttons.contains(f.child<QToolButton>("toolBarPresets")));
+    QHash<QToolButton *, qint64> keys;
+    for (QToolButton *b : std::as_const(buttons)) {
+        QVERIFY2(!b->icon().isNull(), qPrintable(b->text()));
+        keys.insert(b, b->icon().cacheKey());
+    }
+    QVERIFY(f.child<QToolButton>("toolBarPresets")->menu());
+    QPalette p = f.window.palette();
+    p.setColor(QPalette::WindowText, QColor(0x12, 0x34, 0x56));
+    f.window.setPalette(p);
+    for (QToolButton *b : std::as_const(buttons))
+        QVERIFY2(b->icon().cacheKey() != keys.value(b), qPrintable(b->text()));
+    // The menu bar title keeps its text: the Presets menu action has no icon.
+    for (QAction *menu : f.window.menuBar()->actions())
+        QVERIFY(menu->icon().isNull());
+}
+
+void TestMainWindow::tertiaryButtonsHaveNoFrame()
+{
+    // D4: the tertiary buttons outside the toolbar draw no frame until hover.
+    Fixture f;
+    for (const char *name : {"moveUpButton", "moveDownButton", "duplicateButton", "deleteButton",
+                             "previousProblemButton", "nextProblemButton", "messageBarClose",
+                             "chainOptionsHeader", "flowStep1", "flowStep4"}) {
+        auto *b = f.window.findChild<QToolButton *>(QString::fromLatin1(name));
+        QVERIFY2(b, name);
+        QVERIFY2(qobject_cast<TertiaryButton *>(b), name);
+    }
+}
+
+void TestMainWindow::ruleMenuButtonsArePushButtons()
+{
+    // D5: Add Rule and Presets are push buttons with a menu (the style draws the indicator).
+    Fixture f;
+    QPushButton *add = f.window.rulePanel()->addRuleButton();
+    QPushButton *presets = f.window.rulePanel()->presetsButton();
+    QVERIFY(add->menu());
+    QVERIFY(presets->menu());
+    QVERIFY(!add->autoDefault());
+    QVERIFY(!presets->autoDefault());
 }
 
 QTEST_MAIN(TestMainWindow)

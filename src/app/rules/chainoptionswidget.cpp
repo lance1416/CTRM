@@ -2,6 +2,7 @@
 #include "chainoptionswidget.h"
 
 #include "widgets/formutils.h"
+#include "widgets/tertiarybutton.h"
 
 #include <QCheckBox>
 #include <QFormLayout>
@@ -13,7 +14,7 @@ namespace ctrm::app {
 
 ChainOptionsWidget::ChainOptionsWidget(QWidget *parent)
     : QWidget(parent)
-    , m_header(new QToolButton)
+    , m_header(new TertiaryButton)
     , m_body(new QWidget)
     , m_form(makeForm(m_body))
     , m_portableNames(new QCheckBox(tr("Use portable names (check Windows rules on all systems)")))

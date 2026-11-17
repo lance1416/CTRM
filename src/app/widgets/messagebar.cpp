@@ -2,6 +2,7 @@
 #include "widgets/messagebar.h"
 
 #include "theme/colors.h"
+#include "widgets/tertiarybutton.h"
 
 #include <QAccessible>
 #include <QEvent>
@@ -41,7 +42,7 @@ MessageBar::MessageBar(QWidget *parent)
     , m_icon(new QLabel(this))
     , m_text(new QLabel(this))
     , m_buttonLayout(new QHBoxLayout)
-    , m_close(new QToolButton(this))
+    , m_close(new TertiaryButton(this))
 {
     setObjectName(QStringLiteral("messageBar"));
     setFrameShape(QFrame::StyledPanel);

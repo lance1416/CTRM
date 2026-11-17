@@ -17,7 +17,9 @@
 #include "theme/colors.h"
 #include "theme/icons.h"
 #include "theme/typography.h"
+#include "widgets/buttonstyle.h"
 #include "widgets/formutils.h"
+#include "widgets/tertiarybutton.h"
 
 #include <QAbstractButton>
 #include <QAction>
@@ -30,6 +32,7 @@
 #include <QListView>
 #include <QMenu>
 #include <QPainter>
+#include <QPushButton>
 #include <QRadioButton>
 #include <QScrollArea>
 #include <QSplitter>
@@ -135,8 +138,8 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     : QWidget(parent)
     , m_model(model)
     , m_actions(actions)
-    , m_addRule(new QToolButton)
-    , m_presets(new QToolButton)
+    , m_addRule(new QPushButton)
+    , m_presets(new QPushButton)
     , m_emptyPage(new QWidget)
     , m_emptyText(new QLabel)
     , m_list(new QListView)
@@ -165,13 +168,11 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     m_headerLayout->addStretch();
 
     m_addRule->setText(tr("Add Rule"));
-    m_addRule->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    m_addRule->setPopupMode(QToolButton::InstantPopup);
+    m_addRule->setAutoDefault(false);
     m_addRule->setMenu(actions.addRuleMenu);
     m_addRule->setToolTip(actions.addRuleMenu->menuAction()->toolTip());
     m_presets->setText(tr("Presets"));
-    m_presets->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    m_presets->setPopupMode(QToolButton::InstantPopup);
+    m_presets->setAutoDefault(false);
 
     // The empty rule list (ui-design 5.4).
     m_emptyText->setWordWrap(true);
@@ -207,7 +208,7 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
             {"duplicateButton", actions.duplicateRule},
             {"deleteButton", actions.deleteRule}};
     for (const auto &[name, action] : buttons) {
-        auto *button = new QToolButton;
+        auto *button = new TertiaryButton;
         button->setObjectName(QString::fromLatin1(name));
         button->setAutoRaise(true);
         button->setToolButtonStyle(Qt::ToolButtonIconOnly);
@@ -282,7 +283,7 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     addActions({actions.duplicateRule, actions.moveRuleUp, actions.moveRuleDown,
                 actions.addRuleMenu->menuAction()});
     connect(actions.addRuleMenu->menuAction(), &QAction::triggered, m_addRule,
-            &QToolButton::showMenu);
+            &QPushButton::showMenu);
     connect(actions.duplicateRule, &QAction::triggered, this, [this] {
         const int row = currentRow();
         if (row < 0)
@@ -381,12 +382,12 @@ QWidget *RulePanel::currentEditor() const
     return m_editors->currentWidget();
 }
 
-QToolButton *RulePanel::addRuleButton() const
+QPushButton *RulePanel::addRuleButton() const
 {
     return m_addRule;
 }
 
-QToolButton *RulePanel::presetsButton() const
+QPushButton *RulePanel::presetsButton() const
 {
     return m_presets;
 }
@@ -601,15 +602,7 @@ void RulePanel::updateEmptyState()
 void RulePanel::updateAddRuleLook()
 {
     m_addRule->setProperty("primary", m_primary);
-    if (m_primary) {
-        // ui-design 5.1: the accent colours, set on the primary button only.
-        QPalette p = palette();
-        p.setColor(QPalette::Button, p.color(QPalette::Accent));
-        p.setColor(QPalette::ButtonText, p.color(QPalette::HighlightedText));
-        m_addRule->setPalette(p);
-    } else {
-        m_addRule->setPalette(QPalette());
-    }
+    setPrimary(m_addRule, m_primary); // ui-design 5.1
 }
 
 void RulePanel::updateIcons()

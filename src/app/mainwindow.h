@@ -18,6 +18,7 @@ class QLineEdit;
 class QSplitter;
 class QStackedWidget;
 class QToolBar;
+class QToolButton;
 
 namespace ctrm::app {
 
@@ -66,6 +67,7 @@ public:
     void setPresetTitle(const QString &name, bool modified); // "CTRM - <name>" + modified mark
 
 protected:
+    void changeEvent(QEvent *e) override;     // updates the tool icons
     void closeEvent(QCloseEvent *e) override; // saves geometry, state, splitters
     // Activation reads the folders again: files can change while CTRM is not active.
     void changeEvent(QEvent *e) override;
@@ -73,6 +75,7 @@ protected:
 private:
     void buildMenus();
     void buildToolBar();
+    void updateToolIcons();
     void buildCentralWidget();
     void buildPanels();
     QWidget *buildTablePage();
@@ -113,6 +116,7 @@ private:
 
     QMenu *m_presetsMenu = nullptr;
     QToolBar *m_toolBar = nullptr;
+    QToolButton *m_toolBarPresets = nullptr;
     QWidget *m_flowStripSlot = nullptr;
     QWidget *m_rulePanelSlot = nullptr;
     QWidget *m_tableSlot = nullptr;

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "formutils.h"
 
+#include "tertiarybutton.h"
+
 #include <QApplication>
 #include <QComboBox>
 #include <QEvent>
@@ -201,7 +203,7 @@ bool LabelColumnSync::eventFilter(QObject *watched, QEvent *event)
 MoreOptions::MoreOptions(QFormLayout *form, const QString &text, QWidget *parent)
     : QObject(parent)
     , m_form(form)
-    , m_button(new QToolButton(parent))
+    , m_button(new TertiaryButton(parent))
 {
     m_button->setText(text);
     m_button->setAccessibleName(text);

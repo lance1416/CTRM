@@ -12,6 +12,7 @@ class QListView;
 class QModelIndex;
 class QScrollArea;
 class QStackedWidget;
+class QPushButton;
 class QToolButton;
 
 namespace ctrm::app {
@@ -31,10 +32,10 @@ public:
     RulePanel(RuleListModel &model, const Actions &actions, QWidget *parent);
     QListView *ruleList() const;
     QWidget *currentEditor() const;
-    QToolButton *addRuleButton() const;
+    QPushButton *addRuleButton() const;
     // The "or Presets" button of the empty rule list (ui-design 5.4). It has no menu; the
     // presets code sets one.
-    QToolButton *presetsButton() const;
+    QPushButton *presetsButton() const;
     void setPrimaryAddRule(bool primary); // empty-with-items state (ui-design 5.4)
     void setNumberedCount(int n);         // forwards to NumberingEditor
 
@@ -62,8 +63,8 @@ private:
 
     RuleListModel &m_model;
     const Actions &m_actions;
-    QToolButton *m_addRule;
-    QToolButton *m_presets;
+    QPushButton *m_addRule;
+    QPushButton *m_presets;
     QBoxLayout *m_headerLayout;
     QBoxLayout *m_emptyButtons;
     QWidget *m_emptyPage;

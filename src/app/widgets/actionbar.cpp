@@ -5,6 +5,7 @@
 #include "theme/icons.h"
 #include "theme/typography.h"
 #include "widgets/buttonstyle.h"
+#include "widgets/tertiarybutton.h"
 
 #include <QAccessible>
 #include <QAction>
@@ -31,7 +32,7 @@ constexpr int kAnnounceDelayMs = 500;
 QToolButton *problemButton(QAction *action, Qt::ArrowType arrow, const QString &objectName,
                            QWidget *parent)
 {
-    auto *button = new QToolButton(parent);
+    auto *button = new TertiaryButton(parent);
     button->setObjectName(objectName);
     button->setDefaultAction(action);
     button->setArrowType(arrow);

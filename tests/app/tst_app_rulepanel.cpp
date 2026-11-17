@@ -23,6 +23,7 @@
 #include <QListView>
 #include <QMainWindow>
 #include <QMenu>
+#include <QPushButton>
 #include <QScrollArea>
 #include <QSignalSpy>
 #include <QSpinBox>

@@ -4,6 +4,7 @@
 #include "appcontext.h"
 #include "controllers/itemadder.h"
 #include "fs/itemsource.h"
+#include "theme/icons.h"
 #include "widgets/actionbar.h"
 #include "widgets/emptystate.h"
 #include "widgets/flowstrip.h"
@@ -95,6 +96,7 @@ MainWindow::MainWindow(AppContext &ctx, QWidget *parent)
 
     buildMenus();
     buildToolBar();
+    updateToolIcons();
     buildCentralWidget();
     buildPanels();
     statusBar();
@@ -289,6 +291,28 @@ void MainWindow::setPresetTitle(const QString &name, bool modified)
     setWindowModified(modified);
 }
 
+void MainWindow::updateToolIcons()
+{
+    // The icons have the WindowText colour, so they follow the palette (ui-design 4.3).
+    const QPalette p = palette();
+    const Actions &a = m_actions;
+    const QList<std::pair<QAction *, ToolIcon>> icons{
+            {a.addFiles, ToolIcon::AddFiles},     {a.addFolder, ToolIcon::AddFolder},
+            {a.removeFromList, ToolIcon::Remove}, {a.clearList, ToolIcon::Clear},
+            {a.refresh, ToolIcon::Refresh},       {a.undoRename, ToolIcon::Undo},
+            {a.history, ToolIcon::History}};
+    for (const auto &[action, icon] : icons)
+        action->setIcon(toolIcon(icon, p));
+    m_toolBarPresets->setIcon(toolIcon(ToolIcon::Presets, p));
+}
+
+void MainWindow::changeEvent(QEvent *e)
+{
+    QMainWindow::changeEvent(e);
+    if (e->type() == QEvent::PaletteChange || e->type() == QEvent::StyleChange)
+        updateToolIcons();
+}
+
 void MainWindow::closeEvent(QCloseEvent *e)
 {
     Settings &settings = m_ctx.settings();
@@ -379,20 +403,26 @@ void MainWindow::buildToolBar()
     m_toolBar->setObjectName(QStringLiteral("mainToolBar"));
     m_toolBar->setMovable(false);
     m_toolBar->setFloatable(false);
+    m_toolBar->setIconSize(QSize(16, 16)); // design-tokens: line icons at 16 px
     m_toolBar->setContextMenuPolicy(Qt::PreventContextMenu);
     m_toolBar->toggleViewAction()->setVisible(false);
     addToolBar(Qt::TopToolBarArea, m_toolBar);
 
     // Secondary: text beside the icon.
-    QAction *presets = m_presetsMenu->menuAction();
-    presets->setToolTip(tr("Presets"));
-    for (QAction *action : {a.addFiles, a.addFolder, presets}) {
+    for (QAction *action : {a.addFiles, a.addFolder}) {
         m_toolBar->addAction(action);
         auto *button = qobject_cast<QToolButton *>(m_toolBar->widgetForAction(action));
         button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-        if (action == presets)
-            button->setPopupMode(QToolButton::InstantPopup);
     }
+    // A button of its own: an icon on the menu action would replace the menu bar title.
+    m_toolBarPresets = new QToolButton(m_toolBar);
+    m_toolBarPresets->setObjectName(QStringLiteral("toolBarPresets"));
+    m_toolBarPresets->setText(tr("Presets"));
+    m_toolBarPresets->setToolTip(tr("Presets"));
+    m_toolBarPresets->setMenu(m_presetsMenu);
+    m_toolBarPresets->setPopupMode(QToolButton::InstantPopup);
+    m_toolBarPresets->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    m_toolBar->addWidget(m_toolBarPresets);
 
     auto *stretch = new QWidget(m_toolBar);
     stretch->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -465,6 +495,7 @@ void MainWindow::buildPanels()
 
     m_rulePanel = new RulePanel(m_ruleModel, m_actions, m_rulePanelSlot);
     m_rulePanelSlot->layout()->addWidget(m_rulePanel);
+    m_rulePanel->presetsButton()->setMenu(m_presetsMenu);
 
     m_messageBar = new MessageBar(m_messageBarSlot);
     m_messageBarSlot->layout()->addWidget(m_messageBar);

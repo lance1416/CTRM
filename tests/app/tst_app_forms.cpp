@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "rules/ruleeditor.h"
 #include "widgets/formutils.h"
+#include "widgets/tertiarybutton.h"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -8,6 +9,7 @@
 #include <QElapsedTimer>
 #include <QFormLayout>
 #include <QGridLayout>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QRadioButton>
@@ -160,6 +162,7 @@ private slots:
     void formStartsAtLeft();
     void syncedLabelTextAlignment();
     void inlineSubFieldsAligned();
+    void tertiaryButtonFrame();
 };
 
 void TestAppForms::baselineMatches_data()
@@ -474,6 +477,42 @@ void TestAppForms::inlineSubFieldsAligned()
     QCOMPARE(first->mapTo(&window, QPoint()).x(), plain->mapTo(&window, QPoint()).x());
     QCOMPARE(first->parentWidget(), group);
     QCOMPARE(field2->parentWidget(), group);
+}
+
+void TestAppForms::tertiaryButtonFrame()
+{
+    // D4: no frame until press or keyboard focus. With the macOS style, the corner of the
+    // button has the window colour.
+    QWidget window;
+    window.setAutoFillBackground(true);
+    if (QStyle *mac = QStyleFactory::create(QStringLiteral("macOS")))
+        window.setStyle(mac);
+    auto *layout = new QHBoxLayout(&window);
+    auto *button = new TertiaryButton;
+    button->setText(QStringLiteral("Chain options"));
+    button->setArrowType(Qt::RightArrow);
+    button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    button->setFocusPolicy(Qt::TabFocus);
+    auto *other = new QLineEdit;
+    layout->addWidget(other);
+    layout->addWidget(button);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    other->setFocus();
+    QTest::mouseMove(other);
+    QVERIFY(button->autoRaise());
+    QVERIFY(!button->framed());
+    const QImage image = button->grab().toImage();
+    const QColor background = window.palette().color(QPalette::Window);
+    const QPoint corner(image.width() / image.devicePixelRatio() > 4 ? 2 : 0, 2);
+    const QColor pixel = image.pixelColor(corner * image.devicePixelRatio());
+    QVERIFY2(qAbs(pixel.lightness() - background.lightness()) <= 2,
+             qPrintable(QStringLiteral("%1 vs %2").arg(pixel.name(), background.name())));
+    button->setDown(true);
+    QVERIFY(button->framed());
+    button->setDown(false);
+    button->setFocus(Qt::TabFocusReason);
+    QVERIFY(button->framed());
 }
 
 QTEST_MAIN(TestAppForms)
