@@ -1,0 +1,37 @@
+# EditorConfig: https://editorconfig.org
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{c,cc,cpp,cxx,h,hh,hpp,hxx,ipp,inl,mm,m}]
+indent_size = 4
+max_line_length = 100
+
+[{CMakeLists.txt,*.cmake}]
+indent_size = 4
+
+[{*.{yml,yaml,json,qrc,ui,xml,svg},.clang-format,.clang-tidy,.clangd}]
+indent_size = 2
+
+[*.md]
+# Two trailing spaces are a hard line break in Markdown.
+trim_trailing_whitespace = false
+
+[*.{sh,ps1}]
+indent_size = 4
+
+[*.{bat,cmd}]
+end_of_line = crlf
+
+# Upstream text: do not touch. The macOS gitignore template has a literal CR
+# in the "Icon[\r]" pattern.
+[{LICENSE,.gitignore}]
+indent_style = unset
+indent_size = unset
+end_of_line = unset

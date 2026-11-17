@@ -1,0 +1,34 @@
+# Normalize all text files to LF in the repository and the work tree.
+* text=auto eol=lf
+
+# Windows batch files need CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files: no line-ending conversion, no text diff.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.icns binary
+*.webp binary
+*.pdf  binary
+*.ttf  binary
+*.otf  binary
+*.woff binary
+*.woff2 binary
+*.zip  binary
+*.gz   binary
+*.7z   binary
+*.dmg  binary
+*.exe  binary
+*.dll  binary
+*.qm   binary
+
+# GitHub Linguist: show Qt Designer and resource files as XML.
+*.ui  linguist-language=XML
+*.qrc linguist-language=XML
+
+# Markdown: two trailing spaces are a line break, so git diff --check allows them.
+*.md whitespace=-blank-at-eol
