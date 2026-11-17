@@ -53,7 +53,9 @@ public:
     virtual void apply(NameParts &parts, const RuleContext &ctx) const;
     virtual QStringList optionKeys() const = 0; // PRD 8.2 order, without type/enabled/target
     virtual QJsonObject optionsToJson() const = 0;
-    // A missing key gives the default value.
+    // A missing key gives the default value. A bad value (wrong JSON type, unknown enum
+    // string, number outside the editor range) gives the default value and the warning
+    // "Bad value for '<key>' in rule <type>".
     virtual void optionsFromJson(const QJsonObject &o, QStringList *warnings) = 0;
 
     bool enabled = true;
