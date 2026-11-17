@@ -32,7 +32,7 @@ int main(int argc, char *argv[])
     ctrm::app::AppContext context;
     ctrm::app::MainWindow window(context);
     ctrm::app::BatchController batch(window, context, &window);
-    ctrm::app::HistoryController history(window, context, &window);
+    ctrm::app::HistoryController history(window, context, batch, &window);
     ctrm::app::RecoveryController recovery(window, context, &window);
     ctrm::app::PresetController presets(window, context, &window);
     ctrm::app::PreferencesController preferences(window, context, &window);

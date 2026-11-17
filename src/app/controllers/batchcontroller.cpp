@@ -355,9 +355,17 @@ void BatchController::finished(const FinishResult &result)
 
     m_lastResult = result;
     m_lastResultTime = m_startTime;
+    // The report has the item IDs of the plan. An undo plan has the IDs of the original batch,
+    // which can be other items of the list now: find each row by its old path.
+    QHash<QString, ItemId> idOfPath;
+    for (const Item &item : m_w.itemModel().items())
+        idOfPath.insert(item.path(), item.id);
     m_w.itemModel().applyRenames(result.report);
     QHash<ItemId, PostRunState> states;
     for (const ReportRow &row : result.report) {
+        const auto id = idOfPath.constFind(row.oldPath);
+        if (id == idOfPath.cend())
+            continue;
         PostRunState s;
         switch (row.result) {
         case ReportRow::Result::Renamed:
@@ -377,7 +385,7 @@ void BatchController::finished(const FinishResult &result)
         case ReportRow::Result::NotRun:
             continue;
         }
-        states.insert(row.item, s);
+        states.insert(*id, s);
     }
     for (auto it = m_skipReasons.cbegin(); it != m_skipReasons.cend(); ++it)
         states.insert(it.key(), PostRunState{PostRun::Skipped, it.value()});
