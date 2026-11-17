@@ -1,0 +1,78 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# commit-msg hook: enforce the CTRM commit message rules.
+#   - Conventional Commits subject: <type>[(scope)][!]: <description>
+#   - Subject is 72 characters or less and has no period at the end.
+#   - Subject line only: no body and no trailers (for example Co-Authored-By).
+# Lines that start with the comment character are ignored.
+
+set -eu
+
+msg_file=$1
+types='build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test'
+max_len=72
+
+comment_char=$(git config --get core.commentChar 2>/dev/null || true)
+case $comment_char in
+    '' | auto) comment_char='#' ;;
+esac
+
+fail() {
+    {
+        printf 'commit-msg: %s\n\n' "$1"
+        printf 'Use one subject line only, in this format:\n'
+        printf '    <type>[(scope)][!]: <description>\n\n'
+        printf 'Types: %s\n' "$(printf '%s' "$types" | sed 's/|/, /g')"
+        printf 'Example: feat(core): add counter rule\n\n'
+        printf 'Your message is saved in %s.\n' "$msg_file"
+        printf 'Fix it, then run: git commit -e -F %s\n' "$msg_file"
+    } >&2
+    exit 1
+}
+
+# Remove the verbose diff (below the scissors line) and comment lines,
+# then remove leading and trailing blank lines.
+cleaned=$(
+    sed -e "/^$comment_char -\{24\} >8 -\{24\}\$/,\$d" "$msg_file" |
+        grep -v "^$comment_char" |
+        sed -e 's/[[:space:]]*$//' |
+        awk '
+            NF { started = 1 }
+            started { lines[++n] = $0 }
+            END {
+                while (n > 0 && lines[n] == "") n--
+                for (i = 1; i <= n; i++) print lines[i]
+            }'
+) || true
+
+[ -n "$cleaned" ] || fail 'the commit message is empty.'
+
+subject=$(printf '%s\n' "$cleaned" | sed -n 1p)
+line_count=$(printf '%s\n' "$cleaned" | wc -l | tr -d ' ')
+
+# Allow "fixup!" and "squash!" subjects, which rebase --autosquash removes.
+check_subject=$subject
+case $subject in
+    'fixup! '* | 'squash! '* | 'amend! '*) check_subject=${subject#* } ;;
+esac
+
+if [ "$line_count" -gt 1 ]; then
+    fail 'the message has a body or trailer lines (for example Co-Authored-By). Remove all lines after the subject.'
+fi
+
+if ! printf '%s\n' "$check_subject" |
+    grep -Eq "^($types)(\([a-z0-9][a-z0-9._/-]*\))?!?: [^[:space:]]"; then
+    fail "the subject does not follow Conventional Commits: \"$subject\""
+fi
+
+subject_len=$(printf '%s\n' "$check_subject" | awk '{ print length($0) }')
+if [ "$subject_len" -gt "$max_len" ]; then
+    fail "the subject has $subject_len characters. The maximum is $max_len."
+fi
+
+case $subject in
+    *.) fail 'the subject ends with a period. Remove it.' ;;
+esac
+
+exit 0
