@@ -6,6 +6,7 @@
 //                tests/app/tst_app_itemadder.cpp hiddenNotAdded
 //   AC1.5        tests/core/tst_nativefs.cpp renameSymlinkNotTarget;
 //                tests/core/tst_safety.cpp symlinkRenamedNotTarget
+//   AC1.6        tests/core/tst_itemsource.cpp folderChildrenAppleDouble; exFAT: test-volumes.sh
 //   AC2.1 core   tests/core/tst_previewengine.cpp perf10k;
 //                tests/app/tst_app_preview.cpp uiNotBlocked
 //   AC2.2        tests/app/tst_app_mainwindow.cpp blockingReasonTooltip;
@@ -423,10 +424,10 @@ void TestAcceptance::acG3_keyboardOnly()
     const QString b = f.tree.file(QStringLiteral("b.txt"), "b");
     f.window.itemAdder().addPaths({a, b});
     const auto reactivate = [&] {
-        if (QApplication::activeWindow() != &f.window) {
-            f.window.activateWindow();
-            QVERIFY(QTest::qWaitForWindowActive(&f.window));
-        }
+        if (QApplication::activeWindow() == &f.window)
+            return true;
+        f.window.activateWindow();
+        return QTest::qWaitForWindowActive(&f.window);
     };
     const auto key = [&](Qt::Key k, Qt::KeyboardModifiers m = Qt::ControlModifier) {
         QWidget *target = QApplication::focusWidget();
@@ -462,11 +463,11 @@ void TestAcceptance::acG3_keyboardOnly()
 
     // The focus is in the first field of the rule editor: type the text.
     // The offscreen platform does not make the window active again when the menu closes.
-    reactivate();
+    QVERIFY(reactivate());
     QTRY_VERIFY(qobject_cast<QLineEdit *>(QApplication::focusWidget()));
     auto *field = qobject_cast<QLineEdit *>(QApplication::focusWidget());
     QTest::keyClicks(field, QStringLiteral("x_"));
-    QTRY_COMPARE(f.window.currentPreview().items.first().newName, QStringLiteral("x_a.txt"));
+    QTRY_COMPARE(f.window.currentPreview().items.value(0).newName, QStringLiteral("x_a.txt"));
     QTRY_VERIFY(f.window.previewIsCurrent());
 
     // Rename (Ctrl+Return).
@@ -479,18 +480,21 @@ void TestAcceptance::acG3_keyboardOnly()
     // The batch makes the rules read-only, so the text field loses the focus, and no control gets
     // it back after the batch. Without a focus widget the offscreen platform also makes the
     // window inactive: make it active again. The window shortcuts still work.
-    reactivate();
-    // Go to the items (Ctrl+2), then Quick Undo (Ctrl+Z). The items are unchanged: no preview.
+    QVERIFY(reactivate());
+    // Go to the items (Ctrl+2), then Quick Undo (Ctrl+Z). The items are unchanged.
     key(Qt::Key_2);
     QTRY_COMPARE(QApplication::focusWidget(), f.window.tableView());
     QTRY_VERIFY(f.window.actions().undoRename->isEnabled());
     finished.clear();
     key(Qt::Key_Z);
     QVERIFY(finished.wait(30'000) || finished.count() > 0);
-    QCOMPARE(undoPreviews, 0);
+    // With a weak identity (exFAT, FAT), Quick Undo opens the undo preview (AC13.9).
+    const bool weak =
+            f.ctx.fileSystem().volumeInfo(f.tree.root()).identityType == IdentityType::Weak;
+    QCOMPARE(undoPreviews, weak ? 1 : 0);
     QTRY_VERIFY(QFile::exists(a));
     QVERIFY(QFile::exists(b));
-    reactivate();
+    QVERIFY(reactivate());
 
     // Open History (Ctrl+Y on macOS, Ctrl+H on other systems).
 #ifdef Q_OS_MACOS
