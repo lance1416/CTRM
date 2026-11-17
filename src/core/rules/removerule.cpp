@@ -154,7 +154,7 @@ void RemoveRule::optionsFromJson(const QJsonObject &o, QStringList *warnings)
     const QString classesKey = QStringLiteral("classes");
     if (const QJsonValue v = o.value(classesKey); v.isArray()) {
         for (const QJsonValue entry : v.toArray()) {
-            const auto *match = std::find_if(kClasses.begin(), kClasses.end(), [&](const auto &c) {
+            const auto match = std::find_if(kClasses.begin(), kClasses.end(), [&](const auto &c) {
                 return entry.isString() && entry.toString() == c.second;
             });
             if (match != kClasses.end())
