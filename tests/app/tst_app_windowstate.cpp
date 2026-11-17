@@ -168,10 +168,18 @@ void TestAppWindowState::blockedReason()
 {
     QCOMPARE(computeWindowState(input(6, 1, summary(2, 3, 1))).reason,
              QStringLiteral("3 conflicts and 1 error block the rename."));
+    // One part with a count of 1: singular verb.
     QCOMPARE(computeWindowState(input(6, 1, summary(2, 1, 0))).reason,
-             QStringLiteral("1 conflict block the rename."));
+             QStringLiteral("1 conflict blocks the rename."));
+    QCOMPARE(computeWindowState(input(6, 1, summary(2, 0, 1))).reason,
+             QStringLiteral("1 error blocks the rename."));
+    // A count above 1, or two parts: plural verb.
+    QCOMPARE(computeWindowState(input(6, 1, summary(2, 2, 0))).reason,
+             QStringLiteral("2 conflicts block the rename."));
     QCOMPARE(computeWindowState(input(6, 1, summary(2, 0, 2))).reason,
              QStringLiteral("2 errors block the rename."));
+    QCOMPARE(computeWindowState(input(6, 1, summary(2, 1, 1))).reason,
+             QStringLiteral("1 conflict and 1 error block the rename."));
 }
 
 void TestAppWindowState::blockedWithNothingToChange()

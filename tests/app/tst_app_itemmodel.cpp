@@ -376,7 +376,9 @@ void TestItemModel::texts_data()
         QTest::newRow(tag) << d << portable << QString::fromUtf8(text);
     };
     add("duplicate", diag(DiagCode::DuplicateInBatch, {}, 2), true,
-        "Same new name as 2 other item(s)");
+        "Same new name as 2 other items");
+    add("duplicateOne", diag(DiagCode::DuplicateInBatch, {}, 1), true,
+        "Same new name as 1 other item");
     add("exists", diag(DiagCode::ExistsInFolder, "a.txt"), true,
         "An item named 'a.txt' is already in this folder");
     add("ignoringCase", diag(DiagCode::ExistsIgnoringCase, "Trip.jpg"), true,
@@ -503,7 +505,7 @@ void TestItemModel::tooltipListsAllMessages()
                        {diag(DiagCode::BecomesHidden)})});
     const QString tip = m.index(0, ItemTableModel::NewName).data(Qt::ToolTipRole).toString();
     QVERIFY(tip.startsWith(QStringLiteral(".x\n")));
-    QVERIFY(tip.contains(QStringLiteral("Same new name as 1 other item(s)")));
+    QVERIFY(tip.contains(QStringLiteral("Same new name as 1 other item")));
     QVERIFY(tip.contains(QStringLiteral("the item will become hidden")));
 }
 

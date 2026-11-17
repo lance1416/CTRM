@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "text/messages.h"
 
+#include "text/plural.h"
+
 #include <QCoreApplication>
 
 namespace ctrm::app {
@@ -44,7 +46,8 @@ QString diagnosticText(const Diagnostic &d, bool portableNames, const QStringLis
 
     switch (d.code) {
     case DiagCode::DuplicateInBatch:
-        return Messages::tr("Same new name as %n other item(s)", nullptr, d.count);
+        return numerus(Messages::tr("Same new name as %n other item(s)", nullptr, d.count),
+                       d.count);
     case DiagCode::ExistsInFolder:
         return Messages::tr("An item named '%1' is already in this folder").arg(d.text);
     case DiagCode::ExistsIgnoringCase:

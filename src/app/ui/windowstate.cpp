@@ -37,6 +37,10 @@ QString blockedReason(const ctrm::PreviewSummary &s)
         parts.append(summaryPartText(SummaryPart::Errors, s.errors));
     const QString joined =
             parts.join(QCoreApplication::translate("ctrm::app::WindowState", " and "));
+    // The verb agrees with the subject: one part with a count of 1 is singular.
+    if (parts.size() == 1 && s.blocked() == 1)
+        return QCoreApplication::translate("ctrm::app::WindowState", "%1 blocks the rename.")
+                .arg(joined);
     return QCoreApplication::translate("ctrm::app::WindowState", "%1 block the rename.")
             .arg(joined);
 }
