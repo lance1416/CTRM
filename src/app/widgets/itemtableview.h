@@ -42,8 +42,11 @@ protected:
     void dropEvent(QDropEvent *event) override;
     void paintEvent(QPaintEvent *event) override;
     void changeEvent(QEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
+    void fitNameColumns();
     void updateColors();
     void updateRowHeight();
     void updateAutoColumns();
@@ -61,6 +64,9 @@ private:
     QMenu *m_columnsMenu;
     QSet<int> m_userColumns; // columns the user showed or hid: no automatic rule
     int m_dropCount = 0;
+    bool m_namesSetByUser = false; // the user changed the width of a name column
+    bool m_fittingNames = false;
+    bool m_headerPressed = false; // a mouse button is down on the header
 };
 
 } // namespace ctrm::app

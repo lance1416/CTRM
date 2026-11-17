@@ -23,6 +23,8 @@
 #include <QStyleHints>
 #include <QUrl>
 
+#include <algorithm>
+
 namespace ctrm::app {
 
 namespace {
@@ -51,6 +53,8 @@ bool isProblemRow(const QModelIndex &index)
     return index.data(ItemTableModel::IsBlockingRole).toBool() ||
            PostRun(index.data(ItemTableModel::PostRunRole).toInt()) == PostRun::Failed;
 }
+
+constexpr int kNameWidth = 240; // the default width of Old name and New name
 
 constexpr int kOptionalColumns[] = {ItemTableModel::Message, ItemTableModel::Folder,
                                     ItemTableModel::Size, ItemTableModel::Modified};
@@ -106,8 +110,23 @@ ItemTableView::ItemTableView(ItemTableModel &model, ItemFilterProxy &proxy, QWid
                            8;
     header->resizeSection(ItemTableModel::Include, iconColumn);
     header->resizeSection(ItemTableModel::State, iconColumn);
-    header->resizeSection(ItemTableModel::OldName, 240);
-    header->resizeSection(ItemTableModel::NewName, 240);
+    header->resizeSection(ItemTableModel::OldName, kNameWidth);
+    header->resizeSection(ItemTableModel::NewName, kNameWidth);
+    // Only a drag or a double click on the header is a change by the user. Qt also resizes a
+    // name column when it shows or hides another column.
+    header->viewport()->installEventFilter(this);
+    connect(header, &QHeaderView::sectionResized, this, [this, header](int column) {
+        if (m_fittingNames || !m_headerPressed ||
+            (column != ItemTableModel::OldName && column != ItemTableModel::NewName))
+            return;
+        // The header stretches the last visible column; that is not a change by the user.
+        int last = header->count() - 1;
+        while (last >= 0 && header->isSectionHidden(header->logicalIndex(last)))
+            --last;
+        if (header->stretchLastSection() && last >= 0 && header->logicalIndex(last) == column)
+            return;
+        m_namesSetByUser = true;
+    });
     connect(header, &QHeaderView::sectionClicked, this, &ItemTableView::sortByColumn);
     connect(header, &QHeaderView::customContextMenuRequested, this,
             [this, header](const QPoint &pos) {
@@ -267,6 +286,42 @@ void ItemTableView::updateRowHeight()
     QHeaderView *vertical = verticalHeader();
     vertical->setMinimumSectionSize(qMin(vertical->minimumSectionSize(), height));
     vertical->setDefaultSectionSize(height);
+}
+
+bool ItemTableView::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == horizontalHeader()->viewport()) {
+        if (event->type() == QEvent::MouseButtonPress ||
+            event->type() == QEvent::MouseButtonDblClick)
+            m_headerPressed = true;
+        else if (event->type() == QEvent::MouseButtonRelease)
+            m_headerPressed = false;
+    }
+    return QTableView::eventFilter(watched, event);
+}
+
+void ItemTableView::resizeEvent(QResizeEvent *event)
+{
+    QTableView::resizeEvent(event);
+    fitNameColumns();
+}
+
+// Old name and New name share the width after the columns before them, up to their default
+// width, so a narrow table (minimum window, wide rule panel) still shows both (ui-design 4.4).
+// A width that the user sets stays.
+void ItemTableView::fitNameColumns()
+{
+    if (m_namesSetByUser)
+        return;
+    QHeaderView *header = horizontalHeader();
+    const int before = std::min(header->sectionPosition(ItemTableModel::OldName),
+                                header->sectionPosition(ItemTableModel::NewName));
+    const int width = std::clamp((viewport()->width() - before) / 2, header->minimumSectionSize(),
+                                 kNameWidth);
+    m_fittingNames = true;
+    header->resizeSection(ItemTableModel::OldName, width);
+    header->resizeSection(ItemTableModel::NewName, width);
+    m_fittingNames = false;
 }
 
 void ItemTableView::changeEvent(QEvent *event)

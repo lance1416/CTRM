@@ -26,13 +26,16 @@
 #include <QComboBox>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListView>
 #include <QMenu>
 #include <QMenuBar>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QSettings>
+#include <QTableView>
 #include <QTemporaryDir>
 #include <QToolBar>
 #include <QToolButton>
@@ -140,6 +143,7 @@ private slots:
     void toolbarIcons();
     void tertiaryButtonsHaveNoFrame();
     void ruleMenuButtonsArePushButtons();
+    void namesShownAtMinimumWidth();
 };
 
 void TestMainWindow::contextStores()
@@ -541,6 +545,75 @@ void TestMainWindow::ruleMenuButtonsArePushButtons()
     QCOMPARE(presets->menu(), nullptr);
     QVERIFY(!add->autoDefault());
     QVERIFY(!presets->autoDefault());
+}
+
+void TestMainWindow::namesShownAtMinimumWidth()
+{
+    // ui-design 4.4: the rule panel is as wide as its widest editor. At the minimum window
+    // width the table still shows all of Old name and New name.
+    Fixture f;
+    f.addFiles({"a.txt", "b.txt"});
+    f.window.show();
+    f.window.resize(f.window.minimumSize());
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    for (const char *type : {"insert", "numbering", "cleanup"}) {
+        f.window.actions()
+                .addRuleMenu->findChild<QAction *>(QStringLiteral("addRule_") + QLatin1String(type))
+                ->trigger();
+    }
+    QApplication::processEvents();
+    QCOMPARE(f.window.width(), f.window.minimumWidth());
+    QTableView *table = f.window.tableView();
+    QHeaderView *header = table->horizontalHeader();
+    const auto end = [&](int column) {
+        return header->sectionViewportPosition(column) + header->sectionSize(column);
+    };
+    QTRY_VERIFY2(end(ItemTableModel::NewName) <= table->viewport()->width(),
+                 qPrintable(QStringLiteral("%1 > %2")
+                                    .arg(end(ItemTableModel::NewName))
+                                    .arg(table->viewport()->width())));
+    // New name can be wider: as the last column, it fills the rest of the table.
+    QVERIFY(header->sectionSize(ItemTableModel::OldName) < 240);
+    QVERIFY(header->sectionSize(ItemTableModel::NewName) >=
+            header->sectionSize(ItemTableModel::OldName));
+
+    // A wide window: the names have their default width again.
+    f.window.resize(1600, f.window.height());
+    QTRY_COMPARE(header->sectionSize(ItemTableModel::OldName), 240);
+    QVERIFY(header->sectionSize(ItemTableModel::NewName) >= 240);
+
+    // A column that the app shows (Message for a warning) is not a change by the user: the
+    // names fit again at the minimum width.
+    table->setColumnHidden(ItemTableModel::Message, false);
+    QApplication::processEvents();
+    f.window.resize(f.window.minimumSize());
+    QApplication::processEvents();
+    QTRY_VERIFY2(end(ItemTableModel::NewName) <= table->viewport()->width(),
+                 qPrintable(QStringLiteral("%1 > %2")
+                                    .arg(end(ItemTableModel::NewName))
+                                    .arg(table->viewport()->width())));
+    table->setColumnHidden(ItemTableModel::Message, true);
+
+    // A width that the user sets with the mouse stays: drag the right edge of Old name.
+    QWidget *headerView = header->viewport();
+    const int edge = header->sectionViewportPosition(ItemTableModel::OldName) +
+                     header->sectionSize(ItemTableModel::OldName) - 1;
+    const int y = headerView->height() / 2;
+    const auto send = [&](QEvent::Type type, int x, Qt::MouseButtons buttons) {
+        QMouseEvent event(type, QPointF(x, y), headerView->mapToGlobal(QPointF(x, y)),
+                          Qt::LeftButton, buttons, Qt::NoModifier);
+        QApplication::sendEvent(headerView, &event);
+    };
+    send(QEvent::MouseMove, edge, Qt::NoButton); // the cursor over the handle
+    send(QEvent::MouseButtonPress, edge, Qt::LeftButton);
+    send(QEvent::MouseMove, edge - 40, Qt::LeftButton);
+    send(QEvent::MouseButtonRelease, edge - 40, Qt::NoButton);
+    const int userWidth = header->sectionSize(ItemTableModel::OldName);
+    QVERIFY2(userWidth < edge - header->sectionViewportPosition(ItemTableModel::OldName) - 20,
+             qPrintable(QString::number(userWidth)));
+    f.window.resize(1600, f.window.height());
+    QApplication::processEvents();
+    QCOMPARE(header->sectionSize(ItemTableModel::OldName), userWidth);
 }
 
 QTEST_MAIN(TestMainWindow)
