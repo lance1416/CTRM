@@ -21,6 +21,7 @@
 #include <QSpinBox>
 #include <QtTest>
 
+#include <cstdlib>
 #include <memory>
 
 using namespace ctrm;
@@ -117,6 +118,7 @@ private slots:
     void cleanupWritesRule();
     void cleanupNoteFollowsPortable();
     void cleanupReplacementFits();
+    void cleanupFieldFollowsCheckBox();
     void applyToWritesTarget();
     void setRuleFlushesPendingEdit();
     void wrongRuleTypeDisables();
@@ -528,27 +530,39 @@ void TestAppEditors1::fieldEdgeAllEditors()
 QTEST_MAIN(TestAppEditors1)
 void TestAppEditors1::cleanupReplacementFits()
 {
-    // D8, O2: the field is for a few characters and is on its own row under the check box, at
-    // the field edge (ui-design 6.1 rules 2 and 7).
+    // M23 (ui-design 8.8): "[ ] Replace invalid characters with [ _ ]" on one line. The field is
+    // for a few characters.
     Fixture<CleanUpEditor, CleanUpRule> f;
     QVERIFY(QTest::qWaitForWindowExposed(f.editor.get()));
     auto *box = child<QCheckBox>(f.editor.get(), "replaceInvalid");
     auto *field = child<QLineEdit>(f.editor.get(), "replacement");
+    QCOMPARE(box->text(), QStringLiteral("&Replace invalid characters with"));
     QCOMPARE(field->minimumWidth(), field->maximumWidth());
     QVERIFY2(field->width() < box->sizeHint().width() / 3,
              qPrintable(QString::number(field->width())));
-    const QPoint boxAt = box->mapTo(f.editor.get(), QPoint());
-    const QPoint fieldAt = field->mapTo(f.editor.get(), QPoint());
-    QVERIFY(fieldAt.y() >= boxAt.y() + box->height());
-    // The layout items, not the widgets: the macOS style moves a widget inside its item.
     QFormLayout *form = f.editor->form();
-    const int boxRow = rowOf(form, box);
-    const int fieldRow = rowOf(form, field);
-    QVERIFY(boxRow >= 0 && fieldRow == boxRow + 1);
-    QCOMPARE(form->itemAt(fieldRow, QFormLayout::FieldRole)->geometry().x(),
-             form->itemAt(boxRow, QFormLayout::FieldRole)->geometry().x());
-    QCOMPARE(form->itemAt(fieldRow, QFormLayout::FieldRole)->widget(), field);
-    QVERIFY(fieldAt.x() + field->width() <= boxAt.x() + box->sizeHint().width());
+    QVERIFY(rowOf(form, box) >= 0);
+    QCOMPARE(rowOf(form, field), rowOf(form, box));
+    const QRect boxRect = ctrm::test::visualRect(box, f.editor.get());
+    const QRect fieldRect = ctrm::test::visualRect(field, f.editor.get());
+    QVERIFY(fieldRect.left() > boxRect.right());
+    QVERIFY(std::abs(fieldRect.center().y() - boxRect.center().y()) <= 2);
+}
+
+void TestAppEditors1::cleanupFieldFollowsCheckBox()
+{
+    // M23: the field is enabled only when the check box is on, also after another rule.
+    Fixture<CleanUpEditor, CleanUpRule> f;
+    auto *field = child<QLineEdit>(f.editor.get(), "replacement");
+    CleanUpRule on;
+    on.replaceInvalid = true;
+    f.editor->setRule(&on, 1);
+    QVERIFY(field->isEnabled());
+    f.editor->setRule(&f.rule, 1);
+    QVERIFY(!field->isEnabled());
+    f.editor->setRule(nullptr, 1);
+    f.editor->setRule(&f.rule, 1);
+    QVERIFY(!field->isEnabled());
 }
 
 #include "tst_app_editors1.moc"

@@ -25,7 +25,7 @@ CleanUpEditor::CleanUpEditor(QWidget *parent)
                                   {tr("Change to -"), int(Spaces::Dash)},
                                   {tr("Change to ."), int(Spaces::Dot)},
                                   {tr("Remove"), int(Spaces::Remove)}}))
-    , m_replaceInvalid(new QCheckBox(tr("&Replace invalid characters with:")))
+    , m_replaceInvalid(new QCheckBox(tr("&Replace invalid characters with")))
     , m_replacement(new QLineEdit)
     , m_portableNote(new QLabel)
     , m_applyTo(makeApplyToCombo(this))
@@ -49,10 +49,9 @@ CleanUpEditor::CleanUpEditor(QWidget *parent)
     f->addRow(QString(), m_trim);
     f->addRow(QString(), m_collapseSpaces);
     f->addRow(tr("&Spaces:"), m_spacesTo);
-    // The field is on its own row at the field edge, so the row fits at the minimum panel
-    // width (ui-design 6.1 rules 2 and 7). Its fixed width keeps it from growing.
-    f->addRow(QString(), m_replaceInvalid);
-    f->addRow(QString(), m_replacement);
+    // "[ ] Replace invalid characters with [ _ ]" on one line (ui-design 8.8). A field group
+    // keeps the check box on the field edge (6.1 rule 2). The fixed width keeps the field small.
+    f->addRow(QString(), makeFieldGroup({makeInlineField(m_replaceInvalid, {m_replacement})}));
     f->addRow(QString(), m_portableNote);
     f->addRow(tr("&Apply to:"), m_applyTo);
 
@@ -105,6 +104,7 @@ void CleanUpEditor::setRule(ctrm::Rule *rule, int position)
     m_collapseSpaces->setChecked(m_rule->collapseSpaces);
     selectData(m_spacesTo, int(m_rule->spacesTo));
     m_replaceInvalid->setChecked(m_rule->replaceInvalid);
+    m_replacement->setEnabled(m_rule->replaceInvalid); // also when the check box did not change
     m_replacement->setText(m_rule->replacement);
     showTarget(m_applyTo, m_rule->target);
     m_loading = false;
