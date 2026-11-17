@@ -134,6 +134,9 @@ private slots:
     void rollBackReportsJournalFailure();
     void restoreTempNamesReportsJournalFailure();
     void restoreTempNamesSkipsFinishedItems();
+    void rollBackSkipsReplacedItem();
+    void rollBackSkipsMissingItem();
+    void restoreTempNamesSkipsReplacedItem();
 };
 
 void TstExecutor::runsAllSteps()
@@ -644,6 +647,85 @@ void TstExecutor::restoreTempNamesSkipsFinishedItems()
     QCOMPARE(fs.renameCount(), renames);
     QCOMPARE(sink.lines.size(), 3);
     QCOMPARE(fs.content(QStringLiteral("/f/a.txt")), QByteArray("B"));
+}
+
+void TstExecutor::rollBackSkipsReplacedItem()
+{
+    FakeFileSystem fs;
+    const Plan plan = threePlan(fs);
+    MemorySink sink;
+    Executor ex(fs, sink);
+    std::atomic<bool> cancel{false};
+    const RunOutcome out = ex.run(plan, cancel);
+    QVERIFY(out.finished);
+    // Another program replaces the renamed file y.txt with a new file.
+    QVERIFY(fs.remove(plan.steps[1].to));
+    fs.addFile(plan.steps[1].to, "OTHER");
+    const int renames = fs.renameCount();
+
+    const RollbackOutcome rb = ex.rollBack(plan, out.okSteps);
+    QVERIFY(!rb.complete);
+    QCOMPARE(rb.failedSteps, (QList<int>{1}));
+    QCOMPARE(rb.lastFailure.errorCode, ErrorCode::IdentityChanged);
+    // The new file is not moved; the other steps are reversed.
+    QCOMPARE(fs.renameCount(), renames + 2);
+    QCOMPARE(fs.content(plan.steps[1].to), QByteArray("OTHER"));
+    QVERIFY(!fs.exists(plan.steps[1].from));
+    QCOMPARE(fs.content(plan.steps[0].from), QByteArray("A"));
+    QCOMPARE(fs.content(plan.steps[2].from), QByteArray("C"));
+    QCOMPARE(sink.lines.size(), 6);
+    QCOMPARE(sink.lines[4].rec.step, 1);
+    QCOMPARE(sink.lines[4].rec.phase, Phase::Rollback);
+    QVERIFY(!sink.lines[4].rec.ok);
+    QCOMPARE(sink.lines[4].rec.errorCode, ErrorCode::IdentityChanged);
+}
+
+void TstExecutor::rollBackSkipsMissingItem()
+{
+    FakeFileSystem fs;
+    addSwapFiles(fs);
+    const Plan plan = swapPlan(fs);
+    MemorySink sink;
+    Executor ex(fs, sink);
+    std::atomic<bool> cancel{false};
+    const RunOutcome out = ex.run(plan, cancel);
+    QVERIFY(out.finished);
+    // The item renamed by the last step (now b.txt, content "A") is deleted.
+    QVERIFY(fs.remove(QStringLiteral("/f/b.txt")));
+
+    const RollbackOutcome rb = ex.rollBack(plan, out.okSteps);
+    QVERIFY(!rb.complete);
+    QCOMPARE(rb.failedSteps, (QList<int>{2, 0}));
+    QCOMPARE(rb.lastFailure.errorCode, ErrorCode::SourceMissing);
+    // The other item goes back to b.txt.
+    QCOMPARE(fs.names(QStringLiteral("/f")), (QStringList{"b.txt"}));
+    QCOMPARE(fs.content(QStringLiteral("/f/b.txt")), QByteArray("B"));
+}
+
+void TstExecutor::restoreTempNamesSkipsReplacedItem()
+{
+    FakeFileSystem fs;
+    addSwapFiles(fs);
+    const Plan plan = swapPlan(fs);
+    MemorySink sink;
+    Executor ex(fs, sink);
+    std::atomic<bool> cancel{false};
+    const RunOutcome out = ex.run(plan, cancel, [&](int, int) { cancel.store(true); });
+    QCOMPARE(out.okSteps, (QList<int>{0}));
+    const QString temp = plan.steps[0].to;
+    QVERIFY(fs.remove(temp));
+    fs.addFile(temp, "OTHER");
+    const int renames = fs.renameCount();
+
+    const RollbackOutcome rb = ex.restoreTempNames(plan, out.okSteps);
+    QVERIFY(!rb.complete);
+    QCOMPARE(rb.failedSteps, (QList<int>{0}));
+    QCOMPARE(rb.lastFailure.errorCode, ErrorCode::IdentityChanged);
+    QCOMPARE(fs.renameCount(), renames);
+    QCOMPARE(fs.content(temp), QByteArray("OTHER"));
+    QCOMPARE(sink.lines.size(), 2);
+    QCOMPARE(sink.lines[1].rec.phase, Phase::Rollback);
+    QCOMPARE(sink.lines[1].rec.errorCode, ErrorCode::IdentityChanged);
 }
 
 QTEST_GUILESS_MAIN(TstExecutor)

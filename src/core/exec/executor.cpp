@@ -29,6 +29,34 @@ StepRecord recordOf(int step, Phase phase, const RenameResult &r)
     return rec;
 }
 
+using RequestMap = QHash<ItemId, const RenameRequest *>;
+
+RequestMap requestMap(const Plan &plan)
+{
+    RequestMap map;
+    for (const RenameRequest &r : plan.requests)
+        map.insert(r.item, &r);
+    return map;
+}
+
+// ok when the item at path exists and has the identity of its request. Else the failure to
+// record (SourceMissing or IdentityChanged); nothing may be renamed then.
+RenameResult checkItemAt(FileSystem &fs, const RequestMap &requests, ItemId item,
+                         const QString &path)
+{
+    if (!fs.exists(path))
+        return checkFailure(ErrorCode::SourceMissing,
+                            QStringLiteral("Source missing: %1").arg(path));
+    const RenameRequest *req = requests.value(item);
+    const auto actual = req ? fs.identity(path, req->identity.type) : std::nullopt;
+    if (!req || !actual || !sameFile(req->identity, *actual))
+        return checkFailure(ErrorCode::IdentityChanged,
+                            QStringLiteral("File identity changed: %1").arg(path));
+    RenameResult r;
+    r.ok = true;
+    return r;
+}
+
 // Sets the outcome after all tries: a rename failure has priority over a journal failure.
 void finish(RollbackOutcome &out)
 {
@@ -48,9 +76,7 @@ Executor::Executor(FileSystem &fs, JournalSink &journal)
 RunOutcome Executor::run(const Plan &plan, const std::atomic<bool> &cancel,
                          const Progress &progress)
 {
-    QHash<ItemId, const RenameRequest *> requests;
-    for (const RenameRequest &r : plan.requests)
-        requests.insert(r.item, &r);
+    const RequestMap requests = requestMap(plan);
 
     RunOutcome out;
     const int total = int(plan.steps.size());
@@ -61,22 +87,18 @@ RunOutcome Executor::run(const Plan &plan, const std::atomic<bool> &cancel,
         }
         const PlanStep &step = plan.steps[i];
 
-        // Check the source before the rename.
+        // Check the source before the rename. A FromTemp source has a name only CTRM uses, so
+        // only its presence is checked.
         RenameResult result;
-        if (!m_fs.exists(step.from)) {
+        if (step.kind == StepKind::FromTemp && !m_fs.exists(step.from))
             result = checkFailure(ErrorCode::SourceMissing,
                                   QStringLiteral("Source missing: %1").arg(step.from));
-        } else if (step.kind != StepKind::FromTemp) {
-            const RenameRequest *req = requests.value(step.item);
-            const auto actual = req ? m_fs.identity(step.from, req->identity.type) : std::nullopt;
-            if (!req || !actual || !sameFile(req->identity, *actual))
-                result = checkFailure(ErrorCode::IdentityChanged,
-                                      QStringLiteral("File identity changed: %1").arg(step.from));
-            else
-                result = m_fs.renameNoReplace(step.from, step.to);
-        } else {
+        else if (step.kind != StepKind::FromTemp)
+            result = checkItemAt(m_fs, requests, step.item, step.from);
+        else
+            result.ok = true;
+        if (result.ok)
             result = m_fs.renameNoReplace(step.from, step.to);
-        }
 
         if (result.ok)
             out.okSteps.append(i);
@@ -103,12 +125,16 @@ RunOutcome Executor::run(const Plan &plan, const std::atomic<bool> &cancel,
 
 RollbackOutcome Executor::rollBack(const Plan &plan, const QList<int> &okSteps)
 {
+    const RequestMap requests = requestMap(plan);
     RollbackOutcome out;
     for (auto it = okSteps.crbegin(); it != okSteps.crend(); ++it) {
         if (*it < 0 || *it >= plan.steps.size())
             continue;
         const PlanStep &step = plan.steps[*it];
-        const RenameResult r = m_fs.renameNoReplace(step.to, step.from);
+        // Never move an item that is not the one this step renamed.
+        RenameResult r = checkItemAt(m_fs, requests, step.item, step.to);
+        if (r.ok)
+            r = m_fs.renameNoReplace(step.to, step.from);
         if (!m_journal.appendStep(step, recordOf(step.index, Phase::Rollback, r)))
             out.journalFailed = true;
         if (!r.ok) {
@@ -134,11 +160,22 @@ RollbackOutcome Executor::restoreTempNames(const Plan &plan, const QList<int> &o
         lastOk.insert(item, s);
     }
 
+    const RequestMap requests = requestMap(plan);
     RollbackOutcome out;
     for (const ItemId item : std::as_const(order)) {
         const PlanStep &toTemp = plan.steps[lastOk.value(item)];
         if (toTemp.kind != StepKind::ToTemp)
             continue;
+
+        // 0. Never move an item that is not the one at its temporary name.
+        const RenameResult check = checkItemAt(m_fs, requests, item, toTemp.to);
+        if (!check.ok) {
+            if (!m_journal.appendStep(toTemp, recordOf(toTemp.index, Phase::Rollback, check)))
+                out.journalFailed = true;
+            out.failedSteps.append(toTemp.index);
+            out.lastFailure = check;
+            continue;
+        }
 
         // 1. Back to the old name.
         const RenameResult back = m_fs.renameNoReplace(toTemp.to, toTemp.from);

@@ -40,10 +40,13 @@ public:
     // before each step, so the current step always finishes).
     RunOutcome run(const Plan &plan, const std::atomic<bool> &cancel,
                    const Progress &progress = {});
-    // Reverses okSteps in reverse order. Continues after a rename or journal failure.
+    // Reverses okSteps in reverse order. Continues after a rename or journal failure. A step is
+    // not reversed (it fails with SourceMissing or IdentityChanged) when the item at step.to is
+    // missing or is not the item of its request.
     RollbackOutcome rollBack(const Plan &plan, const QList<int> &okSteps);
     // Only items whose last ok forward step is a ToTemp step: back to the old name, else to
-    // the planned new name, else the item keeps the temporary name (not complete).
+    // the planned new name, else the item keeps the temporary name (not complete). An item
+    // whose temporary name is missing or holds another item is not moved (not complete).
     RollbackOutcome restoreTempNames(const Plan &plan, const QList<int> &okSteps);
 
 private:
