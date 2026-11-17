@@ -633,17 +633,27 @@ void RulePanel::changeEvent(QEvent *event)
 
 void RulePanel::fillAddRuleMenu()
 {
-    // ui-design 8.1: the sections and their order.
-    const QList<std::pair<QString, QStringList>> sections{
-            {tr("Text"), {"replace", "insert", "remove", "cleanup"}},
-            {tr("Format"), {"changeCase", "extension"}},
-            {tr("Numbers"), {"numbering"}}};
+    // ui-design 8.1: three groups (text, format, numbers) with separators. No section titles:
+    // macOS does not show them. No "...": an item adds the rule at once.
+    const QList<QList<std::pair<const char *, QString>>> groups{
+            {{"replace", tr("Replace text or a pattern")},
+             {"insert", tr("Add text at a position")},
+             {"remove", tr("Remove characters, a range or text between marks")},
+             {"cleanup", tr("Fix spaces and invalid characters")}},
+            {{"changeCase", tr("Change the letter case")},
+             {"extension", tr("Change the extension")}},
+            {{"numbering", tr("Add a number to each item")}}};
     QMenu *menu = m_actions.addRuleMenu;
-    for (const auto &[section, types] : sections) {
-        menu->addSection(section);
-        for (const QString &type : types) {
-            auto *action = new QAction(tr("%1...").arg(ruleDisplayName(type)), menu);
+    menu->setToolTipsVisible(true);
+    for (const auto &group : groups) {
+        if (!menu->isEmpty())
+            menu->addSeparator();
+        for (const auto &[name, tip] : group) {
+            const QString type = QString::fromLatin1(name);
+            auto *action = new QAction(ruleDisplayName(type), menu);
             action->setObjectName(QStringLiteral("addRule_") + type);
+            action->setToolTip(tip);
+            action->setStatusTip(tip);
             connect(action, &QAction::triggered, this, [this, type] { addRule(type); });
             menu->addAction(action);
         }

@@ -127,18 +127,27 @@ void TestAppRulePanel::factory()
 
 void TestAppRulePanel::addRuleMenuSections()
 {
+    // ui-design 8.1 (S05): three groups with plain separators (macOS shows no section titles),
+    // no "...", and a one-line tooltip and status tip on each item.
     Fixture f;
-    QStringList sections;
-    QStringList rules;
+    QStringList items;
+    QStringList tips;
     for (QAction *a : f.actions.addRuleMenu->actions()) {
-        if (a->isSeparator())
-            sections.append(a->text());
-        else
-            rules.append(a->text());
+        if (a->isSeparator()) {
+            QVERIFY(a->text().isEmpty());
+            items.append(QStringLiteral("---"));
+            continue;
+        }
+        items.append(a->text());
+        QCOMPARE(a->toolTip(), a->statusTip());
+        tips.append(a->statusTip());
     }
-    QCOMPARE(sections, (QStringList{"Text", "Format", "Numbers"}));
-    QCOMPARE(rules, (QStringList{"Replace...", "Insert...", "Remove...", "Clean up...",
-                                 "Change case...", "Extension...", "Numbering..."}));
+    QCOMPARE(items, (QStringList{"Replace", "Insert", "Remove", "Clean up", "---", "Change case",
+                                 "Extension", "---", "Numbering"}));
+    QCOMPARE(tips, (QStringList{"Replace text or a pattern", "Add text at a position",
+                                "Remove characters, a range or text between marks",
+                                "Fix spaces and invalid characters", "Change the letter case",
+                                "Change the extension", "Add a number to each item"}));
     QCOMPARE(f.panel->addRuleButton()->menu(), f.actions.addRuleMenu);
 }
 
