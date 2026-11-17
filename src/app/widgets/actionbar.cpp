@@ -318,6 +318,8 @@ void ActionBar::updateSummary(const ctrm::PreviewSummary &summary)
     auto addLabel = [&](QLabel *label) {
         label->setFont(font);
         m_summaryLayout->addWidget(label);
+        // R3-01: show it now, not later from the layout, so that updateTip() measures it.
+        label->show();
         m_summaryParts.append(label);
     };
 

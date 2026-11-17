@@ -97,6 +97,7 @@ private slots:
     void actionBarHeightStays();
     void blockedBarNotCut_data();
     void blockedBarNotCut();
+    void barFitsAfterContentChange();
     void tipLinkHasBodyFont();
     void resultSummary();
     void fusionAccent();
@@ -400,6 +401,40 @@ void TestAppWindowState::blockedBarNotCut()
     if (reason->isVisible())
         QVERIFY(reason->width() >= reason->sizeHint().width());
     QCOMPARE(bar->findChild<QPushButton *>(QStringLiteral("renameButton"))->toolTip(), full);
+}
+
+void TestAppWindowState::barFitsAfterContentChange()
+{
+    // R3-01 (5.2): the bar runs the space order also when its content changes at the same
+    // width (for example, Refresh adds an error).
+    QWidget parent;
+    parent.resize(1300, 200);
+    const Actions actions = createActions(&parent);
+    auto *bar = new ActionBar(actions, &parent);
+    const PreviewSummary conflicts = summary(2, 6, 0, 0, 0, 1);
+    bar->setState(computeWindowState(input(9, 1, conflicts)), conflicts);
+    bar->setConflictTip(true);
+    bar->setGeometry(0, 0, 1000, bar->sizeHint().height());
+    parent.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&parent));
+    QCoreApplication::processEvents();
+
+    const PreviewSummary both = summary(2, 6, 1, 0, 0, 1);
+    bar->setState(computeWindowState(input(10, 1, both)), both);
+    bar->setConflictTip(true);
+    QCoreApplication::processEvents();
+
+    auto *summaryWidget = bar->findChild<QWidget *>(QStringLiteral("countSummary"));
+    QStringList cut;
+    for (QLabel *label : summaryWidget->findChildren<QLabel *>()) {
+        if (label->isVisible() && label->width() < label->sizeHint().width())
+            cut.append(label->text());
+    }
+    QVERIFY2(cut.isEmpty(), qPrintable(cut.join(u", ")));
+    for (const char *name : {"skipButton", "renameButton"}) {
+        auto *button = bar->findChild<QPushButton *>(QLatin1StringView(name));
+        QVERIFY2(button->width() >= button->sizeHint().width(), name);
+    }
 }
 
 void TestAppWindowState::tipLinkHasBodyFont()
