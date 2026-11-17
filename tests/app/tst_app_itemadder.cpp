@@ -68,6 +68,7 @@ private slots:
     void folderAskAddContents();
     void hiddenNotAdded();
     void droppedHiddenFileAdded();
+    void droppedAppleDoubleNotAdded();
     void duplicateMessage();
     void dontAskAgainSaved();
     void cancelAddsNothingFromFolders();
@@ -168,6 +169,45 @@ void TestItemAdder::droppedHiddenFileAdded()
     Fixture f;
     f.adder.addPaths({hidden});
     QCOMPARE(f.names(), QStringList{".h"});
+}
+
+void TestItemAdder::droppedAppleDoubleNotAdded()
+{
+    // On macOS, "._X" next to "X" is never an item, also when the user drops or picks it
+    // (PRD 6.6). "._gone.txt" has no main file, so it is a normal hidden file.
+    TempTree t;
+    t.file(QStringLiteral("a.txt"), "a");
+    t.file(QStringLiteral("b.txt"), "b");
+    const QString sideA = t.file(QStringLiteral("._a.txt"), "x");
+    const QString sideB = t.file(QStringLiteral("._b.txt"), "x");
+    const QString orphan = t.file(QStringLiteral("._gone.txt"), "x");
+    {
+        Fixture f;
+        QSignalSpy spy(&f.adder, &ItemAdder::statusMessage);
+        f.adder.addPaths({sideA, orphan});
+#ifdef Q_OS_MACOS
+        QCOMPARE(f.names(), QStringList{"._gone.txt"});
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.at(0).at(0).toString(),
+                 QStringLiteral("1 item was not added. It is a macOS data file. macOS renames it "
+                                "together with its main file."));
+#else
+        QCOMPARE(f.names(), (QStringList{"._a.txt", "._gone.txt"}));
+        QCOMPARE(spy.count(), 0);
+#endif
+    }
+#ifdef Q_OS_MACOS
+    {
+        Fixture f;
+        QSignalSpy spy(&f.adder, &ItemAdder::statusMessage);
+        f.adder.addPaths({sideA, sideB});
+        QVERIFY(f.names().isEmpty());
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.at(0).at(0).toString(),
+                 QStringLiteral("2 items were not added. They are macOS data files. macOS "
+                                "renames them together with their main files."));
+    }
+#endif
 }
 
 void TestItemAdder::duplicateMessage()

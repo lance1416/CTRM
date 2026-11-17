@@ -95,16 +95,43 @@ ItemAdder::ItemAdder(FileSystem &fs, ItemTableModel &model, Settings &settings, 
     };
 }
 
+#ifdef Q_OS_MACOS
+namespace {
+
+// "._X" next to "X": the AppleDouble file in which macOS keeps the extended attributes of "X".
+// macOS renames it with "X", so it is never an item (PRD 6.6), also when the user adds it.
+bool isAppleDoubleSidecar(FileSystem &fs, const Item &item)
+{
+    if (item.name.size() <= 2 || !item.name.startsWith(QStringLiteral("._")))
+        return false;
+    const auto entries = fs.listFolder(item.folder, nullptr);
+    if (!entries)
+        return false;
+    const QString main = item.name.mid(2);
+    return std::any_of(entries->cbegin(), entries->cend(),
+                       [&](const DirEntry &e) { return e.name == main; });
+}
+
+} // namespace
+#endif
+
 void ItemAdder::addPaths(const QStringList &paths)
 {
     // One entry for each path that makeItem accepts, in the given order.
     QList<Item> found;
     int notReadable = 0;
     int unsupported = 0;
+    int sidecars = 0;
     FolderReadCache cache(m_fs);
     for (const QString &path : paths) {
         QString error;
         std::optional<Item> item = makeItem(cache, path, &error);
+#ifdef Q_OS_MACOS
+        if (item && isAppleDoubleSidecar(cache, *item)) {
+            ++sidecars;
+            continue;
+        }
+#endif
         if (item)
             found.append(*item);
         else if (hasUnsupportedName(cache, path))
@@ -183,6 +210,12 @@ void ItemAdder::addPaths(const QStringList &paths)
                                            "characters that the file system cannot show "
                                            "correctly.",
                                            nullptr, unsupported));
+    if (sidecars > 0)
+        texts.append(sidecars == 1 ? tr("1 item was not added. It is a macOS data file. macOS "
+                                        "renames it together with its main file.")
+                                   : tr("%n items were not added. They are macOS data files. "
+                                        "macOS renames them together with their main files.",
+                                        nullptr, sidecars));
     if (notReadable > 0)
         texts.append(notReadable == 1 ? tr("1 item was not added. It cannot be found or read.")
                                       : tr("%n items were not added. They cannot be found or read.",
