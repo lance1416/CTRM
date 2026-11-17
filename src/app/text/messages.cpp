@@ -138,3 +138,18 @@ QString blockedOldNameText(const QString &oldName)
 }
 
 } // namespace ctrm::app
+
+namespace ctrm::app {
+
+QString showInFileManagerText()
+{
+#if defined(Q_OS_MACOS)
+    return Messages::tr("Show in Finder");
+#elif defined(Q_OS_WIN)
+    return Messages::tr("Show in Explorer");
+#else
+    return Messages::tr("Show in File Manager");
+#endif
+}
+
+} // namespace ctrm::app

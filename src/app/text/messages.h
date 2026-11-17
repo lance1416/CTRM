@@ -31,4 +31,7 @@ QString postRunText(const PostRunState &s);
 // The reason of a conflict with the old name of a blocked item (PRD 7.1).
 QString blockedOldNameText(const QString &oldName);
 
+// "Show in Finder" (macOS), "Show in Explorer" (Windows), "Show in File Manager" (others).
+QString showInFileManagerText();
+
 } // namespace ctrm::app
