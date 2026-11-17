@@ -424,6 +424,18 @@ QString ItemTableModel::messageText(int row) const
     return statusText(p, m_portable);
 }
 
+QString ItemTableModel::shortMessageText(int row) const
+{
+    const auto post = m_postRun.constFind(m_items[row].id);
+    if (post != m_postRun.cend() && post->state != PostRun::None)
+        return shortPostRunText(*post);
+    const ItemPreview &p = previewAt(row);
+    if (m_items[row].included && isBlocking(p.status) && !p.problems.isEmpty() &&
+        !blockingOldName(row).isEmpty())
+        return shortBlockedOldNameText();
+    return shortStatusText(p);
+}
+
 QString ItemTableModel::toolTip(int row) const
 {
     const ItemPreview &p = previewAt(row);
@@ -449,6 +461,7 @@ QString ItemTableModel::sortText(int row, Column column) const
     case NewName:
         return item.included ? previewAt(row).newName : item.name;
     case Message:
+        return shortMessageText(row); // the text that the cell shows
     case State:
         return messageText(row);
     case Folder:
@@ -479,6 +492,8 @@ QVariant ItemTableModel::data(const QModelIndex &index, int role) const
         return int(m_postRun.value(item.id).state);
     case IsExcludedRole:
         return !item.included;
+    case MessageRole:
+        return messageText(row);
     default:
         break;
     }
@@ -509,8 +524,9 @@ QVariant ItemTableModel::data(const QModelIndex &index, int role) const
     switch (column) {
     case OldName:
     case NewName:
-    case Message:
         return sortText(row, column);
+    case Message:
+        return shortMessageText(row);
     case Folder:
         return QDir::toNativeSeparators(item.folder);
     case Size: {

@@ -93,6 +93,11 @@ private slots:
     void texts_data();
     void texts();
     void statusTexts();
+    void shortTexts_data();
+    void shortTexts();
+    void shortStatusTexts();
+    void messageCellShort();
+    void sortByMessageUsesShortText();
     void ruleErrorWithName();
     void blockedOldNameMessage();
     void tooltipListsAllMessages();
@@ -192,7 +197,8 @@ void TestItemModel::includeToggle()
     QCOMPARE(changed.count(), 1);
     QCOMPARE(m.listVersion(), v + 1);
     QVERIFY(idx.data(ItemTableModel::IsExcludedRole).toBool());
-    QCOMPARE(m.index(0, ItemTableModel::Message).data().toString(), QStringLiteral("Excluded"));
+    QCOMPARE(m.index(0, ItemTableModel::Message).data(ItemTableModel::MessageRole).toString(),
+             QStringLiteral("Excluded"));
     // No change, no signal.
     m.setIncluded({m.items()[0].id}, false);
     QCOMPARE(changed.count(), 1);
@@ -433,6 +439,132 @@ void TestItemModel::texts()
     QCOMPARE(diagnosticText(d, portable), expected);
 }
 
+void TestItemModel::shortTexts_data()
+{
+    QTest::addColumn<Diagnostic>("d");
+    QTest::addColumn<QString>("expected");
+
+    auto add = [](const char *tag, Diagnostic d, const char *text) {
+        QTest::newRow(tag) << d << QString::fromUtf8(text);
+    };
+    add("duplicate", diag(DiagCode::DuplicateInBatch, {}, 2), "Same name as 2 items");
+    add("duplicateOne", diag(DiagCode::DuplicateInBatch, {}, 1), "Same name as 1 item");
+    add("exists", diag(DiagCode::ExistsInFolder, "a.txt"), "Name used in folder");
+    add("ignoringCase", diag(DiagCode::ExistsIgnoringCase, "Trip.jpg"), "Name used (letter case)");
+    add("normalization", diag(DiagCode::ExistsNormalization, "Cafe.jpg"),
+        "Name used (equal characters)");
+    add("empty", diag(DiagCode::EmptyName), "Name is empty");
+    add("dot", diag(DiagCode::DotName), "Invalid name: . or ..");
+    add("forbidden", diag(DiagCode::ForbiddenChar, "?"), "Invalid character: ?");
+    add("reserved", diag(DiagCode::ReservedName, "CON"), "Reserved name: CON");
+    add("trailing", diag(DiagCode::TrailingSpaceOrDot), "Ends with space or dot");
+    add("nameTooLong", diag(DiagCode::NameTooLong, "utf16", 262, 255), "Name too long (262/255)");
+    add("pathTooLong", diag(DiagCode::PathTooLong, {}, 1100, 1023), "Path too long (1100/1023)");
+    add("notOnDisk", diag(DiagCode::NotOnDisk), "Missing on disk");
+    add("identityChanged", diag(DiagCode::IdentityChanged), "Changed on disk");
+    add("ruleFailed", diag(DiagCode::RuleFailed, "missing )", 6, 0, 1), "Rule 2 error");
+    add("unsupported", diag(DiagCode::UnsupportedRule, "future", 0, 0, 2), "Rule 3 not supported");
+    add("hidden", diag(DiagCode::BecomesHidden), "Warning: becomes hidden");
+    add("visible", diag(DiagCode::BecomesVisible), "Warning: becomes visible");
+    add("extension", diag(DiagCode::ExtensionChanged), "Warning: extension changes");
+    add("path260", diag(DiagCode::PathLongerThan260), "Warning: path over 260");
+    add("endsWith", diag(DiagCode::EndsWithSpaceOrDot), "Warning: ends with space/dot");
+    add("whitespace", diag(DiagCode::LeadingOrTrailingWhitespace), "Warning: space at start/end");
+    add("weak", diag(DiagCode::WeakIdentity, "exfat"), "Warning: undo less safe");
+}
+
+void TestItemModel::shortTexts()
+{
+    // S03: 28 characters or fewer, key word first. The full sentence is in the tooltip.
+    QFETCH(Diagnostic, d);
+    QFETCH(QString, expected);
+    QCOMPARE(shortDiagnosticText(d), expected);
+    QVERIFY2(expected.size() <= 28, qPrintable(expected));
+}
+
+void TestItemModel::shortStatusTexts()
+{
+    // S02: only rows that need text have it.
+    QCOMPARE(shortStatusText(row(Status::Unchanged, "a")), QString());
+    QCOMPARE(shortStatusText(row(Status::Changed, "a")), QString());
+    QCOMPARE(shortStatusText(row(Status::CaseOnly, "a")), QStringLiteral("Letter case only"));
+    ItemPreview excluded = row(Status::Changed, "a");
+    excluded.included = false;
+    QCOMPARE(shortStatusText(excluded), QStringLiteral("Excluded"));
+    QCOMPARE(shortStatusText(row(Status::Changed, ".a", {}, {diag(DiagCode::BecomesHidden)})),
+             QStringLiteral("Warning: becomes hidden"));
+    QCOMPARE(shortStatusText(row(Status::Invalid, "a?", {diag(DiagCode::ForbiddenChar, "?")})),
+             QStringLiteral("Invalid character: ?"));
+    QCOMPARE(shortPostRunText({PostRun::Renamed, {}}), QStringLiteral("Renamed"));
+    QCOMPARE(shortPostRunText({PostRun::Failed, QStringLiteral("Permission denied")}),
+             QStringLiteral("Failed: Permission denied"));
+    QCOMPARE(shortPostRunText({PostRun::Skipped, QStringLiteral("conflict")}),
+             QStringLiteral("Skipped: conflict"));
+    QCOMPARE(shortPostRunText({PostRun::RolledBack, {}}), QStringLiteral("Rolled back"));
+    QCOMPARE(shortPostRunText({}), QString());
+    QCOMPARE(shortBlockedOldNameText(), QStringLiteral("Old name of a blocked item"));
+}
+
+void TestItemModel::messageCellShort()
+{
+    ItemTableModel m;
+    m.addItems(makeItems({"a", "b", "c?"}));
+    setPreview(m, {row(Status::Changed, "x"), row(Status::Unchanged, "b"),
+                   row(Status::Invalid, "c?", {diag(DiagCode::ForbiddenChar, "?")})});
+    const auto cell = [&](int r, int role) {
+        return m.index(r, ItemTableModel::Message).data(role).toString();
+    };
+    QCOMPARE(cell(0, Qt::DisplayRole), QString());
+    QCOMPARE(cell(0, ItemTableModel::MessageRole), QStringLiteral("Will rename"));
+    QCOMPARE(cell(1, Qt::DisplayRole), QString());
+    QCOMPARE(cell(1, ItemTableModel::MessageRole), QStringLiteral("No change"));
+    QCOMPARE(cell(2, Qt::DisplayRole), QStringLiteral("Invalid character: ?"));
+    const QString full = QStringLiteral("Invalid: '?' is not permitted in portable names");
+    QCOMPARE(cell(2, ItemTableModel::MessageRole), full);
+    QVERIFY(cell(2, Qt::ToolTipRole).startsWith(full));
+    // The State icon tooltip still gives the state text.
+    QCOMPARE(m.index(0, ItemTableModel::State).data(Qt::ToolTipRole).toString(),
+             QStringLiteral("Will rename"));
+
+    // Excluded, letter case only, and a warning.
+    ItemTableModel other;
+    other.addItems(makeItems({"a", "B", "c"}));
+    setPreview(other, {row(Status::Changed, "x"), row(Status::CaseOnly, "b"),
+                       row(Status::Changed, ".c", {}, {diag(DiagCode::BecomesHidden)})});
+    other.setIncluded({other.items().first().id}, false);
+    const auto otherCell = [&](int r, int role) {
+        return other.index(r, ItemTableModel::Message).data(role).toString();
+    };
+    QCOMPARE(otherCell(0, Qt::DisplayRole), QStringLiteral("Excluded"));
+    QCOMPARE(otherCell(1, Qt::DisplayRole), QStringLiteral("Letter case only"));
+    QCOMPARE(otherCell(1, ItemTableModel::MessageRole),
+             QStringLiteral("Will rename (letter case only)"));
+    QCOMPARE(otherCell(2, Qt::DisplayRole), QStringLiteral("Warning: becomes hidden"));
+    QCOMPARE(otherCell(2, ItemTableModel::MessageRole),
+             QStringLiteral("Will rename. Warning: the item will become hidden"));
+
+    // Post-run: short in the cell, full sentence in MessageRole.
+    const QList<Item> items = m.items();
+    m.setPostRun({{items[0].id, {PostRun::RolledBack, {}}},
+                  {items[1].id, {PostRun::Failed, QStringLiteral("Permission denied")}}});
+    QCOMPARE(cell(0, Qt::DisplayRole), QStringLiteral("Rolled back"));
+    QCOMPARE(cell(0, ItemTableModel::MessageRole), QStringLiteral("Rolled back to the old name"));
+    QCOMPARE(cell(1, Qt::DisplayRole), QStringLiteral("Failed: Permission denied"));
+}
+
+void TestItemModel::sortByMessageUsesShortText()
+{
+    // The sort follows the text that the cell shows: the empty cell comes first.
+    ItemTableModel m;
+    m.addItems(makeItems({"a", "b", "c"}));
+    // Short texts: "Warning: becomes hidden", "Excluded", "" (the full texts sort b, c, a).
+    setPreview(m, {row(Status::Changed, ".a", {}, {diag(DiagCode::BecomesHidden)}),
+                   row(Status::Changed, "x"), row(Status::Changed, "y")});
+    m.setIncluded({m.items()[1].id}, false);
+    m.sortOnce(ItemTableModel::Message, Qt::AscendingOrder);
+    QCOMPARE(column(m, ItemTableModel::OldName), (QStringList{"c", "b", "a"}));
+}
+
 void TestItemModel::statusTexts()
 {
     QCOMPARE(statusText(row(Status::Unchanged, "a"), true), QStringLiteral("No change"));
@@ -465,7 +597,7 @@ void TestItemModel::ruleErrorWithName()
     m.addItems(makeItems({"a"}));
     setPreview(m, {row(Status::RuleError, "a", {d})});
     m.setRuleNames({QStringLiteral("Insert"), QStringLiteral("Replace")});
-    QCOMPARE(m.index(0, ItemTableModel::Message).data().toString(),
+    QCOMPARE(m.index(0, ItemTableModel::Message).data(ItemTableModel::MessageRole).toString(),
              QStringLiteral("Rule error in rule 2 (Replace): missing ) at position 7"));
 }
 
@@ -481,11 +613,13 @@ void TestItemModel::blockedOldNameMessage()
                    // A conflict with an item that is not blocked (Unchanged keeps its name).
                    row(Status::Conflict, "e.txt", {diag(DiagCode::ExistsInFolder, "e.txt")}),
                    row(Status::Unchanged, "e.txt")});
-    QCOMPARE(m.index(1, ItemTableModel::Message).data().toString(),
+    QCOMPARE(m.index(1, ItemTableModel::Message).data(ItemTableModel::MessageRole).toString(),
              QStringLiteral("Conflicts with the old name of 'a.txt', which is blocked."));
-    QCOMPARE(m.index(2, ItemTableModel::Message).data().toString(),
+    QCOMPARE(m.index(1, ItemTableModel::Message).data().toString(),
+             QStringLiteral("Old name of a blocked item"));
+    QCOMPARE(m.index(2, ItemTableModel::Message).data(ItemTableModel::MessageRole).toString(),
              QStringLiteral("An item named 'z.txt' is already in this folder"));
-    QCOMPARE(m.index(3, ItemTableModel::Message).data().toString(),
+    QCOMPARE(m.index(3, ItemTableModel::Message).data(ItemTableModel::MessageRole).toString(),
              QStringLiteral("An item named 'e.txt' is already in this folder"));
 
     // The same name in another folder is not the blocked item.
@@ -493,7 +627,7 @@ void TestItemModel::blockedOldNameMessage()
     other.addItems({makeItem("a.txt", "/s"), makeItem("b.txt", "/r")});
     setPreview(other, {row(Status::Invalid, "a?.txt", {diag(DiagCode::ForbiddenChar, "?")}),
                        row(Status::Conflict, "a.txt", {diag(DiagCode::ExistsInFolder, "a.txt")})});
-    QCOMPARE(other.index(1, ItemTableModel::Message).data().toString(),
+    QCOMPARE(other.index(1, ItemTableModel::Message).data(ItemTableModel::MessageRole).toString(),
              QStringLiteral("An item named 'a.txt' is already in this folder"));
 }
 
@@ -516,10 +650,12 @@ void TestItemModel::postRunClearsOnChange()
     const QList<Item> items = m.items();
     m.setPostRun({{items[0].id, {PostRun::Renamed, {}}}});
     QCOMPARE(m.index(0, 0).data(ItemTableModel::PostRunRole).toInt(), int(PostRun::Renamed));
-    QCOMPARE(m.index(0, ItemTableModel::Message).data().toString(), QStringLiteral("Renamed"));
+    QCOMPARE(m.index(0, ItemTableModel::Message).data(ItemTableModel::MessageRole).toString(),
+             QStringLiteral("Renamed"));
     m.moveRows({1}, 0);
     QCOMPARE(m.index(1, 0).data(ItemTableModel::PostRunRole).toInt(), int(PostRun::None));
-    QCOMPARE(m.index(1, ItemTableModel::Message).data().toString(), QStringLiteral("No change"));
+    QCOMPARE(m.index(1, ItemTableModel::Message).data(ItemTableModel::MessageRole).toString(),
+             QStringLiteral("No change"));
 }
 
 void TestItemModel::applyRenamesFollowsFolder()

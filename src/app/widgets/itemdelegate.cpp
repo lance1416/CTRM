@@ -127,6 +127,11 @@ void ItemDelegate::initStyleOption(QStyleOptionViewItem *option, const QModelInd
         option->decorationSize = QSize(size, size);
     }
 
+    // Names elide in the middle (the view's mode). A message has its key word first, so it
+    // elides at the end (ui-design 7.1, audit M07).
+    if (column == ItemTableModel::Message)
+        option->textElideMode = Qt::ElideRight;
+
     // Tints (design-tokens 2.4): only blocking rows and failed rows.
     option->backgroundBrush = QBrush();
     if (m_colors.tintsEnabled) {

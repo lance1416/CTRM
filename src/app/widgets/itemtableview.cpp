@@ -18,6 +18,7 @@
 #include <QKeyEvent>
 #include <QMenu>
 #include <QMimeData>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QSignalBlocker>
 #include <QStyleHints>
@@ -44,7 +45,9 @@ public:
                 .arg(ItemDelegate::rowStateName(index),
                      index.siblingAtColumn(ItemTableModel::OldName).data().toString(),
                      index.siblingAtColumn(ItemTableModel::NewName).data().toString(),
-                     index.siblingAtColumn(ItemTableModel::Message).data().toString());
+                     index.siblingAtColumn(ItemTableModel::Message)
+                             .data(ItemTableModel::MessageRole)
+                             .toString());
     }
 };
 
@@ -54,7 +57,8 @@ bool isProblemRow(const QModelIndex &index)
            PostRun(index.data(ItemTableModel::PostRunRole).toInt()) == PostRun::Failed;
 }
 
-constexpr int kNameWidth = 240; // the default width of Old name and New name
+constexpr int kNameWidth = 240;  // the width of Old name and New name before the first resize
+constexpr int kNamePercent = 30; // the share of the table of each name column (mockup)
 
 constexpr int kOptionalColumns[] = {ItemTableModel::Message, ItemTableModel::Folder,
                                     ItemTableModel::Size, ItemTableModel::Modified};
@@ -104,6 +108,11 @@ ItemTableView::ItemTableView(ItemTableModel &model, ItemFilterProxy &proxy, QWid
     header->setHighlightSections(false);
     header->setStretchLastSection(true);
     header->setSectionResizeMode(QHeaderView::Interactive);
+    // Same alignment as the cells, semibold (mockup ".items th", audit M14).
+    header->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    QFont headerFont = header->font();
+    headerFont.setWeight(QFont::DemiBold);
+    header->setFont(headerFont);
     header->setContextMenuPolicy(Qt::CustomContextMenu);
     const int iconColumn = style()->pixelMetric(QStyle::PM_SmallIconSize, nullptr, this) +
                            2 * style()->pixelMetric(QStyle::PM_FocusFrameHMargin, nullptr, this) +
@@ -144,6 +153,7 @@ ItemTableView::ItemTableView(ItemTableModel &model, ItemFilterProxy &proxy, QWid
         connect(action, &QAction::toggled, this, [this, column](bool shown) {
             m_userColumns.insert(column);
             setColumnHidden(column, !shown);
+            fitNameColumns();
         });
     }
     setColumnHidden(ItemTableModel::Size, true);
@@ -251,18 +261,12 @@ void ItemTableView::updateAutoColumns()
         }
         setColumnHidden(ItemTableModel::Folder, !manyFolders);
     }
-    if (!m_userColumns.contains(ItemTableModel::Message)) {
-        // A message is more than the plain "No change", "Will rename" or "Excluded".
-        bool anyMessage = false;
-        for (int row = 0; row < m_model.rowCount() && !anyMessage; ++row) {
-            const QModelIndex index = m_model.index(row, ItemTableModel::Message);
-            anyMessage = index.data(ItemTableModel::IsBlockingRole).toBool() ||
-                         index.data(ItemTableModel::HasWarningRole).toBool() ||
-                         PostRun(index.data(ItemTableModel::PostRunRole).toInt()) != PostRun::None;
-        }
-        setColumnHidden(ItemTableModel::Message, !anyMessage);
-    }
+    // The Message column shows when the list has items, so the table does not jump on each edit
+    // (audit S02). Only the rows that need text have it.
+    if (!m_userColumns.contains(ItemTableModel::Message))
+        setColumnHidden(ItemTableModel::Message, items.isEmpty());
     syncColumnActions();
+    fitNameColumns();
 }
 
 void ItemTableView::syncColumnActions()
@@ -291,8 +295,11 @@ void ItemTableView::updateRowHeight()
 bool ItemTableView::eventFilter(QObject *watched, QEvent *event)
 {
     if (watched == horizontalHeader()->viewport()) {
-        if (event->type() == QEvent::MouseButtonPress ||
-            event->type() == QEvent::MouseButtonDblClick)
+        // Only the left button resizes. A right click opens the columns menu, which can take
+        // the release, so it does not set the flag.
+        if ((event->type() == QEvent::MouseButtonPress ||
+             event->type() == QEvent::MouseButtonDblClick) &&
+            static_cast<QMouseEvent *>(event)->button() == Qt::LeftButton)
             m_headerPressed = true;
         else if (event->type() == QEvent::MouseButtonRelease)
             m_headerPressed = false;
@@ -306,18 +313,28 @@ void ItemTableView::resizeEvent(QResizeEvent *event)
     fitNameColumns();
 }
 
-// Old name and New name share the width after the columns before them, up to their default
-// width, so a narrow table (minimum window, wide rule panel) still shows both (ui-design 4.4).
-// A width that the user sets stays.
+// Old name and New name have the same width (audit M14): 30% of the table each (mockup), and
+// the last column gets the rest. In a narrow table (minimum window, wide rule panel) they share
+// the width after the columns before them, so both still show (ui-design 4.4). When a name
+// column is the last visible column, the names share all of that width. A width that the user
+// sets stays.
 void ItemTableView::fitNameColumns()
 {
-    if (m_namesSetByUser)
+    if (m_namesSetByUser || viewport()->width() <= 0)
         return;
     QHeaderView *header = horizontalHeader();
     const int before = std::min(header->sectionPosition(ItemTableModel::OldName),
                                 header->sectionPosition(ItemTableModel::NewName));
-    const int width = std::clamp((viewport()->width() - before) / 2, header->minimumSectionSize(),
-                                 kNameWidth);
+    int last = header->count() - 1;
+    while (last >= 0 && header->isSectionHidden(header->logicalIndex(last)))
+        --last;
+    const int lastColumn = last >= 0 ? header->logicalIndex(last) : -1;
+    const bool nameIsLast =
+            lastColumn == ItemTableModel::OldName || lastColumn == ItemTableModel::NewName;
+    const int share = (viewport()->width() - before) / 2;
+    const int width = std::max(
+            header->minimumSectionSize(),
+            nameIsLast ? share : std::min(share, viewport()->width() * kNamePercent / 100));
     m_fittingNames = true;
     header->resizeSection(ItemTableModel::OldName, width);
     header->resizeSection(ItemTableModel::NewName, width);

@@ -93,7 +93,8 @@ struct Fixture
     QString message(int row) const
     {
         const ItemTableModel &m = const_cast<Fixture *>(this)->window.itemModel();
-        return m.data(m.index(row, ItemTableModel::Message)).toString();
+        return m.data(m.index(row, ItemTableModel::Message), ItemTableModel::MessageRole)
+                .toString();
     }
 
     QString resultText() const

@@ -131,6 +131,7 @@ private slots:
     void sortByNewNameStable();
     void filterChangedOnly();
     void filterEmptyText();
+    void filterBarSameHeight();
     void blockingReasonTooltip();
     void refreshDetectsMissing();
     void addReadsFolderAgain();
@@ -547,6 +548,26 @@ void TestMainWindow::ruleMenuButtonsArePushButtons()
     QVERIFY(!presets->autoDefault());
 }
 
+void TestMainWindow::filterBarSameHeight()
+{
+    // M18: the filter field and the Show control have the same height (mockup, ui-design 6.1).
+    Fixture f;
+    f.window.show();
+    f.addFiles({QStringLiteral("a.txt")});
+    auto *field = f.child<QLineEdit>("filterField");
+    auto *combo = f.child<QComboBox>("showCombo");
+    QVERIFY(field && combo);
+    QApplication::processEvents();
+    // On macOS the combo box widget is taller than its frame (the focus ring is outside it):
+    // compare the visible frame of the combo box with the field.
+    QStyleOptionComboBox option;
+    option.initFrom(combo);
+    QRect visible = combo->style()->subElementRect(QStyle::SE_ComboBoxLayoutItem, &option, combo);
+    if (!visible.isValid())
+        visible = combo->rect();
+    QCOMPARE(field->height(), visible.height());
+}
+
 void TestMainWindow::namesShownAtMinimumWidth()
 {
     // ui-design 4.4: the rule panel is as wide as its widest editor. At the minimum window
@@ -572,19 +593,19 @@ void TestMainWindow::namesShownAtMinimumWidth()
                  qPrintable(QStringLiteral("%1 > %2")
                                     .arg(end(ItemTableModel::NewName))
                                     .arg(table->viewport()->width())));
-    // New name can be wider: as the last column, it fills the rest of the table.
-    QVERIFY(header->sectionSize(ItemTableModel::OldName) < 240);
-    QVERIFY(header->sectionSize(ItemTableModel::NewName) >=
-            header->sectionSize(ItemTableModel::OldName));
+    // M14: the two name columns are balanced.
+    QCOMPARE(header->sectionSize(ItemTableModel::NewName),
+             header->sectionSize(ItemTableModel::OldName));
 
-    // A wide window: the names have their default width again.
+    // A wide window: each name column is 30% of the table (mockup).
     f.window.resize(1600, f.window.height());
-    QTRY_COMPARE(header->sectionSize(ItemTableModel::OldName), 240);
-    QVERIFY(header->sectionSize(ItemTableModel::NewName) >= 240);
+    QTRY_COMPARE(header->sectionSize(ItemTableModel::OldName), table->viewport()->width() * 3 / 10);
+    QCOMPARE(header->sectionSize(ItemTableModel::NewName),
+             header->sectionSize(ItemTableModel::OldName));
 
-    // A column that the app shows (Message for a warning) is not a change by the user: the
-    // names fit again at the minimum width.
-    table->setColumnHidden(ItemTableModel::Message, false);
+    // A column that the app shows (Folder for a second folder) is not a change by the user:
+    // the names fit again at the minimum width.
+    table->setColumnHidden(ItemTableModel::Folder, false);
     QApplication::processEvents();
     f.window.resize(f.window.minimumSize());
     QApplication::processEvents();
@@ -592,7 +613,7 @@ void TestMainWindow::namesShownAtMinimumWidth()
                  qPrintable(QStringLiteral("%1 > %2")
                                     .arg(end(ItemTableModel::NewName))
                                     .arg(table->viewport()->width())));
-    table->setColumnHidden(ItemTableModel::Message, true);
+    table->setColumnHidden(ItemTableModel::Folder, true);
 
     // A width that the user sets with the mouse stays: drag the right edge of Old name.
     QWidget *headerView = header->viewport();

@@ -31,6 +31,7 @@ public:
         HasWarningRole,                // included, not blocked, with one or more warnings
         PostRunRole,                   // int(PostRun)
         IsExcludedRole,
+        MessageRole, // the full message sentence; the Message cell shows the short text
     };
 
     explicit ItemTableModel(QObject *parent = nullptr);
@@ -103,6 +104,7 @@ private:
 
     const ctrm::ItemPreview &previewAt(int row) const;
     QString messageText(int row) const;
+    QString shortMessageText(int row) const;
     QString toolTip(int row) const;
     QString sortText(int row, Column column) const;
     bool isBlockedRow(int row) const;

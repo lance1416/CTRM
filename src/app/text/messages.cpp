@@ -140,6 +140,87 @@ QString blockedOldNameText(const QString &oldName)
     return Messages::tr("Conflicts with the old name of '%1', which is blocked.").arg(oldName);
 }
 
+QString shortDiagnosticText(const Diagnostic &d)
+{
+    switch (d.code) {
+    case DiagCode::DuplicateInBatch:
+        return numerus(Messages::tr("Same name as %n item(s)", nullptr, d.count), d.count);
+    case DiagCode::ExistsInFolder:
+        return Messages::tr("Name used in folder");
+    case DiagCode::ExistsIgnoringCase:
+        return Messages::tr("Name used (letter case)");
+    case DiagCode::ExistsNormalization:
+        return Messages::tr("Name used (equal characters)");
+    case DiagCode::EmptyName:
+        return Messages::tr("Name is empty");
+    case DiagCode::DotName:
+        return Messages::tr("Invalid name: . or ..");
+    case DiagCode::ForbiddenChar:
+        return Messages::tr("Invalid character: %1").arg(d.text);
+    case DiagCode::ReservedName:
+        return Messages::tr("Reserved name: %1").arg(d.text);
+    case DiagCode::TrailingSpaceOrDot:
+        return Messages::tr("Ends with space or dot");
+    case DiagCode::NameTooLong:
+        return Messages::tr("Name too long (%1/%2)").arg(d.count).arg(d.limit);
+    case DiagCode::PathTooLong:
+        return Messages::tr("Path too long (%1/%2)").arg(d.count).arg(d.limit);
+    case DiagCode::NotOnDisk:
+        return Messages::tr("Missing on disk");
+    case DiagCode::IdentityChanged:
+        return Messages::tr("Changed on disk");
+    case DiagCode::RuleFailed:
+        return Messages::tr("Rule %1 error").arg(d.ruleIndex + 1);
+    case DiagCode::UnsupportedRule:
+        return Messages::tr("Rule %1 not supported").arg(d.ruleIndex + 1);
+    case DiagCode::BecomesHidden:
+        return Messages::tr("Warning: becomes hidden");
+    case DiagCode::BecomesVisible:
+        return Messages::tr("Warning: becomes visible");
+    case DiagCode::ExtensionChanged:
+        return Messages::tr("Warning: extension changes");
+    case DiagCode::PathLongerThan260:
+        return Messages::tr("Warning: path over 260");
+    case DiagCode::EndsWithSpaceOrDot:
+        return Messages::tr("Warning: ends with space/dot");
+    case DiagCode::LeadingOrTrailingWhitespace:
+        return Messages::tr("Warning: space at start/end");
+    case DiagCode::WeakIdentity:
+        return Messages::tr("Warning: undo less safe");
+    default:
+        return {};
+    }
+}
+
+QString shortStatusText(const ItemPreview &p)
+{
+    if (!p.included)
+        return Messages::tr("Excluded");
+    if (isBlocking(p.status) && !p.problems.isEmpty())
+        return shortDiagnosticText(p.problems.first());
+    switch (p.status) {
+    case Status::Changed:
+    case Status::CaseOnly:
+        if (!p.warnings.isEmpty())
+            return shortDiagnosticText(p.warnings.first());
+        return p.status == Status::CaseOnly ? Messages::tr("Letter case only") : QString();
+    default:
+        return {};
+    }
+}
+
+QString shortPostRunText(const PostRunState &s)
+{
+    if (s.state == PostRun::RolledBack)
+        return Messages::tr("Rolled back");
+    return postRunText(s);
+}
+
+QString shortBlockedOldNameText()
+{
+    return Messages::tr("Old name of a blocked item");
+}
+
 } // namespace ctrm::app
 
 namespace ctrm::app {

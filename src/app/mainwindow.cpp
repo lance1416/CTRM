@@ -30,9 +30,13 @@
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QStatusBar>
+#include <QStyle>
+#include <QStyleOptionComboBox>
 #include <QToolBar>
 #include <QToolButton>
 #include <QVBoxLayout>
+
+#include <algorithm>
 
 namespace ctrm::app {
 
@@ -541,6 +545,18 @@ QWidget *MainWindow::buildTablePage()
     m_show->addItem(tr("Problems"), int(ShowMode::Problems));
     m_show->addItem(tr("Warnings"), int(ShowMode::Warnings));
     showLabel->setBuddy(m_show);
+    // The field has the visible height of the Show control (audit M18). On macOS the combo box
+    // widget is taller than the frame it draws (focus ring), so use its layout item rect.
+    {
+        QStyleOptionComboBox option;
+        option.initFrom(m_show);
+        option.rect = QRect(QPoint(), m_show->sizeHint());
+        QRect visible =
+                m_show->style()->subElementRect(QStyle::SE_ComboBoxLayoutItem, &option, m_show);
+        if (!visible.isValid())
+            visible = option.rect;
+        m_filter->setFixedHeight(std::max(m_filter->sizeHint().height(), visible.height()));
+    }
     auto *filterLayout = new QHBoxLayout(filterBar);
     filterLayout->addWidget(filterLabel);
     filterLayout->addWidget(m_filter, 1);

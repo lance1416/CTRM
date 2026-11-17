@@ -31,6 +31,15 @@ QString postRunText(const PostRunState &s);
 // The reason of a conflict with the old name of a blocked item (PRD 7.1).
 QString blockedOldNameText(const QString &oldName);
 
+// The short texts of the Message cell (ui-design 7.2, audit S02 and S03): 28 characters or
+// fewer, key word first. The cell elides them at the end, and the tooltip has the full sentence.
+QString shortDiagnosticText(const Diagnostic &d);
+// Empty for a row that needs no text: a change without a warning, or no change.
+QString shortStatusText(const ItemPreview &p);
+// "Renamed", "Failed: ...", "Skipped: ...", "Rolled back". Empty for None.
+QString shortPostRunText(const PostRunState &s);
+QString shortBlockedOldNameText();
+
 // "Show in Finder" (macOS), "Show in Explorer" (Windows), "Show in File Manager" (others).
 QString showInFileManagerText();
 

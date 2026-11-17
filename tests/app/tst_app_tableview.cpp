@@ -125,7 +125,10 @@ private slots:
     void headerClickSortsOnce();
     void secondClickReverses();
     void folderColumnAuto();
-    void messageColumnAuto();
+    void messageColumnAlways();
+    void messageElidesAtEnd();
+    void headerLeftAligned();
+    void nameColumnsBalanced();
     void headerMenuHidesColumns();
     void tintsByStatus();
     void tintsFollowPaletteChange();
@@ -206,17 +209,64 @@ void TestAppTableView::folderColumnAuto()
     QVERIFY(f.view->isColumnHidden(ItemTableModel::Folder));
 }
 
-void TestAppTableView::messageColumnAuto()
+void TestAppTableView::messageColumnAlways()
 {
+    // S02: the column does not jump on each edit. It shows when the list has items.
     Fixture f({QStringLiteral("a.txt"), QStringLiteral("b.txt")});
     setPreview(f.model, {row(Status::Changed, QStringLiteral("x.txt")),
                          row(Status::Unchanged, QStringLiteral("b.txt"))});
-    QVERIFY(f.view->isColumnHidden(ItemTableModel::Message));
+    QVERIFY(!f.view->isColumnHidden(ItemTableModel::Message));
 
     setPreview(f.model, {row(Status::Conflict, QStringLiteral("x.txt"),
                              {diag(DiagCode::DuplicateInBatch, {}, 1)}),
                          row(Status::Unchanged, QStringLiteral("b.txt"))});
     QVERIFY(!f.view->isColumnHidden(ItemTableModel::Message));
+
+    f.model.clear();
+    QVERIFY(f.view->isColumnHidden(ItemTableModel::Message));
+}
+
+void TestAppTableView::messageElidesAtEnd()
+{
+    // M07: names elide in the middle, messages at the end (the key word is first).
+    Fixture f({QStringLiteral("a.txt")});
+    QCOMPARE(f.option(0, ItemTableModel::Message).textElideMode, Qt::ElideRight);
+    QCOMPARE(f.option(0, ItemTableModel::OldName).textElideMode, Qt::ElideMiddle);
+    QCOMPARE(f.option(0, ItemTableModel::NewName).textElideMode, Qt::ElideMiddle);
+}
+
+void TestAppTableView::headerLeftAligned()
+{
+    // M14: the header text has the same alignment as the cells, and it is semibold.
+    Fixture f({QStringLiteral("a.txt")});
+    const QHeaderView *header = f.view->horizontalHeader();
+    QCOMPARE(header->defaultAlignment() & Qt::AlignHorizontal_Mask, Qt::AlignLeft);
+    QCOMPARE(header->font().weight(), QFont::DemiBold);
+}
+
+void TestAppTableView::nameColumnsBalanced()
+{
+    // M14: Old name and New name have the same width (30% of the table each, as the mockup),
+    // and the last column takes the rest.
+    Fixture f({QStringLiteral("a.txt")});
+    f.window.resize(1200, 400);
+    f.view->resize(1200, 400);
+    f.show();
+    const QHeaderView *header = f.view->horizontalHeader();
+    QTRY_COMPARE(header->sectionSize(ItemTableModel::OldName),
+                 header->sectionSize(ItemTableModel::NewName));
+    QCOMPARE(header->sectionSize(ItemTableModel::OldName), f.view->viewport()->width() * 3 / 10);
+
+    // The user hides Message: New name is the last column, and the names still share.
+    QMenu *menu = f.view->findChild<QMenu *>(QStringLiteral("columnsMenu"));
+    QVERIFY(menu);
+    for (QAction *a : menu->actions()) {
+        if (a->data().toInt() == ItemTableModel::Message)
+            a->trigger();
+    }
+    QVERIFY(f.view->isColumnHidden(ItemTableModel::Message));
+    QTRY_VERIFY(qAbs(header->sectionSize(ItemTableModel::OldName) -
+                     header->sectionSize(ItemTableModel::NewName)) <= 1);
 }
 
 void TestAppTableView::headerMenuHidesColumns()
