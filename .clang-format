@@ -1,0 +1,59 @@
+# CTRM C++ format. Reference version: clang-format 23 (CI pins the same major).
+# Based on LLVM, with Qt-style adjustments (4-space indent, 100 columns).
+---
+Language: Cpp
+BasedOnStyle: LLVM
+Standard: c++20
+ColumnLimit: 100
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ContinuationIndentWidth: 8
+AccessModifierOffset: -4
+NamespaceIndentation: None
+FixNamespaceComments: true
+PointerAlignment: Right
+ReferenceAlignment: Pointer
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterClass: true
+  AfterEnum: false
+  AfterFunction: true
+  AfterNamespace: false
+  AfterStruct: true
+  AfterUnion: true
+  AfterControlStatement: Never
+  BeforeCatch: false
+  BeforeElse: false
+  BeforeLambdaBody: false
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+  SplitEmptyNamespace: false
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortLambdasOnASingleLine: All
+AlwaysBreakTemplateDeclarations: Yes
+BreakConstructorInitializers: BeforeComma
+BreakInheritanceList: BeforeComma
+PackConstructorInitializers: Never
+BinPackArguments: true
+BinPackParameters: true
+SortIncludes: CaseSensitive
+IncludeBlocks: Regroup
+IncludeCategories:
+  # 1. Project headers ("...").
+  - Regex: '^"'
+    Priority: 1
+  # 2. Qt headers (<QtCore/QString>, <QString>).
+  - Regex: '^<Q[A-Za-z0-9]+(/[A-Za-z0-9_]+)?>$'
+    Priority: 2
+  # 3. Other library and standard headers.
+  - Regex: '^<'
+    Priority: 3
+# Qt macros.
+ForEachMacros: [Q_FOREACH, foreach]
+StatementAttributeLikeMacros: [Q_EMIT, emit]
+StatementMacros: [Q_OBJECT, Q_GADGET, Q_NAMESPACE, Q_UNUSED, QT_REQUIRE_VERSION]
+WhitespaceSensitiveMacros: [QT_STRINGIFY, Q_DECLARE_METATYPE]
+...

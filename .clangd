@@ -1,0 +1,6 @@
+# clangd: use the compile database of the `dev` CMake preset.
+CompileFlags:
+  CompilationDatabase: build/dev
+Diagnostics:
+  UnusedIncludes: Strict
+  MissingIncludes: None
