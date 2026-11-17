@@ -253,7 +253,7 @@ std::unique_ptr<JournalWriter> JournalWriter::create(const QString &historyDir,
             header.started.toUTC().toString(QStringLiteral("yyyyMMdd'T'HHmmsszzz'Z'")) + u'-' +
             header.batchId + QStringLiteral(".jsonl");
     std::unique_ptr<JournalWriter> w(new JournalWriter(QDir(historyDir).filePath(name)));
-    if (!w->m_file.open(QIODevice::WriteOnly | QIODevice::NewOnly))
+    if (!w->m_file.open(QIODevice::WriteOnly | QIODevice::NewOnly | QIODevice::Unbuffered))
         return fail(QStringLiteral("Cannot make the journal %1: %2")
                             .arg(w->filePath(), w->m_file.errorString()));
     // On a failure after the file exists, remove it: no rename has run for this batch.
@@ -278,7 +278,7 @@ std::unique_ptr<JournalWriter> JournalWriter::openForAppend(const QString &fileP
         return nullptr;
     };
     std::unique_ptr<JournalWriter> w(new JournalWriter(filePath));
-    if (!w->m_file.open(QIODevice::ReadWrite | QIODevice::ExistingOnly))
+    if (!w->m_file.open(QIODevice::ReadWrite | QIODevice::ExistingOnly | QIODevice::Unbuffered))
         return fail(QStringLiteral("Cannot open the journal %1: %2")
                             .arg(filePath, w->m_file.errorString()));
     // Cut off an incomplete last line, so that the next record starts on its own line.
@@ -310,9 +310,16 @@ std::unique_ptr<JournalWriter> JournalWriter::openForAppend(const QString &fileP
 bool JournalWriter::writeLine(const QJsonObject &o)
 {
     const QByteArray line = QJsonDocument(o).toJson(QJsonDocument::Compact) + '\n';
-    if (m_file.write(line) != line.size())
-        return false;
-    return fullSync(m_file);
+    const qint64 start = m_file.pos();
+    if (m_file.write(line) == line.size() && fullSync(m_file))
+        return true;
+    // Remove the part of the line (a short write, or data that may not be on the disk), so
+    // that the journal ends on a complete line. The caller stops or reports the failure.
+    const bool cut = m_file.resize(start);
+    // Always go back to start: a later record must not follow the part of the line.
+    if (m_file.seek(start) && cut)
+        fullSync(m_file);
+    return false;
 }
 
 bool JournalWriter::appendStep(const PlanStep &step, const StepRecord &rec)
@@ -347,7 +354,7 @@ QString JournalWriter::filePath() const
     return m_file.fileName();
 }
 
-std::optional<BatchRecord> readJournal(const QString &filePath, QString *error)
+std::optional<BatchRecord> readJournal(const QString &filePath, QString *error, ReadMode mode)
 {
     const auto fail = [error, &filePath](const QString &text) -> std::optional<BatchRecord> {
         if (error)
@@ -376,12 +383,21 @@ std::optional<BatchRecord> readJournal(const QString &filePath, QString *error)
                 record.ignoredTail = true; // a last line that is not valid JSON
                 break;
             }
+            if (mode == ReadMode::BestEffort && i > 0) {
+                record.skippedLines.append(int(i + 1));
+                continue;
+            }
             return fail(QStringLiteral("line %1 is not valid JSON").arg(i + 1));
         }
         const QString text =
                 i == 0 ? parseHeader(doc.object(), record) : parseRecord(doc.object(), record);
-        if (!text.isEmpty())
+        if (!text.isEmpty()) {
+            if (mode == ReadMode::BestEffort && i > 0) {
+                record.skippedLines.append(int(i + 1));
+                continue;
+            }
             return fail(QStringLiteral("line %1: %2").arg(i + 1).arg(text));
+        }
     }
     if (lines.isEmpty())
         return fail(QStringLiteral("no complete header line"));

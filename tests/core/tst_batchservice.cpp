@@ -163,6 +163,10 @@ private slots:
     void rollBackFailIncomplete();
     void recoveryRollBack();
     void recoveryRefusesFinishedBatch();
+    void recoveryRefusesDamagedJournal();
+    void pendingShowsUnreadableJournal();
+    void damagedBatchCannotBeUndone();
+    void markCompleteOnDamagedJournal();
     void recoveryMarkComplete();
     void reportRows();
     void secondRollBackInSession();
@@ -435,6 +439,125 @@ void TstBatchService::recoveryRollBack()
     QCOMPARE(env.fs.content("/f/c.txt"), QByteArray("C"));
     QCOMPARE(rowOf(f.report, 1)->result, ReportRow::Result::RolledBack);
     QCOMPARE(rowOf(f.report, 5)->result, ReportRow::Result::NotRun);
+}
+
+void TstBatchService::recoveryRefusesDamagedJournal()
+{
+    Env env;
+    const Plan plan = threePlan(env);
+    QString path;
+    {
+        auto s = startOrFail(env, plan);
+        QCOMPARE(runSession(*s, 2).okSteps.size(), 2);
+        path = env.history.list().first().filePath;
+        // Crash: no end state. Then a line in the middle is damaged.
+    }
+    QFile f(path);
+    QVERIFY(f.open(QIODevice::ReadOnly));
+    QList<QByteArray> lines = f.readAll().split('\n');
+    f.close();
+    lines.insert(2, "garbage");
+    QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write(lines.join('\n'));
+    f.close();
+
+    const QList<BatchSummary> pending = env.service.pendingRecovery();
+    QCOMPARE(pending.size(), 1);
+    QVERIFY(pending.first().damaged);
+    QCOMPARE(pending.first().batchId, plan.batchId);
+    QCOMPARE(pending.first().state, BatchState::InProgress);
+
+    // A lost op or state line could make a roll back reverse the wrong steps: no rename.
+    const int renames = env.fs.renameCount();
+    const FinishResult r = env.service.recoverRollBack(plan.batchId);
+    QVERIFY(!r.error.isEmpty());
+    QCOMPARE(env.fs.renameCount(), renames);
+    QCOMPARE(env.service.pendingRecovery().size(), 1);
+}
+
+void TstBatchService::pendingShowsUnreadableJournal()
+{
+    Env env;
+    QFile f(env.dir.path() + "/20260101T000000000Z-lost.jsonl");
+    QVERIFY(f.open(QIODevice::WriteOnly));
+    f.write("garbage\n");
+    f.close();
+    const QList<BatchSummary> pending = env.service.pendingRecovery();
+    QCOMPARE(pending.size(), 1);
+    QVERIFY(pending.first().damaged);
+    QCOMPARE(pending.first().batchId, QStringLiteral("lost"));
+    // Nothing can be rolled back without a header: an error, no rename.
+    const FinishResult r = env.service.recoverRollBack("lost");
+    QVERIFY(!r.error.isEmpty());
+    QCOMPARE(env.fs.renameCount(), 0);
+}
+
+void TstBatchService::damagedBatchCannotBeUndone()
+{
+    Env env;
+    const Plan plan = threePlan(env);
+    {
+        auto s = startOrFail(env, plan);
+        runSession(*s);
+        s->complete();
+    }
+    const QString path = env.history.list().first().filePath;
+    QFile f(path);
+    QVERIFY(f.open(QIODevice::ReadOnly));
+    QList<QByteArray> lines = f.readAll().split('\n');
+    f.close();
+    lines.insert(2, "garbage");
+    QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write(lines.join('\n'));
+    f.close();
+    QVERIFY(env.history.list().first().damaged);
+    QCOMPARE(env.history.list().first().state, BatchState::Complete);
+
+    QString error;
+    const UndoPreview undo = env.service.previewUndo(plan.batchId, &error);
+    QVERIFY(!error.isEmpty());
+    QVERIFY(undo.items.isEmpty());
+    QCOMPARE(env.service.planUndo(undo).plan.has_value(), false);
+}
+
+void TstBatchService::markCompleteOnDamagedJournal()
+{
+    Env env;
+    const Plan plan = threePlan(env);
+    {
+        auto s = startOrFail(env, plan);
+        runSession(*s, 1); // crash: no end state
+    }
+    const QString path = env.history.list().first().filePath;
+    QFile f(path);
+    QVERIFY(f.open(QIODevice::ReadOnly));
+    QList<QByteArray> lines = f.readAll().split('\n');
+    f.close();
+    lines.insert(2, "garbage");
+    QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write(lines.join('\n'));
+    f.close();
+    // A journal with no readable header.
+    QFile lost(env.dir.path() + "/20260101T000000000Z-lost.jsonl");
+    QVERIFY(lost.open(QIODevice::WriteOnly));
+    lost.write("garbage\n{\"type\":\"op\",\"st");
+    lost.close();
+    QCOMPARE(env.service.pendingRecovery().size(), 2);
+
+    const int renames = env.fs.renameCount();
+    QString error;
+    QVERIFY2(env.service.markComplete(plan.batchId, &error), qPrintable(error));
+    QVERIFY2(env.service.markComplete("lost", &error), qPrintable(error));
+    QCOMPARE(env.fs.renameCount(), renames);
+    QVERIFY(env.service.pendingRecovery().isEmpty());
+    const QList<BatchSummary> list = env.history.list();
+    QCOMPARE(list.size(), 2);
+    for (const BatchSummary &s : list) {
+        QVERIFY(s.damaged); // the batch stays damaged
+        QCOMPARE(s.state, BatchState::Complete);
+    }
+    // A finished damaged batch cannot be marked again.
+    QVERIFY(!env.service.markComplete("lost", &error));
 }
 
 void TstBatchService::recoveryRefusesFinishedBatch()

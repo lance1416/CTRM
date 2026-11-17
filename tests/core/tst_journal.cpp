@@ -11,6 +11,11 @@
 #include <QUuid>
 #include <QtTest>
 
+#ifndef Q_OS_WIN
+#include <csignal>
+#include <sys/resource.h>
+#endif
+
 using namespace ctrm;
 
 namespace {
@@ -142,13 +147,15 @@ private slots:
     void ignoresTruncatedTail();
     void ignoresInvalidLastLine();
     void badMiddleLineFails();
+    void bestEffortSkipsBadMiddleLine();
+    void writeFailureLeavesNoPartialLine();
     void notAJournalFails();
     void fileNameHasNoColon();
     void createNeverReplaces();
     void appendAfterReopen();
     void appendAfterTruncatedTail();
     void listNewestFirst();
-    void listSkipsUnreadable();
+    void listShowsDamaged();
     void inProgressListed();
     void undoBatchesOf();
     void loadAndAppendStateById();
@@ -300,6 +307,69 @@ void TestJournal::badMiddleLineFails()
     QVERIFY(!error.isEmpty());
 }
 
+void TestJournal::bestEffortSkipsBadMiddleLine()
+{
+    TempTree t;
+    const QString path = writeRaw(t.root(), newId(), utc(2026, 1, 1), BatchState::InProgress);
+    appendBytes(path, "not json\n{\"type\":\"op\",\"step\":99}\n"
+                      "{\"type\":\"state\",\"state\":\"complete\",\"time\":\"x\"}\n");
+    QString error;
+    QVERIFY(!readJournal(path, &error));
+    QVERIFY(!readJournal(path, &error, ReadMode::Strict));
+    const auto r = readJournal(path, &error, ReadMode::BestEffort);
+    QVERIFY2(r, qPrintable(error));
+    QCOMPARE(r->skippedLines, (QList<int>{3, 4})); // 1-based line numbers
+    QCOMPARE(r->state(), BatchState::Complete);
+    QVERIFY(!r->ignoredTail);
+
+    // The header is never skipped.
+    QVERIFY(!readJournal(t.file("h.jsonl", "garbage\n{\"type\":\"state\"}\n"), &error,
+                         ReadMode::BestEffort));
+    // A strict read has no skipped lines.
+    const QString clean = writeRaw(t.root(), newId(), utc(2026, 1, 2), BatchState::Complete);
+    QVERIFY(readJournal(clean, &error, ReadMode::BestEffort)->skippedLines.isEmpty());
+}
+
+void TestJournal::writeFailureLeavesNoPartialLine()
+{
+#ifdef Q_OS_WIN
+    QSKIP("Uses RLIMIT_FSIZE to make a short write (POSIX only)");
+#else
+    TempTree t;
+    const QString id = newId();
+    QString error;
+    auto w = JournalWriter::create(t.root(), sampleHeader(id, utc(2026, 1, 1)), samplePlan(id),
+                                   &error);
+    QVERIFY2(w, qPrintable(error));
+    const qint64 size = QFileInfo(w->filePath()).size();
+
+    // The OS accepts only 10 more bytes of the file: the record is a short write.
+    rlimit old{};
+    QCOMPARE(getrlimit(RLIMIT_FSIZE, &old), 0);
+    const auto oldHandler = std::signal(SIGXFSZ, SIG_IGN);
+    rlimit low = old;
+    low.rlim_cur = rlim_t(size + 10);
+    QCOMPARE(setrlimit(RLIMIT_FSIZE, &low), 0);
+    PlanStep step = samplePlan(id).steps.first();
+    const bool written = w->appendStep(step, okRecord(0, Phase::Forward, utc(2026, 1, 1)));
+    setrlimit(RLIMIT_FSIZE, &old);
+    std::signal(SIGXFSZ, oldHandler);
+
+    QVERIFY(!written);
+    QCOMPARE(QFileInfo(w->filePath()).size(), size); // the part of the line is removed
+    const auto r = readJournal(w->filePath(), &error);
+    QVERIFY2(r, qPrintable(error));
+    QVERIFY(!r->ignoredTail);
+    QVERIFY(r->steps.isEmpty());
+
+    // The next record starts on its own line.
+    QVERIFY(w->appendState({BatchState::RolledBack, utc(2026, 1, 2), {}}));
+    const auto r2 = readJournal(w->filePath(), &error);
+    QVERIFY2(r2, qPrintable(error));
+    QCOMPARE(r2->state(), BatchState::RolledBack);
+#endif
+}
+
 void TestJournal::notAJournalFails()
 {
     TempTree t;
@@ -406,16 +476,49 @@ void TestJournal::listNewestFirst()
     QCOMPARE(list[0].ended, utc(2026, 3, 1));
 }
 
-void TestJournal::listSkipsUnreadable()
+void TestJournal::listShowsDamaged()
 {
+    const QDateTime now = utc(2026, 11, 17);
     TempTree t;
-    writeRaw(t.root(), newId(), utc(2026, 1, 1), BatchState::Complete);
+    const QString good = newId();
+    writeRaw(t.root(), good, now.addDays(-400), BatchState::Complete);
+    // No header can be read: the ID and the time come from the file name.
     const QString bad = t.file("20260101T000000000Z-bad.jsonl", "garbage\nmore\n");
+    // A bad middle line: the other lines are read on a best-effort basis.
+    const QString middleId = newId();
+    const QString middle = writeRaw(t.root(), middleId, now.addDays(-400), BatchState::InProgress);
+    appendBytes(middle, "not json\n{\"type\":\"state\",\"state\":\"incomplete\",\"time\":\"x\"}\n");
     t.file("notes.txt", "x");
+
     HistoryStore store(t.root());
-    QCOMPARE(store.list().size(), 1);
-    QCOMPARE(store.clear(), 1);
-    QVERIFY(QFile::exists(bad)); // an unreadable file is never deleted
+    const QList<BatchSummary> list = store.list();
+    QCOMPARE(list.size(), 3);
+    QHash<QString, BatchSummary> byId;
+    for (const BatchSummary &s : list)
+        byId.insert(s.batchId, s);
+    QVERIFY(!byId.value(good).damaged);
+    QVERIFY(byId.value(good).error.isEmpty());
+
+    QVERIFY(byId.contains("bad"));
+    const BatchSummary b = byId.value("bad");
+    QVERIFY(b.damaged);
+    QVERIFY(!b.error.isEmpty());
+    QCOMPARE(b.filePath, bad);
+    QCOMPARE(b.started, utc(2026, 1, 1, 0, 0, 0));
+    QCOMPARE(b.state, BatchState::InProgress); // unknown: treated as not finished
+
+    const BatchSummary m = byId.value(middleId);
+    QVERIFY(m.damaged);
+    QVERIFY(!m.error.isEmpty());
+    QCOMPARE(m.state, BatchState::Incomplete);
+    QCOMPARE(m.itemCount, 1);
+
+    // A damaged journal is never deleted.
+    QCOMPARE(store.applyRetention(0, 1, now), 1);
+    QCOMPARE(store.clear(), 0);
+    QVERIFY(QFile::exists(bad));
+    QVERIFY(QFile::exists(middle));
+    QCOMPARE(store.list().size(), 2);
 }
 
 void TestJournal::inProgressListed()

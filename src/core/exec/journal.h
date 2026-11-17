@@ -57,6 +57,7 @@ struct BatchRecord
     QList<StateRecord> states;
     QString filePath;
     bool ignoredTail = false;
+    QList<int> skippedLines;  // 1-based; bad middle lines skipped by a ReadMode::BestEffort read
     BatchState state() const; // last state record (InProgress when there is none)
     QDateTime ended() const;  // time of the last state record
 };
@@ -72,7 +73,8 @@ public:
 };
 
 // One .jsonl file per batch. Each line is written whole and synced to the disk (fsync)
-// before the call returns.
+// before the call returns. When a write or the sync fails, the part of the line is removed
+// again, so that the next record starts on its own line.
 class JournalWriter : public JournalSink
 {
 public:
@@ -96,9 +98,14 @@ private:
     QFile m_file;
 };
 
-// nullopt and *error set when the file cannot be read, the first line is not a header, or a
-// line other than the last one is not valid JSON. An incomplete last line is ignored
-// (ignoredTail = true).
-std::optional<BatchRecord> readJournal(const QString &filePath, QString *error);
+// Strict: every complete line must be valid. BestEffort (summaries only, never a roll back):
+// a bad line other than the header is skipped; its number goes into skippedLines.
+enum class ReadMode { Strict, BestEffort };
+
+// nullopt and *error set when the file cannot be read, the first line is not a header, or
+// (Strict) a line other than the last one is not a valid record. An incomplete last line is
+// ignored (ignoredTail = true).
+std::optional<BatchRecord> readJournal(const QString &filePath, QString *error,
+                                       ReadMode mode = ReadMode::Strict);
 
 } // namespace ctrm

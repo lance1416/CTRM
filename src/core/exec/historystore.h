@@ -24,26 +24,34 @@ struct BatchSummary
     BatchState state = BatchState::InProgress;
     QString undoOf;
     int failedCount = 0; // forward steps with result failed (History: "Complete, 3 failed")
+    // The journal cannot be read in full. The fields come from a best-effort read; when not
+    // even the header can be read, batchId and started come from the file name and the state
+    // is InProgress (not known to be finished). error: the text of the strict read.
+    bool damaged = false;
+    QString error;
 };
 
-// The history folder: one journal file per batch. Files that cannot be read are left alone
-// (never listed, never deleted).
+// The history folder: one journal file per batch. A journal that cannot be read in full is
+// listed as damaged and is never deleted.
 class HistoryStore
 {
 public:
     explicit HistoryStore(QString dir);
     QString dir() const;
     QList<BatchSummary> list() const; // newest first
-    std::optional<BatchRecord> load(const QString &batchId, QString *error) const;
+    std::optional<BatchRecord> load(const QString &batchId, QString *error,
+                                    ReadMode mode = ReadMode::Strict) const;
     QList<BatchSummary> inProgress() const;
-    QList<BatchRecord> undoBatchesOf(const QString &batchId) const; // oldest first
+    // Oldest first. Read on a best-effort basis, so that a damaged undo journal still counts.
+    QList<BatchRecord> undoBatchesOf(const QString &batchId) const;
     bool appendState(const QString &batchId, const StateRecord &rec, QString *error);
     // An original batch and its undo batches form a group, deleted or kept together. A group is
     // deleted only when every member started more than keepDays before now, no member is in the
-    // newest keepCount batches, and no member is in-progress or incomplete. Returns the number
-    // of files deleted.
+    // newest keepCount batches, and no member is in-progress, incomplete or damaged. Returns
+    // the number of files deleted.
     int applyRetention(int keepCount, int keepDays, const QDateTime &now);
-    // Deletes every group with no in-progress or incomplete member. Returns count deleted.
+    // Deletes every group with no in-progress, incomplete or damaged member. Returns count
+    // deleted.
     int clear();
 
 private:

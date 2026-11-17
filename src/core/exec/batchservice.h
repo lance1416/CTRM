@@ -99,13 +99,14 @@ public:
     std::unique_ptr<BatchSession> start(const Plan &plan, const RuleChain &chain,
                                         const QString &undoOf, QString *error);
 
-    // Batches in state in-progress or incomplete, newest first.
+    // Batches in state in-progress or incomplete, newest first. Includes damaged journals with
+    // that state, and damaged journals with no readable header (BatchSummary::damaged).
     QList<BatchSummary> pendingRecovery() const;
     // Rolls back the done steps of an in-progress or incomplete batch (crash recovery,
-    // "Retry Roll Back"). State rolled-back, else incomplete.
+    // "Retry Roll Back"). State rolled-back, else incomplete. Refuses a damaged journal.
     FinishResult recoverRollBack(const QString &batchId);
-    // "Mark as complete" for an in-progress or incomplete batch. For an undo batch, also sets
-    // undone or partly-undone on the original.
+    // "Mark as complete" for an in-progress or incomplete batch, also a damaged one. For an
+    // undo batch, also sets undone or partly-undone on the original.
     bool markComplete(const QString &batchId, QString *error);
 
     // Refuses an undo batch (AC13.8) and a batch whose state is not complete or partly-undone.

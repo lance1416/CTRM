@@ -4,7 +4,10 @@
 #include <QDir>
 #include <QFile>
 #include <QHash>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QSet>
+#include <QTimeZone>
 
 #include <algorithm>
 #include <utility>
@@ -42,7 +45,37 @@ QString groupOf(const BatchSummary &s)
 
 bool unsafeToDelete(const BatchSummary &s)
 {
-    return s.state == BatchState::InProgress || s.state == BatchState::Incomplete;
+    return s.damaged || s.state == BatchState::InProgress || s.state == BatchState::Incomplete;
+}
+
+// The summary of a journal with no readable header. "yyyyMMddTHHmmsszzzZ-<batchId>.jsonl"
+// gives the ID and the start time. The state is the last valid state line (for example one
+// that "Mark as Complete" wrote), else InProgress.
+BatchSummary summarizeUnreadable(const QString &dir, const QString &name)
+{
+    BatchSummary s;
+    s.filePath = QDir(dir).filePath(name);
+    const QString base = name.chopped(int(QStringLiteral(".jsonl").size()));
+    const qsizetype dash = base.indexOf(u'-');
+    s.batchId = dash < 0 ? base : base.mid(dash + 1);
+    if (dash > 0) {
+        QDateTime t =
+                QDateTime::fromString(base.left(dash), QStringLiteral("yyyyMMdd'T'HHmmsszzz'Z'"));
+        t.setTimeZone(QTimeZone::UTC);
+        s.started = t;
+    }
+    QFile file(s.filePath);
+    if (file.open(QIODevice::ReadOnly)) {
+        const QList<QByteArray> lines = file.readAll().split('\n');
+        for (const QByteArray &line : lines) {
+            const QJsonObject o = QJsonDocument::fromJson(line).object();
+            if (o.value(u"type").toString() != u"state")
+                continue;
+            if (const auto state = batchStateFromString(o.value(u"state").toString()))
+                s.state = *state;
+        }
+    }
+    return s;
 }
 
 } // namespace
@@ -63,9 +96,16 @@ QList<BatchSummary> HistoryStore::readAll() const
     const QStringList files = d.entryList({QStringLiteral("*.jsonl")}, QDir::Files, QDir::Name);
     for (const QString &name : files) {
         QString error;
-        const auto record = readJournal(d.filePath(name), &error);
-        if (record)
+        if (const auto record = readJournal(d.filePath(name), &error)) {
             result.append(summarize(*record));
+            continue;
+        }
+        QString ignored;
+        const auto partial = readJournal(d.filePath(name), &ignored, ReadMode::BestEffort);
+        BatchSummary s = partial ? summarize(*partial) : summarizeUnreadable(m_dir, name);
+        s.damaged = true;
+        s.error = error;
+        result.append(s);
     }
     std::sort(result.begin(), result.end(), [](const BatchSummary &a, const BatchSummary &b) {
         if (a.started != b.started)
@@ -94,7 +134,8 @@ QString HistoryStore::fileOf(const QString &batchId) const
     return {};
 }
 
-std::optional<BatchRecord> HistoryStore::load(const QString &batchId, QString *error) const
+std::optional<BatchRecord> HistoryStore::load(const QString &batchId, QString *error,
+                                              ReadMode mode) const
 {
     const QString path = fileOf(batchId);
     if (path.isEmpty()) {
@@ -102,7 +143,7 @@ std::optional<BatchRecord> HistoryStore::load(const QString &batchId, QString *e
             *error = QStringLiteral("No journal for batch %1").arg(batchId);
         return std::nullopt;
     }
-    return readJournal(path, error);
+    return readJournal(path, error, mode);
 }
 
 QList<BatchSummary> HistoryStore::inProgress() const
@@ -122,7 +163,7 @@ QList<BatchRecord> HistoryStore::undoBatchesOf(const QString &batchId) const
     const QStringList files = d.entryList({QStringLiteral("*.jsonl")}, QDir::Files, QDir::Name);
     for (const QString &name : files) {
         QString error;
-        auto record = readJournal(d.filePath(name), &error);
+        auto record = readJournal(d.filePath(name), &error, ReadMode::BestEffort);
         if (record && !batchId.isEmpty() && record->header.undoOf == batchId)
             result.append(std::move(*record));
     }

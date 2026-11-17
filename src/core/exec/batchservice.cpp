@@ -314,9 +314,14 @@ QList<BatchSummary> BatchService::pendingRecovery() const
 FinishResult BatchService::recoverRollBack(const QString &batchId)
 {
     FinishResult out;
+    // Never from a damaged journal: a lost op or state line would make CTRM reverse the wrong
+    // steps, or a batch that is finished (the user can mark it as complete instead).
     const std::optional<BatchRecord> rec = m_history.load(batchId, &out.error);
-    if (!rec)
+    if (!rec) {
+        out.error = QStringLiteral("The journal is damaged. CTRM cannot roll it back: %1")
+                            .arg(out.error);
         return out;
+    }
     out.state = rec->state();
     if (out.state != BatchState::InProgress && out.state != BatchState::Incomplete) {
         out.error = QStringLiteral("Batch %1 is not in progress or incomplete").arg(batchId);
@@ -350,19 +355,27 @@ FinishResult BatchService::recoverRollBack(const QString &batchId)
 
 bool BatchService::markComplete(const QString &batchId, QString *error)
 {
-    const std::optional<BatchRecord> rec = m_history.load(batchId, error);
-    if (!rec)
+    // From the summary, so that a damaged journal (even one with no readable header) can be
+    // marked as complete. Only a state line is written; nothing is renamed.
+    std::optional<BatchSummary> summary;
+    for (const BatchSummary &s : m_history.list()) {
+        if (s.batchId == batchId)
+            summary = s;
+    }
+    if (!summary) {
+        if (error)
+            *error = QStringLiteral("No journal for batch %1").arg(batchId);
         return false;
-    const BatchState state = rec->state();
-    if (state != BatchState::InProgress && state != BatchState::Incomplete) {
+    }
+    if (summary->state != BatchState::InProgress && summary->state != BatchState::Incomplete) {
         if (error)
             *error = QStringLiteral("Batch %1 is not in progress or incomplete").arg(batchId);
         return false;
     }
     if (!m_history.appendState(batchId, {BatchState::Complete, now(), {}}, error))
         return false;
-    if (!rec->header.undoOf.isEmpty()) {
-        const QString e = updateOriginal(m_history, rec->header.undoOf, batchId);
+    if (!summary->undoOf.isEmpty()) {
+        const QString e = updateOriginal(m_history, summary->undoOf, batchId);
         if (!e.isEmpty()) {
             if (error)
                 *error = e;
