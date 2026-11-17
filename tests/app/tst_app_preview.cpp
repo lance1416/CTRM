@@ -225,7 +225,7 @@ void TestPreview::uiNotBlocked()
 {
 #ifndef NDEBUG
     QSKIP("timing test runs in release builds only");
-#endif
+#else
     Probe probe;
     PreviewScheduler s;
     QSignalSpy ready(&s, &PreviewScheduler::previewReady);
@@ -246,6 +246,7 @@ void TestPreview::uiNotBlocked()
     QVERIFY(ready.wait(10000));
     timer.stop();
     QVERIFY2(maxGap <= 100, qPrintable(QStringLiteral("gap %1 ms").arg(maxGap)));
+#endif
 }
 
 QTEST_MAIN(TestPreview)

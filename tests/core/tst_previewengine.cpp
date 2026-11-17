@@ -856,7 +856,7 @@ void TestPreviewEngine::perf10k()
 {
 #ifndef NDEBUG
     QSKIP("performance test runs in release builds only");
-#endif
+#else
     Fixture f(volume(CaseSensitivity::Insensitive));
     for (int i = 0; i < 10000; ++i)
         f.item(QStringLiteral("IMG_%1 photo.JPG").arg(i, 5, 10, QLatin1Char('0')));
@@ -875,6 +875,7 @@ void TestPreviewEngine::perf10k()
     qInfo() << "perf10k:" << ms << "ms";
     QCOMPARE(r.summary.willChange, 10000);
     QVERIFY2(ms < 500, qPrintable(QStringLiteral("%1 ms").arg(ms)));
+#endif
 }
 
 QTEST_GUILESS_MAIN(TestPreviewEngine)
