@@ -127,19 +127,18 @@ private:
 };
 
 // The rule list: as high as its rows, at least kMinListRows (ui-design 4.4). The editor
-// below it gets the free space.
+// below it gets the free space. When the panel is low, it can shrink to 1 row (R1-01).
 class RuleListView : public QListView
 {
 public:
     using QListView::QListView;
 
     QSize sizeHint() const override { return {QListView::sizeHint().width(), heightFor(rows())}; }
-    // When the panel is low (the minimum window), the list can shrink to its rules: it keeps
-    // no empty rows that the editor needs (M06).
+    // When the panel is low (the minimum window), the list can shrink to 1 row: the current
+    // rule stays visible (M06, R1-01).
     QSize minimumSizeHint() const override
     {
-        return {QListView::minimumSizeHint().width(),
-                heightFor(std::clamp(rowCount(), 1, kMinListRows))};
+        return {QListView::minimumSizeHint().width(), heightFor(1)};
     }
 
 private:
@@ -313,19 +312,35 @@ class RuleSplitter : public PlainSplitter
 public:
     // editor is a scroll area with pages: QScrollArea keeps an old size hint of its widget, so
     // the splitter asks the pages.
-    RuleSplitter(QWidget *list, QScrollArea *editor)
+    RuleSplitter(QWidget *listPage, QListView *list, QScrollArea *editor)
         : PlainSplitter(Qt::Vertical)
+        , m_list(list)
         , m_editor(editor)
     {
         setChildrenCollapsible(false);
-        addWidget(list);
+        addWidget(listPage);
         addWidget(editor);
         setStretchFactor(0, 0);
         setStretchFactor(1, 1);
-        connect(this, &QSplitter::splitterMoved, this, [this] { m_userSizes = true; });
+        connect(this, &QSplitter::splitterMoved, this, [this] {
+            m_userSizes = true;
+            m_list->scrollTo(m_list->currentIndex());
+        });
+        handle(1)->installEventFilter(this);
     }
 
 protected:
+    // A double-click on the handle turns the automatic list height on again (ui-design 4.4).
+    bool eventFilter(QObject *watched, QEvent *e) override
+    {
+        if (watched == handle(1) && e->type() == QEvent::MouseButtonDblClick) {
+            m_userSizes = false;
+            fit();
+            return true;
+        }
+        return PlainSplitter::eventFilter(watched, e);
+    }
+
     bool event(QEvent *e) override
     {
         const bool result = PlainSplitter::event(e);
@@ -349,13 +364,29 @@ private:
         QWidget *list = widget(0);
         const int listMin = list->minimumSizeHint().height();
         const int listHint = std::max(listMin, list->sizeHint().height());
-        const int editorHint = m_editor->widget()->sizeHint().height() + 2 * m_editor->frameWidth();
+        // The tallest page, not the current one: the list height does not change when the
+        // user selects another rule (R1-01).
+        const int editorHint = tallestPage() + 2 * m_editor->frameWidth();
         const int listHeight = std::clamp(total - editorHint, listMin, listHint);
         const QList<int> wanted{listHeight, std::max(0, total - listHeight)};
-        if (sizes() != wanted)
+        if (sizes() != wanted) {
             setSizes(wanted);
+            m_list->scrollTo(m_list->currentIndex());
+        }
     }
 
+    int tallestPage() const
+    {
+        auto *pages = qobject_cast<QStackedWidget *>(m_editor->widget());
+        if (!pages)
+            return m_editor->widget() ? m_editor->widget()->sizeHint().height() : 0;
+        int tallest = 0;
+        for (int i = 0; i < pages->count(); ++i)
+            tallest = std::max(tallest, pages->widget(i)->sizeHint().height());
+        return tallest;
+    }
+
+    QListView *m_list;
     QScrollArea *m_editor;
     bool m_userSizes = false;
 };
@@ -486,7 +517,7 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     m_scroll = new EditorScrollArea;
     m_scroll->setWidget(m_editors);
 
-    m_splitter = new RuleSplitter(listPage, m_scroll);
+    m_splitter = new RuleSplitter(listPage, m_list, m_scroll);
 
     auto *layout = new QVBoxLayout(this);
     layout->addWidget(header);

@@ -131,6 +131,8 @@ class TestMainWindow : public QObject
 private slots:
     void contextStores();
     void editorGetsHeightAtMinimum();
+    void listHeightStableOnSelect();
+    void splitterDoubleClickRefits();
     void splitterHandlesPlain();
     void focusEditorFirstField();
     void emptyStateShown();
@@ -858,6 +860,70 @@ void TestMainWindow::editorGetsHeightAtMinimum()
     f.window.resize(f.window.width(), 1000);
     QTRY_COMPARE(list->height(), list->sizeHint().height());
     QCOMPARE(list->height(), 3 * list->sizeHintForRow(0) + 2 * list->frameWidth());
+}
+
+void TestMainWindow::listHeightStableOnSelect()
+{
+    // R1-01, M06 (ui-design 4.4): the list height uses the tallest editor page. It does not
+    // change when the user selects another rule, it has 1 row at 900x560, and the current rule
+    // stays visible.
+    Fixture f;
+    f.window.show();
+    f.window.resize(900, 560);
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    for (const char *type : {"numbering", "replace", "insert", "remove"})
+        f.addRuleAction(QString::fromLatin1(type))->trigger();
+    QApplication::processEvents();
+    auto *list = f.child<QListView>("ruleList");
+    const int oneRow = list->sizeHintForRow(0) + 2 * list->frameWidth();
+    QTRY_COMPARE(list->height(), oneRow);
+    for (int row : {3, 0, 2, 1, 3}) {
+        list->setCurrentIndex(list->model()->index(row, 0));
+        QApplication::processEvents();
+        QCOMPARE(list->height(), oneRow);
+        QVERIFY2(list->viewport()->rect().contains(list->visualRect(list->currentIndex())),
+                 qPrintable(QString::number(row)));
+    }
+    // A high window: 3 rows or more again, the same for each rule.
+    f.window.resize(900, 1100);
+    QTRY_VERIFY(list->height() >= 3 * list->sizeHintForRow(0));
+    const int high = list->height();
+    for (int row : {0, 1}) {
+        list->setCurrentIndex(list->model()->index(row, 0));
+        QApplication::processEvents();
+        QCOMPARE(list->height(), high);
+    }
+}
+
+void TestMainWindow::splitterDoubleClickRefits()
+{
+    // ui-design 4.4: a drag stops the automatic list height; a double-click on the handle
+    // turns it on again at once.
+    Fixture f;
+    f.window.show();
+    f.window.resize(900, 1100);
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    f.addRuleAction(QStringLiteral("replace"))->trigger();
+    QApplication::processEvents();
+    auto *list = f.child<QListView>("ruleList");
+    QSplitter *splitter = nullptr;
+    for (QSplitter *s : f.window.findChildren<QSplitter *>()) {
+        if (s->orientation() == Qt::Vertical && s->isAncestorOf(list))
+            splitter = s;
+    }
+    QVERIFY(splitter);
+    QTRY_VERIFY(list->height() > 0);
+    const QList<int> automatic = splitter->sizes();
+    const QList<int> dragged{automatic.at(0) + 120, automatic.at(1) - 120};
+    splitter->setSizes(dragged);
+    emit splitter->splitterMoved(dragged.at(0), 1); // as a drag of the handle
+    f.window.resize(900, 1080);
+    QApplication::processEvents();
+    QVERIFY2(splitter->sizes().at(0) > automatic.at(0) + 60, "the user sizes stay");
+
+    QTest::mouseDClick(splitter->handle(1), Qt::LeftButton);
+    QTRY_VERIFY2(splitter->sizes().at(0) <= automatic.at(0),
+                 qPrintable(QString::number(splitter->sizes().at(0))));
 }
 
 void TestMainWindow::splitterHandlesPlain()
