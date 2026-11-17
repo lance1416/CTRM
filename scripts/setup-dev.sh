@@ -24,7 +24,7 @@ echo "  pull.rebase       = $(git config pull.rebase)"
 echo "  merge.ff          = $(git config merge.ff)"
 echo "  rebase.autoStash  = $(git config rebase.autoStash)"
 
-for tool in cmake ninja clang-format; do
+for tool in cmake ninja clang-format editorconfig-checker; do
     if ! command -v "$tool" >/dev/null 2>&1; then
         echo "Note: $tool is not on PATH. See the Development section in README.md." >&2
     fi

@@ -19,7 +19,7 @@ foreach ($key in 'core.hooksPath', 'pull.rebase', 'merge.ff', 'rebase.autoStash'
     Write-Host ("  {0,-17} = {1}" -f $key, (git config $key))
 }
 
-foreach ($tool in 'cmake', 'ninja', 'clang-format') {
+foreach ($tool in 'cmake', 'ninja', 'clang-format', 'editorconfig-checker') {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
         Write-Warning "$tool is not on PATH. See the Development section in README.md."
     }
