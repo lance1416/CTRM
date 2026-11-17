@@ -52,7 +52,8 @@ ctest --preset dev
 ```
 
 Presets: `dev` (Debug, writes `compile_commands.json` for clangd), `release`, `ci`
-(warnings are errors). Build output goes to `build/<preset>/`.
+(warnings are errors), `perf` (Release; `ctest --preset perf -L perf` runs the timing
+tests, which skip in Debug builds). Build output goes to `build/<preset>/`.
 
 ### Commit rules
 

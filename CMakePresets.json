@@ -43,6 +43,15 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_COMPILE_WARNING_AS_ERROR": "ON"
       }
+    },
+    {
+      "name": "perf",
+      "displayName": "Performance tests",
+      "description": "Release build for the timing tests (CTest label perf). The timing tests skip in Debug builds.",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
     }
   ],
   "buildPresets": [
@@ -57,6 +66,10 @@
     {
       "name": "ci",
       "configurePreset": "ci"
+    },
+    {
+      "name": "perf",
+      "configurePreset": "perf"
     }
   ],
   "testPresets": [
@@ -87,6 +100,20 @@
       "execution": {
         "noTestsAction": "error",
         "timeout": 300
+      }
+    },
+    {
+      "name": "perf",
+      "inherits": "base",
+      "configurePreset": "perf",
+      "filter": {
+        "include": {
+          "label": "perf"
+        }
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "timeout": 600
       }
     }
   ]

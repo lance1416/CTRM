@@ -2,7 +2,8 @@
 #
 # CTRM continuous integration.
 #   lint:       always. Runs scripts/lint.sh (the same checks as the local hooks).
-#   build-test: only when code changed and a root CMakeLists.txt exists.
+#   build-test: only when code changed and a root CMakeLists.txt exists. Debug, all tests.
+#   perf:       same condition. Release, only the timing tests (CTest label perf).
 name: CI
 
 on:
@@ -172,3 +173,57 @@ jobs:
 
       - name: Test
         run: ctest --preset ci
+
+  perf:
+    name: Performance tests (${{ matrix.name }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.has-cmake == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-24.04
+            qt-arch: linux_gcc_64
+          - name: macOS
+            os: macos-15
+            qt-arch: clang_64
+          - name: Windows
+            os: windows-2022
+            qt-arch: win64_msvc2022_64
+    env:
+      # Run Qt GUI tests without a display.
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgl-dev libegl-dev libxkbcommon-dev libfontconfig1-dev
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: ${{ matrix.qt-arch }}
+          cache: true
+
+      - name: Install Ninja
+        uses: seanmiddleditch/gha-setup-ninja@v6
+
+      - name: Set up MSVC environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure
+        run: cmake --preset perf
+
+      - name: Build
+        run: cmake --build --preset perf
+
+      - name: Test (label perf)
+        run: ctest --preset perf -L perf
