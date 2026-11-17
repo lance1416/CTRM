@@ -40,6 +40,8 @@
 #include <QStyledItemDelegate>
 #include <QToolButton>
 
+#include <algorithm>
+
 namespace ctrm::app {
 
 namespace {
@@ -85,8 +87,14 @@ public:
             first.icon = stateIcon(StateIcon::Error, CtrmColors::fromPalette(opt.palette));
             first.decorationSize = QSize(kToolIconSize, kToolIconSize);
         }
-        if (!on && !selected) // a rule that is off is dimmed (ui-design 4.4)
-            first.palette.setColor(QPalette::Text, opt.palette.color(QPalette::PlaceholderText));
+        // The selection has the accent only in the active window. On the grey selection of
+        // an inactive window, the text keeps its normal colours (ui-design 14: contrast).
+        const bool accentSelection = selected && (opt.state & QStyle::State_Active);
+        if (selected && !accentSelection)
+            first.palette.setColor(QPalette::HighlightedText, opt.palette.color(QPalette::Text));
+        if (!on && !accentSelection) // a rule that is off is dimmed (ui-design 4.4)
+            first.palette.setColor(selected ? QPalette::HighlightedText : QPalette::Text,
+                                   opt.palette.color(QPalette::PlaceholderText));
         style->drawControl(QStyle::CE_ItemViewItem, &first, painter, widget);
 
         const QRect textRect = style->subElementRect(QStyle::SE_ItemViewItemText, &first, widget);
@@ -96,8 +104,8 @@ public:
         const QFont font = summaryFont(option);
         painter->save();
         painter->setFont(font);
-        painter->setPen(opt.palette.color(selected ? QPalette::HighlightedText
-                                                   : QPalette::PlaceholderText));
+        painter->setPen(opt.palette.color(accentSelection ? QPalette::HighlightedText
+                                                          : QPalette::PlaceholderText));
         const QString summary =
                 QFontMetrics(font).elidedText(index.data(RuleListModel::SummaryRole).toString(),
                                               Qt::ElideRight, summaryRect.width());
@@ -109,6 +117,36 @@ private:
     static QFont summaryFont(const QStyleOptionViewItem &option)
     {
         return typeStyle(TypeToken::Caption, option.font);
+    }
+};
+
+// The rule list: as high as its rows, at least kMinListRows (ui-design 4.4). The editor
+// below it gets the free space.
+class RuleListView : public QListView
+{
+public:
+    using QListView::QListView;
+
+    QSize sizeHint() const override { return {QListView::sizeHint().width(), heightFor(rows())}; }
+    QSize minimumSizeHint() const override
+    {
+        return {QListView::minimumSizeHint().width(), heightFor(kMinListRows)};
+    }
+
+private:
+    static constexpr int kMinListRows = 3;
+
+    int rows() const { return std::max(kMinListRows, model() ? model()->rowCount() : 0); }
+
+    int heightFor(int rows) const
+    {
+        int row = model() && model()->rowCount() > 0 ? sizeHintForRow(0) : 0;
+        if (row <= 0) {
+            QStyleOptionViewItem option;
+            initViewItemOption(&option);
+            row = itemDelegate()->sizeHint(option, {}).height();
+        }
+        return rows * row + 2 * frameWidth();
     }
 };
 
@@ -142,7 +180,7 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     , m_presets(new QPushButton)
     , m_emptyPage(new QWidget)
     , m_emptyText(new QLabel)
-    , m_list(new QListView)
+    , m_list(new RuleListView)
     , m_editors(new QStackedWidget)
     , m_noRulePage(new QWidget)
     , m_unsupportedPage(new QWidget)
@@ -178,10 +216,18 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     m_emptyText->setWordWrap(true);
     m_emptyText->setAlignment(Qt::AlignHCenter);
     auto *orLabel = new QLabel(tr("or"));
+    // The Presets button is centred under Add Rule; "or" is at its left. A hidden copy of "or"
+    // at its right keeps the button on the centre line.
+    auto *orBalance = new QLabel(tr("or"));
+    QSizePolicy balancePolicy = orBalance->sizePolicy();
+    balancePolicy.setRetainSizeWhenHidden(true);
+    orBalance->setSizePolicy(balancePolicy);
+    orBalance->hide();
     auto *presetsRow = new QHBoxLayout;
     presetsRow->addStretch();
     presetsRow->addWidget(orLabel);
     presetsRow->addWidget(m_presets);
+    presetsRow->addWidget(orBalance);
     presetsRow->addStretch();
     m_emptyButtons = new QVBoxLayout;
     m_emptyButtons->addLayout(presetsRow);
@@ -193,6 +239,10 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
 
     // The rule list and its tool buttons.
     m_list->setModel(&m_model);
+    for (const auto signal : {&QAbstractItemModel::rowsInserted, &QAbstractItemModel::rowsRemoved})
+        connect(&m_model, signal, m_list, [this] { m_list->updateGeometry(); });
+    connect(&m_model, &QAbstractItemModel::modelReset, m_list,
+            [this] { m_list->updateGeometry(); });
     m_list->setItemDelegate(new RuleItemDelegate(m_list));
     m_list->setSelectionMode(QAbstractItemView::SingleSelection);
     m_list->setDragDropMode(QAbstractItemView::InternalMove);
@@ -268,6 +318,7 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     splitter->setChildrenCollapsible(false);
     splitter->addWidget(listPage);
     splitter->addWidget(m_scroll);
+    splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 1);
     m_splitter = splitter;
 

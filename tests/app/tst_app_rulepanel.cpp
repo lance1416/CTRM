@@ -23,6 +23,7 @@
 #include <QListView>
 #include <QMainWindow>
 #include <QMenu>
+#include <QPainter>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSignalSpy>
@@ -100,6 +101,9 @@ private slots:
     void chainOptionsForwarded();
     void setChainResetsEditor();
     void numberedCountForwarded();
+    void inactiveSelectionContrast();
+    void listFollowsRows();
+    void presetsUnderAddRule();
 };
 
 void TestAppRulePanel::factory()
@@ -385,8 +389,10 @@ void TestAppRulePanel::emptyStates()
              QStringLiteral(
                      "Add a rule to change the names. The preview shows the result at once."));
     QVERIFY(f.panel->addRuleButton()->property("primary").toBool());
-    QCOMPARE(f.panel->addRuleButton()->palette().color(QPalette::Button),
-             f.panel->palette().color(QPalette::Accent));
+    QVERIFY(f.panel->addRuleButton()->isDefault()); // setPrimary (ui-design 5.1)
+    if (f.panel->style()->name().compare(QStringLiteral("fusion"), Qt::CaseInsensitive) == 0)
+        QCOMPARE(f.panel->addRuleButton()->palette().color(QPalette::Button),
+                 f.panel->palette().color(QPalette::Accent));
 
     f.actions.addRuleMenu->findChild<QAction *>(QStringLiteral("addRule_replace"))->trigger();
     QVERIFY(!text->isVisible());
@@ -467,6 +473,79 @@ void TestAppRulePanel::numberedCountForwarded()
     f.select(0);
     QCOMPARE(f.panel->currentEditor()->findChild<QLabel *>(QStringLiteral("example"))->text(),
              QStringLiteral("Example: 001"));
+}
+
+void TestAppRulePanel::inactiveSelectionContrast()
+{
+    // D6: on the grey selection of an inactive window, the summary is not HighlightedText.
+    Fixture f({QStringLiteral("replace")});
+    QListView *list = f.panel->ruleList();
+    QStyleOptionViewItem option;
+    option.initFrom(list);
+    option.widget = list;
+    option.rect = QRect(0, 0, 300, list->sizeHintForRow(0));
+    option.state = QStyle::State_Enabled | QStyle::State_Selected; // no State_Active
+    option.palette.setColor(QPalette::Highlight, QColor(0xd0, 0xd0, 0xd0));
+    option.palette.setColor(QPalette::HighlightedText, QColor(0xff, 0x00, 0xff));
+    const auto countMagenta = [&](QStyle::State extra) {
+        QImage image(option.rect.size(), QImage::Format_ARGB32);
+        image.fill(Qt::white);
+        QPainter painter(&image);
+        QStyleOptionViewItem o = option;
+        o.state |= extra;
+        list->itemDelegate()->paint(&painter, o, f.model.index(0));
+        painter.end();
+        int n = 0;
+        for (int y = 0; y < image.height(); ++y)
+            for (int x = 0; x < image.width(); ++x) {
+                const QColor c = image.pixelColor(x, y);
+                if (c.red() > 200 && c.blue() > 200 && c.green() < 80)
+                    ++n;
+            }
+        return n;
+    };
+    QCOMPARE(countMagenta(QStyle::State_None), 0);
+    QVERIFY(countMagenta(QStyle::State_Active) > 0); // the accent selection keeps it
+}
+
+void TestAppRulePanel::listFollowsRows()
+{
+    // D10: the list is as high as its rows (at least 3); the editor gets the rest and the
+    // space taken away later.
+    Fixture f({QStringLiteral("replace"), QStringLiteral("replace")});
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    QListView *list = f.panel->ruleList();
+    const int row = list->sizeHintForRow(0);
+    QVERIFY(row > 0);
+    QCOMPARE(list->minimumSizeHint().height(), 3 * row + 2 * list->frameWidth());
+    QCOMPARE(list->sizeHint().height(), 3 * row + 2 * list->frameWidth());
+    const int before = list->height();
+    QVERIFY2(before <= list->sizeHint().height() + 2, qPrintable(QString::number(before)));
+    f.window.resize(f.window.width(), f.window.height() - 200);
+    QTest::qWait(50);
+    QCOMPARE(list->height(), before);
+    for (int i = 0; i < 3; ++i)
+        f.actions.addRuleMenu->findChild<QAction *>(QStringLiteral("addRule_replace"))->trigger();
+    QCOMPARE(list->sizeHint().height(), 5 * row + 2 * list->frameWidth());
+}
+
+void TestAppRulePanel::presetsUnderAddRule()
+{
+    // D11: the Presets button is centred under Add Rule; "or" is at its left.
+    Fixture f;
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    QPushButton *add = f.panel->addRuleButton();
+    QPushButton *presets = f.panel->presetsButton();
+    const int addCentre = add->mapTo(f.panel, add->rect().center()).x();
+    const int presetsCentre = presets->mapTo(f.panel, presets->rect().center()).x();
+    QVERIFY2(qAbs(addCentre - presetsCentre) <= 1,
+             qPrintable(QStringLiteral("%1 %2").arg(addCentre).arg(presetsCentre)));
+    QLabel *orLabel = nullptr;
+    for (QLabel *l : f.panel->findChildren<QLabel *>())
+        if (l->text() == QStringLiteral("or") && l->isVisible())
+            orLabel = l;
+    QVERIFY(orLabel);
+    QVERIFY(orLabel->mapTo(f.panel, QPoint()).x() < presets->mapTo(f.panel, QPoint()).x());
 }
 
 QTEST_MAIN(TestAppRulePanel)
