@@ -11,6 +11,7 @@
 
 #include <QDateTime>
 #include <QDir>
+#include <QDirIterator>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
@@ -28,6 +29,9 @@
 #include <qt_windows.h>
 #else
 #include <unistd.h>
+#endif
+#ifdef Q_OS_MACOS
+#include <sys/xattr.h>
 #endif
 
 using namespace ctrm;
@@ -69,11 +73,84 @@ private:
     int m_calls = 0;
 };
 
-// Exact names in a folder, sorted.
-QStringList namesIn(const QString &dir)
+// macOS keeps the extended attributes of a file in a "._<name>" file (AppleDouble) on volumes
+// without extended attributes (exFAT, FAT, some SMB shares). It makes one for each new file.
+bool isSidecar(const QString &name)
+{
+    return name.startsWith(QStringLiteral("._"));
+}
+
+QStringList allNamesIn(const QString &dir)
 {
     return QDir(dir).entryList(
             QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System, QDir::Name);
+}
+
+// Exact names in a folder, sorted. A "._<name>" file is not in the list when "<name>" is: an
+// orphan sidecar stays in the list, so that the comparison fails.
+QStringList namesIn(const QString &dir)
+{
+    QStringList names = allNamesIn(dir);
+    const QStringList all = names;
+    names.removeIf([&](const QString &n) { return isSidecar(n) && all.contains(n.mid(2)); });
+    return names;
+}
+
+// Paths (relative to root) of "._<name>" files whose "<name>" is not in the same folder with the
+// exact same name. The sidecar must follow each rename and each undo.
+QStringList orphanSidecars(const QString &root)
+{
+    QStringList orphans;
+    QDirIterator it(root, QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden,
+                    QDirIterator::Subdirectories);
+    QStringList dirs{root};
+    while (it.hasNext())
+        dirs.append(it.next());
+    for (const QString &dir : dirs) {
+        const QStringList names = allNamesIn(dir);
+        for (const QString &n : names)
+            if (isSidecar(n) && !names.contains(n.mid(2)))
+                orphans.append(QDir(root).relativeFilePath(dir + u'/' + n));
+    }
+    return orphans;
+}
+
+// Gives the item an extended attribute with the tag (macOS only; elsewhere no effect). On a
+// volume without extended attributes, macOS keeps it in the "._<name>" sidecar, so the tag shows
+// if the sidecar follows the rename.
+void setTag(const QString &path, const QByteArray &tag)
+{
+#ifdef Q_OS_MACOS
+    if (setxattr(QFile::encodeName(path).constData(), "org.ctrm.test", tag.constData(),
+                 size_t(tag.size()), 0, XATTR_NOFOLLOW) != 0)
+        qFatal("setxattr failed: %s", qPrintable(path));
+#else
+    Q_UNUSED(path);
+    Q_UNUSED(tag);
+#endif
+}
+
+// The tag of setTag(). On other systems: the expected value, so the check always passes.
+QByteArray tagOf(const QString &path, const QByteArray &expected)
+{
+#ifdef Q_OS_MACOS
+    Q_UNUSED(expected);
+    char buffer[64];
+    const ssize_t n = getxattr(QFile::encodeName(path).constData(), "org.ctrm.test", buffer,
+                               sizeof buffer, 0, XATTR_NOFOLLOW);
+    return n < 0 ? QByteArray("<none>") : QByteArray(buffer, int(n));
+#else
+    Q_UNUSED(path);
+    return expected;
+#endif
+}
+
+// Checksums without the sidecar files.
+QMap<QString, QByteArray> mainChecksums(const TempTree &tree)
+{
+    QMap<QString, QByteArray> sums = tree.checksums();
+    sums.removeIf([](const auto &it) { return isSidecar(QFileInfo(it.key()).fileName()); });
+    return sums;
 }
 
 bool hasTempName(const QStringList &names)
@@ -171,8 +248,8 @@ private slots:
 void TstSafety::swapContents()
 {
     Env env;
-    env.tree.file("a.txt", "A");
-    env.tree.file("b.txt", "B");
+    setTag(env.tree.file("a.txt", "A"), "tag-a");
+    setTag(env.tree.file("b.txt", "B"), "tag-b");
     const auto before = env.tree.checksums();
     const Batch b = runBatch(env.service, planFor(*env.fs, {{env.path("a.txt"), "b.txt"},
                                                             {env.path("b.txt"), "a.txt"}}));
@@ -182,6 +259,10 @@ void TstSafety::swapContents()
     QCOMPARE(after.value("a.txt"), before.value("b.txt"));
     QCOMPARE(after.value("b.txt"), before.value("a.txt"));
     QCOMPARE(namesIn(env.tree.root()), (QStringList{"a.txt", "b.txt"}));
+    QCOMPARE(orphanSidecars(env.tree.root()), QStringList());
+    // The extended attributes (on exFAT: the sidecars) follow the files.
+    QCOMPARE(tagOf(env.path("b.txt"), "tag-a"), QByteArray("tag-a"));
+    QCOMPARE(tagOf(env.path("a.txt"), "tag-b"), QByteArray("tag-b"));
 }
 
 void TstSafety::threeCycle()
@@ -199,7 +280,7 @@ void TstSafety::threeCycle()
     QCOMPARE(after.value("2.txt"), before.value("1.txt"));
     QCOMPARE(after.value("3.txt"), before.value("2.txt"));
     QCOMPARE(after.value("1.txt"), before.value("3.txt"));
-    QCOMPARE(after.size(), 3);
+    QCOMPARE(mainChecksums(env.tree).size(), 3);
 }
 
 void TstSafety::chainNoTemp()
@@ -227,6 +308,7 @@ void TstSafety::caseOnly()
     const Batch b = runBatch(env.service, planFor(*env.fs, {{env.path("a.txt"), "A.txt"}}));
     QVERIFY(b.run.finished);
     QCOMPARE(namesIn(env.tree.root()), (QStringList{"A.txt"}));
+    QCOMPARE(orphanSidecars(env.tree.root()), QStringList());
     QCOMPARE(contentOf(env.path("A.txt")), QByteArray("A"));
 }
 
@@ -301,6 +383,11 @@ void TstSafety::readOnlyFailureRollsBack()
     QVERIFY(QFile::setPermissions(s2, QFileDevice::ReadOwner | QFileDevice::ExeOwner |
                                               QFileDevice::ReadGroup | QFileDevice::ExeGroup |
                                               QFileDevice::ReadOther | QFileDevice::ExeOther));
+    if (QFileInfo(s2).isWritable()) {
+        QFile::setPermissions(s2, perms);
+        QSKIP("the volume does not keep file permissions (for example exFAT or FAT): "
+              "a read-only folder is not possible");
+    }
     const Batch b = runBatch(env.service, plan);
     QFile::setPermissions(s2, perms);
     QCOMPARE(b.run.failure.errorCode, EACCES);
@@ -464,10 +551,10 @@ void TstSafety::previewEqualsDisk()
 void TstSafety::undoWithChecksums()
 {
     Env env;
-    env.tree.file("a.txt", "A");
-    env.tree.file("b.txt", "B");
-    env.tree.file("d/c.txt", "C");
-    const auto before = env.tree.checksums();
+    setTag(env.tree.file("a.txt", "A"), "tag-a");
+    setTag(env.tree.file("b.txt", "B"), "tag-b");
+    setTag(env.tree.file("d/c.txt", "C"), "tag-c");
+    const auto before = mainChecksums(env.tree);
     const Plan plan = planFor(*env.fs,
                               {{env.path("a.txt"), "b.txt"},
                                {env.path("b.txt"), "a.txt"},
@@ -475,18 +562,29 @@ void TstSafety::undoWithChecksums()
                                {env.path("d/c.txt"), "z.txt"}},
                               {3});
     QVERIFY(runBatch(env.service, plan).run.finished);
-    QVERIFY(env.tree.checksums() != before);
+    QVERIFY(mainChecksums(env.tree) != before);
 
     QString error;
     const UndoPreview p = env.service.previewUndo(plan.batchId, &error);
     QVERIFY2(error.isEmpty(), qPrintable(error));
     QCOMPARE(p.items.size(), 4);
-    QVERIFY(p.quickUndoAllowed());
+    if (env.fs->volumeInfo(env.tree.root()).identityType == IdentityType::Weak) {
+        // AC13.9: with a weak identity check, Quick Undo opens the undo preview.
+        QVERIFY(p.weak());
+        QVERIFY(!p.quickUndoAllowed());
+        QCOMPARE(p.passCount, 4);
+    } else {
+        QVERIFY(p.quickUndoAllowed());
+    }
     const PlanResult undoPlan = env.service.planUndo(p);
     QVERIFY(undoPlan.plan);
     const Batch u = runBatch(env.service, *undoPlan.plan, plan.batchId);
     QVERIFY(u.run.finished);
-    QCOMPARE(env.tree.checksums(), before);
+    QCOMPARE(mainChecksums(env.tree), before);
+    QCOMPARE(orphanSidecars(env.tree.root()), QStringList());
+    QCOMPARE(tagOf(env.path("a.txt"), "tag-a"), QByteArray("tag-a"));
+    QCOMPARE(tagOf(env.path("b.txt"), "tag-b"), QByteArray("tag-b"));
+    QCOMPARE(tagOf(env.path("d/c.txt"), "tag-c"), QByteArray("tag-c"));
     QCOMPARE(env.history.load(plan.batchId, &error)->state(), BatchState::Undone);
 }
 
