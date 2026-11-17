@@ -135,11 +135,13 @@ WindowStateInfo computeWindowState(const WindowStateInput &in)
         info.renameEnabled = true;
     }
 
-    // ui-design 5.3.
-    info.stepDone = {in.itemCount > 0, in.enabledRuleCount > 0,
-                     in.itemCount > 0 && s.blocked() == 0 && s.willChange > 0, in.resultShown};
+    // ui-design 5.3 (S01): 1 = the list has items; 2 = one or more items will change (also
+    // when the result shows: the batch changed them); 3 = the result state shows. Problems are
+    // not a step.
+    info.stepDone = {in.itemCount > 0, in.itemCount > 0 && (s.willChange > 0 || in.resultShown),
+                     in.resultShown};
     info.currentStep = -1;
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < int(info.stepDone.size()); ++i) {
         if (!info.stepDone[i]) {
             info.currentStep = i;
             break;

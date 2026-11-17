@@ -34,9 +34,9 @@ struct WindowStateInfo
     bool renameEnabled = false;
     QString reason; // empty when renameEnabled; also empty in the Running state (button hidden)
     bool skipVisible = false;
-    QString skipText; // "Skip 4 and Rename..."
-    std::array<bool, 4> stepDone{};
-    int currentStep = 0; // flow strip, 0-based, -1 when all steps are done
+    QString skipText;               // "Skip 4 and Rename..."
+    std::array<bool, 3> stepDone{}; // Add files, Add rules, Rename (S01)
+    int currentStep = 0;            // flow strip, 0-based, -1 when all steps are done
 };
 
 WindowStateInfo computeWindowState(const WindowStateInput &in);

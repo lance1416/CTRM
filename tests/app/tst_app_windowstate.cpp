@@ -213,44 +213,55 @@ void TestAppWindowState::summaryText()
 
 void TestAppWindowState::flowSteps()
 {
+    // S01: three steps. 1 = the list has items; 2 = one or more items will change; 3 = the
+    // result state shows. The current step is the first step that is not done.
+    using Steps = std::array<bool, 3>;
     WindowStateInfo info = computeWindowState(input(12, 1, summary(12)));
-    QCOMPARE(info.stepDone, (std::array<bool, 4>{true, true, true, false}));
-    QCOMPARE(info.currentStep, 3);
-
-    info = computeWindowState(input(0, 0, summary(0)));
-    QCOMPARE(info.stepDone, (std::array<bool, 4>{false, false, false, false}));
-    QCOMPARE(info.currentStep, 0);
-
-    // Rules but no items: step 2 is done, step 1 is current.
-    info = computeWindowState(input(0, 2, summary(0)));
-    QCOMPARE(info.stepDone, (std::array<bool, 4>{false, true, false, false}));
-    QCOMPARE(info.currentStep, 0);
-
-    info = computeWindowState(input(6, 1, summary(2, 3, 1)));
-    QCOMPARE(info.stepDone, (std::array<bool, 4>{true, true, false, false}));
+    QCOMPARE(info.stepDone, (Steps{true, true, false}));
     QCOMPARE(info.currentStep, 2);
 
-    WindowStateInput in = input(12, 1, summary(12));
+    info = computeWindowState(input(0, 0, summary(0)));
+    QCOMPARE(info.stepDone, (Steps{false, false, false}));
+    QCOMPARE(info.currentStep, 0);
+
+    // Rules but no items: nothing will change, so step 2 is not done.
+    info = computeWindowState(input(0, 2, summary(0)));
+    QCOMPARE(info.stepDone, (Steps{false, false, false}));
+    QCOMPARE(info.currentStep, 0);
+
+    // A rule that changes nothing (an empty Insert): step 2 is current.
+    info = computeWindowState(input(6, 1, summary(0)));
+    QCOMPARE(info.stepDone, (Steps{true, false, false}));
+    QCOMPARE(info.currentStep, 1);
+
+    // Problems are not a step.
+    info = computeWindowState(input(6, 1, summary(2, 3, 1)));
+    QCOMPARE(info.stepDone, (Steps{true, true, false}));
+    QCOMPARE(info.currentStep, 2);
+
+    // After a batch nothing will change, but all steps are done.
+    WindowStateInput in = input(12, 1, summary(0));
     in.resultShown = true;
     info = computeWindowState(in);
-    QCOMPARE(info.stepDone, (std::array<bool, 4>{true, true, true, true}));
+    QCOMPARE(info.stepDone, (Steps{true, true, true}));
     QCOMPARE(info.currentStep, -1);
 }
 
 void TestAppWindowState::flowStripLooks()
 {
     FlowStrip strip(nullptr);
-    strip.setState(computeWindowState(input(6, 1, summary(2, 3, 1))));
+    strip.setState(computeWindowState(input(6, 1, summary(0))));
     const auto buttons = strip.findChildren<QToolButton *>();
-    QCOMPARE(buttons.size(), 4);
+    QCOMPARE(buttons.size(), 3);
     QCOMPARE(buttons[0]->text(), QStringLiteral("Add files"));
-    QCOMPARE(buttons[3]->text(), QStringLiteral("Rename"));
-    QCOMPARE(buttons[0]->accessibleName(), QStringLiteral("Step 1 of 4, Add files, done"));
-    QCOMPARE(buttons[2]->accessibleName(), QStringLiteral("Step 3 of 4, Check preview, current"));
-    QCOMPARE(buttons[3]->accessibleName(), QStringLiteral("Step 4 of 4, Rename, later"));
+    QCOMPARE(buttons[1]->text(), QStringLiteral("Add rules"));
+    QCOMPARE(buttons[2]->text(), QStringLiteral("Rename"));
+    QCOMPARE(buttons[0]->accessibleName(), QStringLiteral("Step 1 of 3, Add files, done"));
+    QCOMPARE(buttons[1]->accessibleName(), QStringLiteral("Step 2 of 3, Add rules, current"));
+    QCOMPARE(buttons[2]->accessibleName(), QStringLiteral("Step 3 of 3, Rename, later"));
 
-    QVERIFY(buttons[2]->font().weight() > buttons[0]->font().weight());
-    QCOMPARE(buttons[3]->palette().color(QPalette::ButtonText),
+    QVERIFY(buttons[1]->font().weight() > buttons[0]->font().weight());
+    QCOMPARE(buttons[2]->palette().color(QPalette::ButtonText),
              strip.palette().color(QPalette::PlaceholderText));
     for (QToolButton *b : buttons) {
         QVERIFY(b->autoRaise());

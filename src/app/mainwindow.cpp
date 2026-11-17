@@ -861,7 +861,7 @@ void MainWindow::refresh()
 
 void MainWindow::focusStep(int step)
 {
-    // ui-design 5.3.
+    // ui-design 5.3 (S01).
     switch (step) {
     case 0:
         focusTable();
@@ -870,15 +870,6 @@ void MainWindow::focusStep(int step)
         focusRules();
         break;
     case 2:
-        if (m_preview.summary.blocked() > 0 && m_itemModel.rowCount() > 0) {
-            if (m_proxy.rowCount() == 0 || m_tableOrNoMatch->currentWidget() != m_table)
-                clearFilter();
-            m_table->setCurrentIndex({});
-            m_table->selectNextProblem(true);
-        }
-        focusTable();
-        break;
-    case 3:
         focus(m_actionBar->renameButton());
         break;
     default:

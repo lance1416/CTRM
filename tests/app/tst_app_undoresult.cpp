@@ -19,6 +19,7 @@
 #include <QPushButton>
 #include <QSettings>
 #include <QTemporaryDir>
+#include <QToolButton>
 #include <QtTest>
 
 #include <functional>
@@ -69,6 +70,11 @@ struct Fixture
         return window.findChild<QPushButton *>(QLatin1StringView(name));
     }
 
+    QToolButton *step3() const
+    {
+        return window.findChild<QToolButton *>(QStringLiteral("flowStep3"));
+    }
+
     QString barText() const
     {
         return window.findChild<QLabel *>(QStringLiteral("messageBarText"))->text();
@@ -116,6 +122,7 @@ void TestUndoResult::quickUndoShowsNamesOnDisk()
     f.window.show();
     f.renameOld({QStringLiteral("old_a.txt"), QStringLiteral("old_b.txt")});
     QCOMPARE(f.barText(), QStringLiteral("Renamed 2 items."));
+    QCOMPARE(f.step3()->accessibleName(), QStringLiteral("Step 3 of 3, Rename, done"));
     QPushButton *undo = f.barButton("resultUndo");
     QVERIFY(undo);
 
@@ -134,6 +141,8 @@ void TestUndoResult::quickUndoShowsNamesOnDisk()
     QVERIFY(f.window.actionBar()->renameButton()->isEnabled());
     QCOMPARE(f.window.actionBar()->renameButton()->text(), QStringLiteral("Rename 2 Files"));
     QVERIFY(f.window.actions().rename->isEnabled());
+    // S01: after the undo, step 3 is "later" again.
+    QCOMPARE(f.step3()->accessibleName(), QStringLiteral("Step 3 of 3, Rename, current"));
 }
 
 QTEST_MAIN(TestUndoResult)

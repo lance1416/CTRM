@@ -11,7 +11,7 @@ class QToolButton;
 
 namespace ctrm::app {
 
-// The four flow steps under the toolbar (ui-design 5.3). It only shows where the user is.
+// The three flow steps under the toolbar (ui-design 5.3, S01). It only shows where the user is.
 class FlowStrip : public QWidget
 {
     Q_OBJECT
@@ -20,7 +20,7 @@ public:
     void setState(const WindowStateInfo &info);
 
 signals:
-    void stepClicked(int step); // 0..3
+    void stepClicked(int step); // 0..2
 
 protected:
     void changeEvent(QEvent *event) override;
@@ -28,8 +28,9 @@ protected:
 private:
     void updateSteps();
 
-    std::array<QToolButton *, 4> m_buttons{};
-    std::array<bool, 4> m_done{};
+    static constexpr int kSteps = 3;
+    std::array<QToolButton *, kSteps> m_buttons{};
+    std::array<bool, kSteps> m_done{};
     int m_current = 0;
     bool m_updating = false;
 };

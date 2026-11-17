@@ -587,7 +587,7 @@ void TestMainWindow::tertiaryButtonsHaveNoFrame()
     Fixture f;
     for (const char *name : {"moveUpButton", "moveDownButton", "duplicateButton", "deleteButton",
                              "previousProblemButton", "nextProblemButton", "messageBarClose",
-                             "chainOptionsHeader", "flowStep1", "flowStep4"}) {
+                             "chainOptionsHeader", "flowStep1", "flowStep3"}) {
         auto *b = f.window.findChild<QToolButton *>(QString::fromLatin1(name));
         QVERIFY2(b, name);
         QVERIFY2(qobject_cast<TertiaryButton *>(b), name);

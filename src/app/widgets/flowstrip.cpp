@@ -17,10 +17,9 @@ namespace ctrm::app {
 
 namespace {
 
-const char *const kStepNames[4] = {
+const char *const kStepNames[] = {
         QT_TRANSLATE_NOOP("ctrm::app::FlowStrip", "Add files"),
         QT_TRANSLATE_NOOP("ctrm::app::FlowStrip", "Add rules"),
-        QT_TRANSLATE_NOOP("ctrm::app::FlowStrip", "Check preview"),
         QT_TRANSLATE_NOOP("ctrm::app::FlowStrip", "Rename"),
 };
 
@@ -67,7 +66,7 @@ FlowStrip::FlowStrip(QWidget *parent)
 
     auto *layout = new QHBoxLayout(this);
     layout->setSpacing(0);
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < kSteps; ++i) {
         if (i > 0) {
             auto *separator = new QLabel(QStringLiteral("›"), this);
             separator->setForegroundRole(QPalette::PlaceholderText);
@@ -119,7 +118,7 @@ void FlowStrip::updateSteps()
     const QPalette p = palette();
     const CtrmColors colors = CtrmColors::fromPalette(p);
     const int iconSize = style()->pixelMetric(QStyle::PM_SmallIconSize, nullptr, this);
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < kSteps; ++i) {
         QToolButton *button = m_buttons[static_cast<size_t>(i)];
         const bool done = m_done[static_cast<size_t>(i)];
         const bool current = !done && i == m_current;
@@ -147,7 +146,8 @@ void FlowStrip::updateSteps()
         button->setPalette(buttonPalette);
         button->setFont(font);
         button->setAccessibleName(
-                tr("Step %1 of 4, %2, %3").arg(QString::number(i + 1), name, look));
+                tr("Step %1 of %2, %3, %4")
+                        .arg(QString::number(i + 1), QString::number(kSteps), name, look));
     }
     m_updating = false;
 }
