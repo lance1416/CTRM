@@ -177,10 +177,12 @@ void ItemAdder::addPaths(const QStringList &paths)
                              ? tr("1 item was already in the list.")
                              : tr("%n items were already in the list.", nullptr, duplicates));
     if (unsupported > 0)
-        texts.append(unsupported == 1
-                             ? tr("1 item was not added. Its name is not supported.")
-                             : tr("%n items were not added. Their names are not supported.",
-                                  nullptr, unsupported));
+        texts.append(unsupported == 1 ? tr("1 item was not added. Its name contains characters "
+                                           "that the file system cannot show correctly.")
+                                      : tr("%n items were not added. Their names contain "
+                                           "characters that the file system cannot show "
+                                           "correctly.",
+                                           nullptr, unsupported));
     if (notReadable > 0)
         texts.append(notReadable == 1 ? tr("1 item was not added. It cannot be found or read.")
                                       : tr("%n items were not added. They cannot be found or read.",
