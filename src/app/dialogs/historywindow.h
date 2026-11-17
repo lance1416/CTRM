@@ -9,6 +9,7 @@ class QLabel;
 class QPushButton;
 class QStandardItemModel;
 class QTableView;
+class QVBoxLayout;
 
 namespace ctrm::app {
 
@@ -45,6 +46,7 @@ private:
     QTableView *m_batches;
     QStandardItemModel *m_operations;
     QTableView *m_operationTable;
+    QVBoxLayout *m_detailLayout = nullptr;
     QLabel *m_detail;
     QLabel *m_detailError;
     QLabel *m_detailKeep;

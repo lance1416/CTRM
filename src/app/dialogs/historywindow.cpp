@@ -104,11 +104,15 @@ HistoryWindow::HistoryWindow(HistoryStore &store, QWidget *parent)
 
     auto *detailPane = new QWidget(this);
     auto *detailLayout = new QVBoxLayout(detailPane);
+    m_detailLayout = detailLayout;
     detailLayout->setContentsMargins(0, 0, 0, 0);
     detailLayout->addWidget(m_detail);
     detailLayout->addWidget(m_detailError);
     detailLayout->addWidget(m_detailKeep);
     detailLayout->addWidget(m_operationTable, 1);
+    // Takes the free height when the operations table is hidden (damaged batch): the lines
+    // stay together at the top.
+    detailLayout->addStretch(0);
 
     auto *splitter = new QSplitter(Qt::Vertical, this);
     splitter->addWidget(m_batches);
@@ -206,6 +210,8 @@ void HistoryWindow::showDetail(const BatchSummary *s)
     m_detailError->hide();
     m_detailKeep->hide();
     m_operationTable->setVisible(!(s && s->damaged));
+    m_detailLayout->setStretch(m_detailLayout->count() - 1,
+                               m_operationTable->isVisibleTo(this) ? 0 : 1);
     QPushButton *primary = nullptr;
     const bool damaged = s && s->damaged;
     const bool undoBatch = s && !damaged && !s->undoOf.isEmpty();

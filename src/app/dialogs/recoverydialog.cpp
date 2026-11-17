@@ -208,6 +208,8 @@ RecoveryDialog::RecoveryDialog(const RecoveryInfo &info, QWidget *parent)
     body->setTextFormat(Qt::PlainText);
     body->setWordWrap(true);
 
+    // The width of the text column: the fixed dialog size comes from it.
+    body->setMinimumWidth(56 * fontMetrics().averageCharWidth());
     auto *text = new QVBoxLayout;
     text->addWidget(heading);
     text->addWidget(body);
@@ -276,9 +278,6 @@ RecoveryDialog::RecoveryDialog(const RecoveryInfo &info, QWidget *parent)
         text->addWidget(note);
     }
 
-    // Extra height goes below the text, not between the heading and the body: the heading
-    // stays next to the icon (ui-design 9.10).
-    text->addStretch(1);
     auto *top = new QHBoxLayout;
     top->addWidget(icon, 0, Qt::AlignTop);
     top->addLayout(text, 1);
@@ -310,9 +309,10 @@ RecoveryDialog::RecoveryDialog(const RecoveryInfo &info, QWidget *parent)
 
     auto *layout = new QVBoxLayout(this);
     layout->addLayout(top);
-    layout->addSpacing(fontMetrics().height() / 2);
     layout->addLayout(buttons);
-    setMinimumWidth(32 * fontMetrics().averageCharWidth() * 2);
+    // The size follows the contents (ui-design 9.10): no empty band above the buttons, and the
+    // heading stays next to the icon.
+    layout->setSizeConstraint(QLayout::SetFixedSize);
 }
 
 void RecoveryDialog::reject()

@@ -401,6 +401,14 @@ void TestHistory::damagedRow()
              HistoryModel::whenText(stamp, QDateTime::currentDateTime()));
     QCOMPARE(model->data(model->index(row, HistoryModel::Items)).toString(), QString());
     QVERIFY(!w.findChild<QTableView *>(QStringLiteral("historyOperations"))->isVisibleTo(&w));
+    // N1: the lines stay together at the top of the detail area.
+    w.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&w));
+    QApplication::processEvents();
+    const int detailBottom = detail->mapTo(&w, QPoint(0, detail->height())).y();
+    const int keepTop = keep->mapTo(&w, QPoint()).y();
+    QVERIFY2(keepTop - detailBottom < 30,
+             qPrintable(QStringLiteral("%1 %2").arg(detailBottom).arg(keepTop)));
     w.selectBatch(model->batch(row == 0 ? 1 : 0).batchId);
     QVERIFY(w.findChild<QTableView *>(QStringLiteral("historyOperations"))->isVisibleTo(&w));
 

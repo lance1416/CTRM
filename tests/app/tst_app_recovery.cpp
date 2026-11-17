@@ -190,6 +190,7 @@ private slots:
     void normalTexts();
     void quitDuringBatchAskedAtNextStart();
     void headingNextToIcon();
+    void noGapAboveButtons();
 };
 
 void TestAppRecovery::noPromptWhenClean()
@@ -495,6 +496,29 @@ void TestAppRecovery::headingNextToIcon()
         QVERIFY2(headingTop < 40, qPrintable(QString::number(headingTop)));
         QVERIFY2(bodyTop - (headingTop + heading->height()) < 20,
                  qPrintable(QStringLiteral("%1 %2").arg(bodyTop).arg(headingTop)));
+    }
+}
+
+// N2: the dialog height follows its contents; no empty band above the buttons.
+void TestAppRecovery::noGapAboveButtons()
+{
+    for (const bool damaged : {false, true}) {
+        for (const bool steps : {false, true}) {
+            RecoveryDialog dialog(infoWith(steps ? twoOpenSteps() : QList<OpenStep>{}, damaged),
+                                  nullptr);
+            dialog.show();
+            QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+            QApplication::processEvents();
+            QWidget *last = dialog.findChild<QLabel *>(steps ? QStringLiteral("openStepsNote")
+                                                             : QStringLiteral("recoveryBody"));
+            auto *mark = dialog.findChild<QPushButton *>(QStringLiteral("markComplete"));
+            const int textBottom = last->mapTo(&dialog, QPoint(0, last->height())).y();
+            const int gap = mark->mapTo(&dialog, QPoint()).y() - textBottom;
+            QVERIFY2(gap >= 0 && gap < 40, qPrintable(QStringLiteral("damaged %1 steps %2 gap %3")
+                                                              .arg(damaged)
+                                                              .arg(steps)
+                                                              .arg(gap)));
+        }
     }
 }
 
