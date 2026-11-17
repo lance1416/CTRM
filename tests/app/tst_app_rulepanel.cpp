@@ -105,6 +105,7 @@ private slots:
     void listFollowsRows();
     void presetsUnderAddRule();
     void primaryAddRuleIsPlainButton();
+    void editorsFitPanelWidth();
 };
 
 void TestAppRulePanel::factory()
@@ -569,6 +570,44 @@ void TestAppRulePanel::primaryAddRuleIsPlainButton()
     f.panel->setPrimaryAddRule(false);
     QCOMPARE(add->menu(), f.actions.addRuleMenu);
     QVERIFY(!add->isDefault());
+}
+
+void TestAppRulePanel::editorsFitPanelWidth()
+{
+    // O3: the editor area does not scroll to the side. The panel is never narrower than the
+    // widest editor, also at a larger font (ui-design 4.4).
+    Fixture f({"replace", "insert", "remove", "cleanup"});
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    auto *scroll = f.panel->findChild<QScrollArea *>(QStringLiteral("editorScroll"));
+    QVERIFY(scroll);
+    QCOMPARE(scroll->horizontalScrollBarPolicy(), Qt::ScrollBarAlwaysOff);
+
+    const auto check = [&](const char *when) {
+        int widest = 0;
+        for (QWidget *page : scroll->widget()->findChildren<RuleEditor *>())
+            widest = std::max(widest, page->minimumSizeHint().width());
+        QVERIFY2(widest > 0, when);
+        f.window.resize(1, 800); // the layout keeps the minimum width
+        QApplication::processEvents();
+        for (int row = 0; row < f.model.rowCount(); ++row) {
+            f.select(row);
+            QApplication::processEvents();
+            QWidget *editor = f.panel->currentEditor();
+            QVERIFY2(scroll->viewport()->width() >= editor->minimumSizeHint().width(),
+                     qPrintable(QStringLiteral("%1: %2 < %3")
+                                        .arg(QLatin1String(when))
+                                        .arg(scroll->viewport()->width())
+                                        .arg(editor->minimumSizeHint().width())));
+            QVERIFY2(editor->width() <= scroll->viewport()->width(), when);
+        }
+        QVERIFY2(f.panel->minimumSizeHint().width() >= widest, when);
+    };
+    check("default font");
+    QFont big = f.panel->font();
+    big.setPointSizeF(big.pointSizeF() * 1.6);
+    f.panel->setFont(big);
+    QApplication::processEvents();
+    check("large font");
 }
 
 #include "tst_app_rulepanel.moc"

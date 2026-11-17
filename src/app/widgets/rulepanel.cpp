@@ -36,6 +36,7 @@
 #include <QPushButton>
 #include <QRadioButton>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QStyledItemDelegate>
@@ -170,6 +171,42 @@ bool isDeleteKey(const QKeyEvent *event)
 #endif
     return false;
 }
+
+// The editor area scrolls only up and down. Its minimum width is that of the widest editor, so
+// the rule panel cannot be narrower than an editor (ui-design 4.4).
+class EditorScrollArea : public QScrollArea
+{
+public:
+    EditorScrollArea()
+    {
+        setObjectName(QStringLiteral("editorScroll"));
+        setWidgetResizable(true);
+        setFrameShape(QFrame::NoFrame);
+        setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    }
+
+    QSize minimumSizeHint() const override
+    {
+        QSize size = QScrollArea::minimumSizeHint();
+        if (widget()) {
+            // QStackedWidget gives the largest minimum of all its pages.
+            int width = widget()->minimumSizeHint().width() + 2 * frameWidth();
+            if (!style()->styleHint(QStyle::SH_ScrollBar_Transient, nullptr, this))
+                width += verticalScrollBar()->sizeHint().width();
+            size.setWidth(std::max(size.width(), width));
+        }
+        return size;
+    }
+
+protected:
+    bool viewportEvent(QEvent *event) override
+    {
+        // An editor changed its size (font, style, label column): the minimum width changes.
+        if (event->type() == QEvent::LayoutRequest)
+            updateGeometry();
+        return QScrollArea::viewportEvent(event);
+    }
+};
 
 } // namespace
 
@@ -310,9 +347,7 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     if (auto *replace =
                 qobject_cast<ReplaceEditor *>(m_editorByType.value(QStringLiteral("replace"))))
         connect(replace, &ReplaceEditor::syntaxHelpRequested, actions.regexHelp, &QAction::trigger);
-    m_scroll = new QScrollArea;
-    m_scroll->setWidgetResizable(true);
-    m_scroll->setFrameShape(QFrame::NoFrame);
+    m_scroll = new EditorScrollArea;
     m_scroll->setWidget(m_editors);
 
     auto *splitter = new QSplitter(Qt::Vertical);
