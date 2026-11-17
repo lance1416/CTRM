@@ -1,0 +1,188 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# CTRM continuous integration.
+#   lint:       always. Commit messages, clang-format, EditorConfig, shell scripts.
+#   build-test: only when code changed and a root CMakeLists.txt exists.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Keep in sync with expected_cf_major in .githooks/pre-commit.
+  CLANG_FORMAT_VERSION: "23.1.5"
+  EDITORCONFIG_CHECKER_VERSION: "3.11.1"
+  QT_VERSION: "6.8.*"
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      has-cmake: ${{ steps.cmake.outputs.present }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Filter changed paths
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          predicate-quantifier: every
+          filters: |
+            code:
+              - '**'
+              - '!**/*.md'
+              - '!docs/**'
+              - '!LICENSE'
+              - '!.editorconfig'
+              - '!.gitattributes'
+              - '!.gitignore'
+              - '!.clangd'
+              - '!.clang-format'
+              - '!.clang-tidy'
+              - '!.githooks/**'
+              - '!scripts/setup-dev.*'
+
+      - name: Check for root CMakeLists.txt
+        id: cmake
+        run: |
+          if [ -f CMakeLists.txt ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No root CMakeLists.txt. Build and test are skipped."
+          fi
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check commit messages
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+        run: |
+          case $EVENT in
+            pull_request) range="$PR_BASE..$PR_HEAD" ;;
+            push)
+              if [ -z "$PUSH_BEFORE" ] || [ "$PUSH_BEFORE" = 0000000000000000000000000000000000000000 ]; then
+                range="$PUSH_AFTER~1..$PUSH_AFTER"
+              else
+                range="$PUSH_BEFORE..$PUSH_AFTER"
+              fi
+              ;;
+            *) echo "No commit range for $EVENT. Skipped."; exit 0 ;;
+          esac
+          echo "Commit range: $range"
+          status=0
+          merges=$(git rev-list --merges "$range")
+          if [ -n "$merges" ]; then
+            echo "::error::Merge commits are not allowed (linear history): $merges"
+            status=1
+          fi
+          msg_file=$(mktemp)
+          for sha in $(git rev-list --no-merges "$range"); do
+            git log -1 --format=%B "$sha" > "$msg_file"
+            if ! sh .githooks/commit-msg "$msg_file"; then
+              echo "::error::Commit $sha has a bad message."
+              status=1
+            fi
+          done
+          exit "$status"
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+
+      - name: Install lint tools
+        run: |
+          python -m pip install --disable-pip-version-check \
+            "clang-format==$CLANG_FORMAT_VERSION" \
+            "editorconfig-checker==$EDITORCONFIG_CHECKER_VERSION"
+
+      - name: clang-format
+        run: |
+          clang-format --version
+          git ls-files -z -- '*.c' '*.cc' '*.cpp' '*.cxx' '*.h' '*.hh' '*.hpp' '*.hxx' \
+            '*.ipp' '*.inl' '*.mm' | xargs -0 -r clang-format --dry-run --Werror
+
+      - name: EditorConfig
+        run: ec
+
+      - name: ShellCheck
+        run: shellcheck -s sh .githooks/* scripts/*.sh
+
+  build-test:
+    name: Build and test (${{ matrix.name }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.has-cmake == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-24.04
+            qt-arch: linux_gcc_64
+          - name: macOS
+            os: macos-15
+            qt-arch: clang_64
+          - name: Windows
+            os: windows-2022
+            qt-arch: win64_msvc2022_64
+    env:
+      # Run Qt GUI tests without a display.
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgl-dev libegl-dev libxkbcommon-dev libfontconfig1-dev
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: ${{ matrix.qt-arch }}
+          cache: true
+
+      - name: Install Ninja
+        uses: seanmiddleditch/gha-setup-ninja@v6
+
+      - name: Set up MSVC environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure
+        run: cmake --preset ci
+
+      - name: Build
+        run: cmake --build --preset ci
+
+      - name: Test
+        run: ctest --preset ci
