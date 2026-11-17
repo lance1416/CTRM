@@ -38,6 +38,7 @@ private slots:
     void naturalOrder();
     void folderChildrenDirectOnly();
     void folderChildrenHidden();
+    void folderChildrenAppleDouble();
     void folderChildrenNatural();
     void folderChildrenSymlink();
     void folderChildrenUnsupportedNames();
@@ -127,6 +128,31 @@ void TestItemSource::folderChildrenHidden()
     QCOMPARE(itemNames(folderChildren(fs, "/f", false).items), QStringList({"v.txt"}));
     QCOMPARE(itemNames(folderChildren(fs, "/f", true).items),
              QStringList({".h", "attr.txt", "v.txt"}));
+}
+
+void TestItemSource::folderChildrenAppleDouble()
+{
+    // macOS keeps extended attributes of "X" in "._X" on some volumes (exFAT, FAT, SMB) and moves
+    // "._X" with "X". On macOS, "._X" is never an item when "X" is in the same folder.
+    FakeFileSystem fs;
+    fs.addFolder("/f");
+    fs.addFile("/f/a.txt");
+    fs.addFile("/f/._a.txt");
+    fs.addFile("/f/.h");
+    fs.addFile("/f/._.h");
+    fs.addFile("/f/._gone.txt"); // no "gone.txt": not a sidecar of an item
+    fs.addFile("/f/._A.TXT");    // not the exact name of "a.txt"
+
+    QStringList hidden = itemNames(folderChildren(fs, "/f", true).items);
+    hidden.sort();
+#ifdef Q_OS_MACOS
+    QCOMPARE(hidden, QStringList({"._A.TXT", "._gone.txt", ".h", "a.txt"}));
+#else
+    QCOMPARE(hidden, QStringList({"._.h", "._A.TXT", "._a.txt", "._gone.txt", ".h", "a.txt"}));
+#endif
+    QCOMPARE(itemNames(folderChildren(fs, "/f", false).items), QStringList({"a.txt"}));
+    // The conflict check still sees "._a.txt" as a name on disk.
+    QVERIFY(readFolderInfo(fs, "/f").names.contains(QStringLiteral("._a.txt")));
 }
 
 void TestItemSource::folderChildrenNatural()

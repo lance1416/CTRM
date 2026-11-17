@@ -5,6 +5,7 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QSet>
 
 #include <algorithm>
 
@@ -82,6 +83,24 @@ bool isHidden(const DirEntry &e)
 {
     return e.name.startsWith(u'.') || e.hiddenAttribute;
 }
+
+#ifdef Q_OS_MACOS
+// "._X" next to "X": the AppleDouble file in which macOS keeps the extended attributes of "X" on
+// volumes without them (exFAT, FAT, SMB). macOS moves it with "X", so it is never an item.
+QSet<QString> appleDoubleSidecars(const QList<DirEntry> &entries)
+{
+    QSet<QString> names;
+    for (const DirEntry &e : entries)
+        names.insert(e.name);
+    QSet<QString> sidecars;
+    for (const DirEntry &e : entries) {
+        if (e.name.size() > 2 && e.name.startsWith(QStringLiteral("._")) &&
+            names.contains(e.name.mid(2)))
+            sidecars.insert(e.name);
+    }
+    return sidecars;
+}
+#endif
 
 } // namespace
 
@@ -169,6 +188,9 @@ FolderChildren folderChildren(FileSystem &fs, const QString &folder, bool includ
         return result;
 
     const IdentityType type = fs.volumeInfo(path).identityType;
+#ifdef Q_OS_MACOS
+    const QSet<QString> sidecars = appleDoubleSidecars(*entries);
+#endif
     for (const DirEntry &e : *entries) {
         if (!e.nameSupported) {
             result.unsupportedNames.append(e.name);
@@ -176,6 +198,10 @@ FolderChildren folderChildren(FileSystem &fs, const QString &folder, bool includ
         }
         if (!includeHidden && isHidden(e))
             continue;
+#ifdef Q_OS_MACOS
+        if (sidecars.contains(e.name))
+            continue;
+#endif
         Item item;
         item.folder = path;
         item.name = e.name;

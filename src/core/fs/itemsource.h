@@ -31,6 +31,7 @@ struct FolderChildren
 
 // Direct children in natural order. Hidden items (leading '.' or hidden attribute) only when
 // includeHidden. Names that are not supported go to unsupportedNames, not to items.
+// On macOS, an AppleDouble file "._X" next to "X" is never an item (macOS moves it with "X").
 FolderChildren folderChildren(FileSystem &fs, const QString &folder, bool includeHidden);
 
 } // namespace ctrm
