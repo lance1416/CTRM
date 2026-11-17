@@ -8,6 +8,7 @@
 class QComboBox;
 class QFormLayout;
 class QLabel;
+class QLayout;
 class QToolButton;
 class QWidget;
 
@@ -19,8 +20,10 @@ QFormLayout *makeForm(QWidget *parent);
 
 // A radio or check box group as one field: a grid, margins 0, spacing from the style. The
 // sub-fields of the inline fields in controls start on one line; the group takes their widgets
-// and deletes the inline field widgets.
-QWidget *makeFieldGroup(const QList<QWidget *> &controls);
+// and deletes the inline field widgets. It is a layout, not a widget: the visible edge of its
+// controls is the field edge also on a style that draws a control inside its widget (macOS).
+// Add it to a form with QFormLayout::addRow; the form becomes the parent of its widgets.
+QLayout *makeFieldGroup(const QList<QWidget *> &controls);
 
 // A control with its sub-fields on one line: QHBoxLayout, margins 0.
 QWidget *makeInlineField(QWidget *first, const QList<QWidget *> &more);

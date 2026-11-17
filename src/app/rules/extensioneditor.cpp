@@ -55,7 +55,7 @@ ExtensionEditor::ExtensionEditor(QWidget *parent)
     m_actions->button(int(Action::Lower))->setChecked(true);
 
     QFormLayout *f = form();
-    QWidget *actionGroup = makeFieldGroup(actionRows);
+    QLayout *actionGroup = makeFieldGroup(actionRows);
     f->addRow(tr("Action:"), actionGroup);
     alignLabelToFirstRow(qobject_cast<QLabel *>(f->labelForField(actionGroup)),
                          m_actions->button(int(Action::Lower)));

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "layoutedge.h"
 #include "rules/ruleeditor.h"
 #include "widgets/formutils.h"
 #include "widgets/itemviewpaint.h"
@@ -55,7 +56,7 @@ struct CaseForm
             radios.append(radio);
             controls.append(radio);
         }
-        QWidget *group = makeFieldGroup(controls);
+        QLayout *group = makeFieldGroup(controls);
         caseLabel = new QLabel(QStringLiteral("Case:"));
         form->addRow(caseLabel, group);
         alignLabelToFirstRow(caseLabel, radios.first());
@@ -93,7 +94,7 @@ struct CaseForm
     {
         QList<int> edges;
         for (QWidget *w : QList<QWidget *>{radios.first(), text, applyTo, check, more->button()})
-            edges.append(w->mapTo(window.get(), QPoint(0, 0)).x());
+            edges.append(ctrm::test::visualLeft(w, window.get()));
         return edges;
     }
 };
@@ -251,7 +252,7 @@ void TestAppForms::labelColumnSync()
     QWidget *label1 = form1->itemAt(0, QFormLayout::LabelRole)->widget();
     QWidget *label2 = form2->itemAt(0, QFormLayout::LabelRole)->widget();
     QCOMPARE(label1->width(), label2->width());
-    QCOMPARE(edit1->mapTo(&window, QPoint(0, 0)).x(), edit2->mapTo(&window, QPoint(0, 0)).x());
+    QCOMPARE(ctrm::test::visualLeft(edit1, &window), ctrm::test::visualLeft(edit2, &window));
 }
 
 void TestAppForms::moreOptionsToggles()
@@ -392,8 +393,8 @@ void TestAppForms::fieldError()
     QVERIFY(label);
     QCOMPARE(label->text(), QStringLiteral("The pattern is not correct."));
     // The error is in the field column, on the field edge.
-    QCOMPARE(errorRow->mapTo(&editor, QPoint(0, 0)).x(),
-             editor.field->mapTo(&editor, QPoint(0, 0)).x());
+    QCOMPARE(ctrm::test::visualLeft(errorRow, &editor),
+             ctrm::test::visualLeft(editor.field, &editor));
 
     editor.showFieldError(0, QStringLiteral("Other text."));
     QCOMPARE(form->rowCount(), 3);
@@ -423,9 +424,11 @@ void TestAppForms::inlineField()
     QCOMPARE(field->layout()->contentsMargins(), QMargins());
     QCOMPARE(radio->parent(), field.get());
     QCOMPARE(spin->parent(), field.get());
-    std::unique_ptr<QWidget> group(makeFieldGroup({new QCheckBox, new QCheckBox}));
-    QCOMPARE(group->layout()->contentsMargins(), QMargins());
-    QVERIFY(qobject_cast<QGridLayout *>(group->layout()));
+    QWidget holder;
+    std::unique_ptr<QLayout> group(
+            makeFieldGroup({new QCheckBox(&holder), new QCheckBox(&holder)}));
+    QCOMPARE(group->contentsMargins(), QMargins());
+    QVERIFY(qobject_cast<QGridLayout *>(group.get()));
 }
 
 void TestAppForms::formStartsAtLeft()
@@ -472,15 +475,17 @@ void TestAppForms::inlineSubFieldsAligned()
     auto *field1 = new QLineEdit;
     auto *field2 = new QLineEdit;
     auto *plain = new QRadioButton(QStringLiteral("At end"));
-    QWidget *group = makeFieldGroup(
+    QLayout *group = makeFieldGroup(
             {makeInlineField(first, {field1}), makeInlineField(second, {field2}), plain});
-    layout->addWidget(group);
+    layout->addLayout(group);
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
-    QCOMPARE(field1->mapTo(&window, QPoint()).x(), field2->mapTo(&window, QPoint()).x());
-    QCOMPARE(first->mapTo(&window, QPoint()).x(), plain->mapTo(&window, QPoint()).x());
-    QCOMPARE(first->parentWidget(), group);
-    QCOMPARE(field2->parentWidget(), group);
+    QCOMPARE(ctrm::test::visualLeft(field1, &window), ctrm::test::visualLeft(field2, &window));
+    QCOMPARE(ctrm::test::visualLeft(first, &window), ctrm::test::visualLeft(plain, &window));
+    // The window is the parent: no group widget keeps a control inside it.
+    QCOMPARE(first->parentWidget(), &window);
+    QCOMPARE(field2->parentWidget(), &window);
+    QCOMPARE(plain->parentWidget(), &window);
 }
 
 void TestAppForms::tertiaryButtonFrame()

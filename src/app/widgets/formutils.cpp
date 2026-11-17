@@ -92,7 +92,50 @@ QFormLayout *makeForm(QWidget *parent)
     return form;
 }
 
-QWidget *makeFieldGroup(const QList<QWidget *> &controls)
+namespace {
+
+// The grid of a field group. A style can draw a control inside its widget rect and give layout
+// margins for that (macOS: radio and check boxes, combo boxes). QGridLayout keeps each widget
+// inside the layout rect, so the visible edge of the controls in column 0 moves in by that
+// margin. This grid starts that much before its rect: the visible edge is the field edge, as
+// for a control that is the field itself (ui-design 6.1 rule 2).
+class FieldGroupLayout : public QGridLayout
+{
+public:
+    using QGridLayout::QGridLayout;
+
+    void setGeometry(const QRect &rect) override
+    {
+        const bool rtl = parentWidget() && parentWidget()->isRightToLeft();
+        int inset = 0;
+        for (int i = 0; i < count(); ++i) {
+            int row = 0;
+            int column = 0;
+            int rowSpan = 0;
+            int columnSpan = 0;
+            getItemPosition(i, &row, &column, &rowSpan, &columnSpan);
+            QLayoutItem *item = itemAt(i);
+            QWidget *w = item->widget();
+            if (column != 0 || !w || w->isHidden())
+                continue;
+            // QWidgetItem::geometry is the layout item rect: the widget rect less the margins.
+            const QRect visible = item->geometry();
+            const QRect widget = w->geometry();
+            inset = std::max(inset, rtl ? widget.right() - visible.right()
+                                        : visible.left() - widget.left());
+        }
+        QRect r = rect;
+        if (rtl)
+            r.setRight(r.right() + inset);
+        else
+            r.setLeft(r.left() - inset);
+        QGridLayout::setGeometry(r);
+    }
+};
+
+} // namespace
+
+QLayout *makeFieldGroup(const QList<QWidget *> &controls)
 {
     // A grid: a control alone spans all columns. The sub-fields of inline fields start in
     // column 1, so they have one start line (ui-design 6.1 rule 14). The widgets of an inline
@@ -108,8 +151,10 @@ QWidget *makeFieldGroup(const QList<QWidget *> &controls)
                 if (QWidget *w = inner->itemAt(i)->widget())
                     row.append(w);
             }
-            for (QWidget *w : std::as_const(row))
+            for (QWidget *w : std::as_const(row)) {
                 inner->removeWidget(w);
+                w->setParent(nullptr); // the form becomes the parent; the inline field goes
+            }
         } else {
             row.append(control);
         }
@@ -117,8 +162,7 @@ QWidget *makeFieldGroup(const QList<QWidget *> &controls)
         rows.append(row);
     }
 
-    auto *group = new QWidget;
-    auto *layout = new QGridLayout(group);
+    auto *layout = new FieldGroupLayout;
     layout->setContentsMargins(0, 0, 0, 0);
     for (int r = 0; r < rows.size(); ++r) {
         const QList<QWidget *> &row = rows.at(r);
@@ -134,7 +178,7 @@ QWidget *makeFieldGroup(const QList<QWidget *> &controls)
         if (control->property(kInlineFieldProperty).toBool())
             delete control; // its widgets are in the grid now
     }
-    return group;
+    return layout;
 }
 
 QWidget *makeInlineField(QWidget *first, const QList<QWidget *> &more)

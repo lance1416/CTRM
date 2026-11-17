@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "layoutedge.h"
 #include "rules/chainoptionswidget.h"
 #include "rules/changecaseeditor.h"
 #include "rules/changecaserule.h"
@@ -68,8 +69,11 @@ int fieldEdge(QFormLayout *form)
 {
     for (int row = 0; row < form->rowCount(); ++row) {
         QLayoutItem *item = form->itemAt(row, QFormLayout::FieldRole);
-        if (item && item->widget() && form->isRowVisible(row))
-            return item->widget()->geometry().x() - form->geometry().x();
+        if (!item || !form->isRowVisible(row))
+            continue;
+        const QList<int> lefts = ctrm::test::fieldVisualLefts(item, form->parentWidget());
+        if (!lefts.isEmpty())
+            return lefts.first() - form->geometry().x(); // the visible edge
     }
     return -1;
 }
@@ -126,7 +130,12 @@ void TestAppEditors2::caseLabelAligned()
     Fixture<ChangeCaseEditor, ChangeCaseRule> f;
     QVERIFY(QTest::qWaitForWindowExposed(f.editor.get()));
     auto *lower = child<QRadioButton>(f.editor.get(), "lower");
-    auto *label = qobject_cast<QLabel *>(f.editor->form()->labelForField(lower->parentWidget()));
+    QFormLayout *form = f.editor->form();
+    QLabel *label = nullptr;
+    for (int row = 0; row < form->rowCount() && !label; ++row) {
+        if (ctrm::test::itemHolds(form->itemAt(row, QFormLayout::FieldRole), lower))
+            label = qobject_cast<QLabel *>(form->itemAt(row, QFormLayout::LabelRole)->widget());
+    }
     QVERIFY(label);
     QCOMPARE(label->text(), QStringLiteral("Case:"));
     const QFontMetrics lfm(label->font());

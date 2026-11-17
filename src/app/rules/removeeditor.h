@@ -9,6 +9,7 @@
 
 class QCheckBox;
 class QComboBox;
+class QLayout;
 class QLineEdit;
 class QSpinBox;
 
@@ -43,7 +44,7 @@ private:
     QSpinBox *m_from;
     QCheckBox *m_rangeFromEnd;
     QSpinBox *m_count;
-    QWidget *m_classesGroup;
+    QLayout *m_classesGroup;
     QList<std::pair<QCheckBox *, quint32>> m_classes;
     QLineEdit *m_customText;
     QLineEdit *m_open;

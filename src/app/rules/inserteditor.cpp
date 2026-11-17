@@ -50,7 +50,7 @@ InsertEditor::InsertEditor(QWidget *parent)
 
     QFormLayout *f = form();
     f->addRow(tr("&Text:"), m_text);
-    QWidget *positions =
+    QLayout *positions =
             makeFieldGroup({m_prefix, m_suffix, makeInlineField(m_atIndex, {m_index, m_fromEnd})});
     f->addRow(tr("Position:"), positions);
     alignLabelToFirstRow(qobject_cast<QLabel *>(f->labelForField(positions)), m_prefix);

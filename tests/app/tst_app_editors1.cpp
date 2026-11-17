@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "layoutedge.h"
 #include "rules/cleanupeditor.h"
 #include "rules/cleanuprule.h"
 #include "rules/inserteditor.h"
@@ -40,9 +41,7 @@ T *child(QWidget *editor, const char *name)
 int rowOf(QFormLayout *form, QWidget *w)
 {
     for (int row = 0; row < form->rowCount(); ++row) {
-        QLayoutItem *item = form->itemAt(row, QFormLayout::FieldRole);
-        QWidget *field = item ? item->widget() : nullptr;
-        if (field && (field == w || field->isAncestorOf(w)))
+        if (ctrm::test::itemHolds(form->itemAt(row, QFormLayout::FieldRole), w))
             return row;
     }
     return -1;
@@ -61,9 +60,8 @@ QList<int> fieldEdges(RuleEditor *editor)
     QFormLayout *form = editor->form();
     for (int row = 0; row < form->rowCount(); ++row) {
         QLayoutItem *item = form->itemAt(row, QFormLayout::FieldRole);
-        QWidget *field = item ? item->widget() : nullptr;
-        if (field && form->isRowVisible(row))
-            edges.append(field->mapTo(editor, QPoint(0, 0)).x());
+        if (item && form->isRowVisible(row))
+            edges.append(ctrm::test::fieldVisualLefts(item, editor));
     }
     return edges;
 }
@@ -340,14 +338,14 @@ void TestAppEditors1::removeModeRows()
     QVERIFY(rowVisible(e, from) && rowVisible(e, count));
     QVERIFY(!rowVisible(e, digits) && !rowVisible(e, open) && !rowVisible(e, keep));
     QVERIFY(QTest::qWaitForWindowExposed(e));
-    const int edge = applyTo->mapTo(e, QPoint(0, 0)).x();
+    const int edge = ctrm::test::visualLeft(applyTo, e);
 
     selectData(child<QComboBox>(e, "mode"), int(RemoveRule::Mode::Characters));
     QVERIFY(!rowVisible(e, from) && !rowVisible(e, count));
     QVERIFY(rowVisible(e, digits) && !rowVisible(e, open));
     QVERIFY(rowVisible(e, applyTo));
     QApplication::processEvents();
-    QCOMPARE(applyTo->mapTo(e, QPoint(0, 0)).x(), edge);
+    QCOMPARE(ctrm::test::visualLeft(applyTo, e), edge);
     QVERIFY(oneFieldEdge(e));
 
     selectData(child<QComboBox>(e, "mode"), int(RemoveRule::Mode::Between));

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "actions.h"
+#include "layoutedge.h"
 #include "models/rulelistmodel.h"
 #include "rules/chainoptionswidget.h"
 #include "rules/changecaserule.h"
@@ -70,8 +71,11 @@ int fieldEdge(QFormLayout *form)
 {
     for (int row = 0; row < form->rowCount(); ++row) {
         QLayoutItem *item = form->itemAt(row, QFormLayout::FieldRole);
-        if (item && item->widget() && form->isRowVisible(row))
-            return item->widget()->geometry().x() - form->geometry().x();
+        if (!item || !form->isRowVisible(row))
+            continue;
+        const QList<int> lefts = ctrm::test::fieldVisualLefts(item, form->parentWidget());
+        if (!lefts.isEmpty())
+            return lefts.first() - form->geometry().x(); // the visible edge
     }
     return -1;
 }

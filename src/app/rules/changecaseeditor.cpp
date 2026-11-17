@@ -51,7 +51,7 @@ ChangeCaseEditor::ChangeCaseEditor(QWidget *parent)
     m_cases->button(int(Case::Lower))->setChecked(true);
 
     QFormLayout *f = form();
-    QWidget *caseGroup = makeFieldGroup(radios);
+    QLayout *caseGroup = makeFieldGroup(radios);
     f->addRow(tr("Case:"), caseGroup);
     alignLabelToFirstRow(qobject_cast<QLabel *>(f->labelForField(caseGroup)), radios.first());
     f->addRow(tr("&Apply to:"), m_applyTo);

@@ -88,7 +88,7 @@ NumberingEditor::NumberingEditor(QWidget *parent)
     QWidget *paddingRow = makeInlineField(m_padding, {m_example});
     paddingRow->setFocusProxy(m_padding); // the label mnemonic goes to the combo box
     f->addRow(tr("&Padding:"), paddingRow);
-    QWidget *positionGroup = makeFieldGroup(positionRows);
+    QLayout *positionGroup = makeFieldGroup(positionRows);
     f->addRow(tr("Position:"), positionGroup);
     alignLabelToFirstRow(qobject_cast<QLabel *>(f->labelForField(positionGroup)),
                          m_positions->button(int(Position::Suffix)));
