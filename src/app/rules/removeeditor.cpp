@@ -89,7 +89,9 @@ RemoveEditor::RemoveEditor(QWidget *parent)
 
     QFormLayout *f = form();
     f->addRow(tr("&Mode:"), m_mode);
-    f->addRow(tr("&From:"), makeInlineField(m_from, {m_rangeFromEnd}));
+    QWidget *fromRow = makeInlineField(m_from, {m_rangeFromEnd});
+    fromRow->setFocusProxy(m_from); // the label mnemonic goes to the spin box
+    f->addRow(tr("&From:"), fromRow);
     f->addRow(tr("&Count:"), m_count);
     f->addRow(tr("Remove:"), m_classesGroup);
     alignLabelToFirstRow(qobject_cast<QLabel *>(f->labelForField(m_classesGroup)),
