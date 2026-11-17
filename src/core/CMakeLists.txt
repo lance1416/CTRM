@@ -43,3 +43,4 @@ qt_add_resources(ctrm_core "builtin_presets"
         presets/builtin/spaces-to-underscores.ctrm.json
 )
 ctrm_set_warnings(ctrm_core)
+ctrm_autogen_track_sources(ctrm_core)

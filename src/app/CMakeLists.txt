@@ -11,6 +11,7 @@ add_library(ctrm_app STATIC ${CTRM_APP_SOURCES} ${CTRM_APP_RESOURCES})
 target_include_directories(ctrm_app PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(ctrm_app PUBLIC ctrm_core Qt6::Widgets PRIVATE Qt6::Svg)
 ctrm_set_warnings(ctrm_app)
+ctrm_autogen_track_sources(ctrm_app)
 
 qt_add_executable(ctrm main.cpp)
 set_target_properties(ctrm PROPERTIES
