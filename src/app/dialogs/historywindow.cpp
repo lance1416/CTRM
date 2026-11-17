@@ -77,8 +77,14 @@ HistoryWindow::HistoryWindow(HistoryStore &store, QWidget *parent)
     m_batches->setSelectionMode(QAbstractItemView::SingleSelection);
     m_batches->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_batches->verticalHeader()->hide();
-    m_batches->horizontalHeader()->setStretchLastSection(true);
+    m_batches->setShowGrid(false);
     m_batches->setTextElideMode(Qt::ElideMiddle);
+    m_batches->setWordWrap(false);
+    // The folder is the useful part: it gets the free width (ui-design 10.1).
+    QHeaderView *header = m_batches->horizontalHeader();
+    header->setStretchLastSection(false);
+    header->setSectionResizeMode(QHeaderView::ResizeToContents);
+    header->setSectionResizeMode(HistoryModel::Folders, QHeaderView::Stretch);
 
     m_operations->setHorizontalHeaderLabels({tr("Old name"), tr("New name"), tr("Result")});
     m_operationTable->setObjectName(QStringLiteral("historyOperations"));
@@ -86,6 +92,7 @@ HistoryWindow::HistoryWindow(HistoryStore &store, QWidget *parent)
     m_operationTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_operationTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_operationTable->verticalHeader()->hide();
+    m_operationTable->setShowGrid(false);
     m_operationTable->horizontalHeader()->setStretchLastSection(true);
     m_operationTable->setTextElideMode(Qt::ElideMiddle);
 
@@ -198,6 +205,7 @@ void HistoryWindow::showDetail(const BatchSummary *s)
     m_detailError->clear();
     m_detailError->hide();
     m_detailKeep->hide();
+    m_operationTable->setVisible(!(s && s->damaged));
     QPushButton *primary = nullptr;
     const bool damaged = s && s->damaged;
     const bool undoBatch = s && !damaged && !s->undoOf.isEmpty();

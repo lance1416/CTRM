@@ -20,14 +20,17 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QDialogButtonBox>
 #include <QDir>
 #include <QFile>
+#include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSettings>
 #include <QTableView>
 #include <QTemporaryDir>
+#include <QTimeZone>
 #include <QtTest>
 
 #include <memory>
@@ -178,6 +181,7 @@ private slots:
     void clearTextDamaged();
     void undoAfterRestart();
     void undoPreviewTexts();
+    void tablesLayout();
 };
 
 void TestHistory::quickUndoNoPreview()
@@ -386,6 +390,44 @@ void TestHistory::damagedRow()
     QVERIFY(keep && keep->isVisibleTo(&w));
     QCOMPARE(keep->text(), QStringLiteral("CTRM keeps this file. To remove it, show it in the file "
                                           "manager and delete it there."));
+    // When from the file name (no milliseconds), Items empty, no operations table (H2).
+    const QDateTime stamp(QDate(2026, 11, 1), QTime(10, 0), QTimeZone::UTC);
+    QCOMPARE(model->data(model->index(row, HistoryModel::When)).toString(),
+             HistoryModel::whenText(stamp, QDateTime::currentDateTime()));
+    QCOMPARE(model->data(model->index(row, HistoryModel::Items)).toString(), QString());
+    QVERIFY(!w.findChild<QTableView *>(QStringLiteral("historyOperations"))->isVisibleTo(&w));
+    w.selectBatch(model->batch(row == 0 ? 1 : 0).batchId);
+    QVERIFY(w.findChild<QTableView *>(QStringLiteral("historyOperations"))->isVisibleTo(&w));
+
+    // No time in the file name: "Unknown".
+    BatchSummary noTime;
+    noTime.damaged = true;
+    noTime.batchId = QStringLiteral("x");
+    noTime.filePath = QStringLiteral("/h/x.jsonl");
+    HistoryModel m;
+    m.setBatches({noTime});
+    QCOMPARE(m.data(m.index(0, HistoryModel::When)).toString(), QStringLiteral("Unknown"));
+}
+
+void TestHistory::tablesLayout()
+{
+    Fixture f;
+    HistoryWindow w(f.ctx.history(), nullptr);
+    auto *batches = w.findChild<QTableView *>(QStringLiteral("historyBatches"));
+    auto *operations = w.findChild<QTableView *>(QStringLiteral("historyOperations"));
+    QVERIFY(batches && operations);
+    // G1: no grid, as in the main table.
+    QVERIFY(!batches->showGrid());
+    QVERIFY(!operations->showGrid());
+    // H1: the folder gets the free width and keeps its end.
+    QCOMPARE(batches->textElideMode(), Qt::ElideMiddle);
+    QVERIFY(!batches->horizontalHeader()->stretchLastSection());
+    QCOMPARE(batches->horizontalHeader()->sectionResizeMode(HistoryModel::Folders),
+             QHeaderView::Stretch);
+    QCOMPARE(batches->horizontalHeader()->sectionResizeMode(HistoryModel::State),
+             QHeaderView::ResizeToContents);
+    QCOMPARE(HistoryModel::displayPath(QDir::homePath() + QStringLiteral("/Pictures/Trip")),
+             QDir::toNativeSeparators(QStringLiteral("~/Pictures/Trip")));
 }
 
 void TestHistory::undoOfLabel()
@@ -560,13 +602,32 @@ void TestHistory::undoPreviewTexts()
     QCOMPARE(dialog.findChild<QLabel *>(QStringLiteral("undoFooter"))->text(),
              QStringLiteral("1 item cannot go back. It keeps its name."));
     QVERIFY(!dialog.findChild<QLabel *>(QStringLiteral("weakBar"))->isVisibleTo(&dialog));
+    QVERIFY(!dialog.findChild<QTableView *>(QStringLiteral("undoTable"))->showGrid());
+    // U1: the undo preview has no Refresh or Remove.
+    const QString missing = dialog.findChild<QTableView *>(QStringLiteral("undoTable"))
+                                    ->model()
+                                    ->index(0, 3)
+                                    .data()
+                                    .toString();
+    QCOMPARE(missing, QStringLiteral("Missing: not on disk, or changed after the batch."));
+    QVERIFY(dialog.findChild<QLabel *>(QStringLiteral("undoFooter"))->isVisibleTo(&dialog));
+    QVERIFY(!dialog.findChild<QLabel *>(QStringLiteral("undoReason"))->isVisibleTo(&dialog));
 
     p.passCount = 0;
     UndoPreviewDialog none(p, nullptr);
     run = none.findChild<QPushButton *>(QStringLiteral("undoRun"));
     QVERIFY(!run->isEnabled());
-    QCOMPARE(none.findChild<QLabel *>(QStringLiteral("undoReason"))->text(),
-             QStringLiteral("No item can go back."));
+    auto *reason = none.findChild<QLabel *>(QStringLiteral("undoReason"));
+    QCOMPARE(reason->text(), QStringLiteral("No item can go back."));
+    // U2: one line only, and the reason is directly to the left of the buttons.
+    QVERIFY(reason->isVisibleTo(&none));
+    QVERIFY(!none.findChild<QLabel *>(QStringLiteral("undoFooter"))->isVisibleTo(&none));
+    none.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&none));
+    auto *cancel = none.findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Cancel);
+    const int gap = std::min(cancel->mapTo(&none, QPoint()).x(), run->mapTo(&none, QPoint()).x()) -
+                    reason->mapTo(&none, QPoint(reason->width(), 0)).x();
+    QVERIFY2(gap >= 0 && gap < 60, qPrintable(QString::number(gap)));
 }
 
 QTEST_MAIN(TestHistory)

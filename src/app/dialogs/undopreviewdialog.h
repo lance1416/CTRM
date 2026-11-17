@@ -17,6 +17,8 @@ public:
 
     // "%n will go back · %n conflict(s) · %n missing"
     static QString countText(const ctrm::UndoPreview &preview);
+    // The Message column. Missing has its own text: the undo preview cannot refresh or remove.
+    static QString messageText(const ctrm::ItemPreview &preview);
 };
 
 } // namespace ctrm::app

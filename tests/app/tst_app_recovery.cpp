@@ -14,6 +14,7 @@
 #include "models/rulelistmodel.h"
 #include "rules/replacerule.h"
 #include "temptree.h"
+#include "widgets/tertiarybutton.h"
 
 #include <QAbstractItemModel>
 #include <QApplication>
@@ -188,6 +189,7 @@ private slots:
     void damagedNoRollBack();
     void normalTexts();
     void quitDuringBatchAskedAtNextStart();
+    void headingNextToIcon();
 };
 
 void TestAppRecovery::noPromptWhenClean()
@@ -301,6 +303,7 @@ void TestAppRecovery::openStepsShown()
     QVERIFY(m->index(1, 1).data().toString().contains(u".ctrm-tmp-7f3a-1"));
     QVERIFY(m->index(1, 1).data().toString().contains(u"temporary name"));
     QCOMPARE(m->index(1, 2).data().toString(), QStringLiteral("IMG_0411.JPG"));
+    QVERIFY(!table->showGrid()); // G1
     QCOMPARE(m->index(0, 0).data(Qt::AccessibleTextRole).toString(),
              QStringLiteral("/data/Trip/IMG_0412.JPG to temporary name .ctrm-tmp-7f3a-2"));
     QVERIFY(m->index(0, 1).data(Qt::ToolTipRole).toString().contains(u"/data/Trip/IMG_0412.JPG"));
@@ -322,6 +325,8 @@ void TestAppRecovery::openStepsCopyList()
     auto *copy = dialog.findChild<QToolButton *>(QStringLiteral("copyList"));
     QVERIFY(copy);
     QCOMPARE(copy->toolTip(), QStringLiteral("Copy List"));
+    QVERIFY(qobject_cast<TertiaryButton *>(copy)); // R2: no frame until hover
+    QVERIFY(!static_cast<TertiaryButton *>(copy)->framed());
     copy->click();
     const QStringList lines = QApplication::clipboard()->text().split(u'\n', Qt::SkipEmptyParts);
     QCOMPARE(lines.size(), 2);
@@ -471,6 +476,26 @@ void TestAppRecovery::quitDuringBatchAskedAtNextStart()
         QVERIFY2(QFile::exists(p), qPrintable(p));
     for (const BatchSummary &s : ctx.history().list())
         QCOMPARE(s.state, BatchState::RolledBack);
+}
+
+// R3: in both dialogs the heading stays at the top, next to the icon, and the body follows
+// it directly, also when the dialog is taller than it needs.
+void TestAppRecovery::headingNextToIcon()
+{
+    for (const bool damaged : {false, true}) {
+        RecoveryDialog dialog(infoWith({}, damaged), nullptr);
+        dialog.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+        dialog.resize(dialog.width(), dialog.height() + 200);
+        QApplication::processEvents();
+        auto *heading = dialog.findChild<QLabel *>(QStringLiteral("recoveryHeading"));
+        auto *body = dialog.findChild<QLabel *>(QStringLiteral("recoveryBody"));
+        const int headingTop = heading->mapTo(&dialog, QPoint()).y();
+        const int bodyTop = body->mapTo(&dialog, QPoint()).y();
+        QVERIFY2(headingTop < 40, qPrintable(QString::number(headingTop)));
+        QVERIFY2(bodyTop - (headingTop + heading->height()) < 20,
+                 qPrintable(QStringLiteral("%1 %2").arg(bodyTop).arg(headingTop)));
+    }
 }
 
 QTEST_MAIN(TestAppRecovery)

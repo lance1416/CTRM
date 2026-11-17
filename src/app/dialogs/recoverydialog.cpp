@@ -7,6 +7,7 @@
 #include "theme/icons.h"
 #include "theme/typography.h"
 #include "widgets/buttonstyle.h"
+#include "widgets/tertiarybutton.h"
 
 #include <QApplication>
 #include <QClipboard>
@@ -51,7 +52,8 @@ public:
         }
         QStyleOptionViewItem opt = option;
         initStyleOption(&opt, index);
-        const QString name = opt.text.section(u'\n', 0, 0);
+        // From the model: initStyleOption() changes the line break to QChar::LineSeparator.
+        const QString name = index.data(Qt::DisplayRole).toString().section(u'\n', 0, 0);
         opt.text.clear();
         const QWidget *widget = opt.widget;
         QStyle *style = widget ? widget->style() : QApplication::style();
@@ -215,9 +217,8 @@ RecoveryDialog::RecoveryDialog(const RecoveryInfo &info, QWidget *parent)
         auto *label = new QLabel(openStepsLabelText(n), this);
         label->setObjectName(QStringLiteral("openStepsLabel"));
         label->setFont(typeStyle(TypeToken::LabelStrong, font()));
-        auto *copy = new QToolButton(this);
+        auto *copy = new TertiaryButton(this);
         copy->setObjectName(QStringLiteral("copyList"));
-        copy->setAutoRaise(true);
         copy->setIcon(QIcon::fromTheme(QIcon::ThemeIcon::EditCopy,
                                        toolIcon(ToolIcon::Duplicate, palette())));
         copy->setToolTip(tr("Copy List"));
@@ -257,6 +258,7 @@ RecoveryDialog::RecoveryDialog(const RecoveryInfo &info, QWidget *parent)
         table->setTextElideMode(Qt::ElideMiddle);
         table->setWordWrap(false);
         table->verticalHeader()->hide();
+        table->setShowGrid(false);
         table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
         table->resizeRowsToContents();
         int height = table->horizontalHeader()->sizeHint().height() + (2 * table->frameWidth());
@@ -274,6 +276,9 @@ RecoveryDialog::RecoveryDialog(const RecoveryInfo &info, QWidget *parent)
         text->addWidget(note);
     }
 
+    // Extra height goes below the text, not between the heading and the body: the heading
+    // stays next to the icon (ui-design 9.10).
+    text->addStretch(1);
     auto *top = new QHBoxLayout;
     top->addWidget(icon, 0, Qt::AlignTop);
     top->addLayout(text, 1);

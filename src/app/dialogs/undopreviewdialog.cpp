@@ -46,6 +46,14 @@ std::optional<StateIcon> iconFor(Status s)
 
 } // namespace
 
+QString UndoPreviewDialog::messageText(const ItemPreview &preview)
+{
+    // The main window text says "Refresh or remove it."; the undo preview has no such actions.
+    if (preview.status == Status::Missing)
+        return tr("Missing: not on disk, or changed after the batch.");
+    return statusText(preview, false);
+}
+
 QString UndoPreviewDialog::countText(const UndoPreview &preview)
 {
     int conflicts = 0;
@@ -110,7 +118,7 @@ UndoPreviewDialog::UndoPreviewDialog(const UndoPreview &preview, QWidget *parent
         auto *state = new QStandardItem;
         if (const auto icon = iconFor(item.preview.status))
             state->setIcon(stateIcon(*icon, colors));
-        const QString message = statusText(item.preview, false);
+        const QString message = messageText(item.preview);
         state->setToolTip(message);
         state->setData(message, Qt::AccessibleTextRole);
         auto *current = new QStandardItem(item.currentName);
@@ -132,6 +140,7 @@ UndoPreviewDialog::UndoPreviewDialog(const UndoPreview &preview, QWidget *parent
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
     table->setTextElideMode(Qt::ElideMiddle);
     table->verticalHeader()->hide();
+    table->setShowGrid(false);
     table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     table->horizontalHeader()->setStretchLastSection(true);
     table->resizeColumnToContents(1);
@@ -143,7 +152,8 @@ UndoPreviewDialog::UndoPreviewDialog(const UndoPreview &preview, QWidget *parent
     footer->setText(blocked == 1
                             ? tr("1 item cannot go back. It keeps its name.")
                             : tr("%1 items cannot go back. They keep their names.").arg(blocked));
-    footer->setVisible(blocked > 0);
+    // With no item to undo, the reason next to the buttons says it (ui-design 10.2).
+    footer->setVisible(blocked > 0 && preview.passCount > 0);
 
     auto *reason = new QLabel(tr("No item can go back."), this);
     reason->setObjectName(QStringLiteral("undoReason"));
@@ -164,8 +174,8 @@ UndoPreviewDialog::UndoPreviewDialog(const UndoPreview &preview, QWidget *parent
     weakRow->addWidget(weakIcon, 0, Qt::AlignTop);
     weakRow->addWidget(weak, 1);
     auto *bottom = new QHBoxLayout;
-    bottom->addWidget(reason);
     bottom->addStretch(1);
+    bottom->addWidget(reason);
     bottom->addWidget(buttons);
     auto *layout = new QVBoxLayout(this);
     layout->addWidget(counts);

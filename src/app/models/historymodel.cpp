@@ -7,7 +7,9 @@
 
 #include <QApplication>
 #include <QDir>
+#include <QFileInfo>
 #include <QLocale>
+#include <QTimeZone>
 
 namespace ctrm::app {
 
@@ -49,14 +51,44 @@ QString HistoryModel::whenText(const QDateTime &time, const QDateTime &now)
     return tr("%1 %2").arg(locale.toString(local.date(), QStringLiteral("d MMM")), clock);
 }
 
+QDateTime HistoryModel::startedOf(const BatchSummary &s)
+{
+    if (s.started.isValid() || !s.damaged)
+        return s.started;
+    // A damaged journal with no readable header: the time in the file name, with or without
+    // milliseconds ("yyyyMMddTHHmmss[zzz]Z-<batchId>.jsonl").
+    const QString base = QFileInfo(s.filePath).fileName();
+    const QString stamp = base.left(base.indexOf(u'-'));
+    for (const QString &format :
+         {QStringLiteral("yyyyMMdd'T'HHmmsszzz'Z'"), QStringLiteral("yyyyMMdd'T'HHmmss'Z'")}) {
+        QDateTime t = QDateTime::fromString(stamp, format);
+        if (t.isValid()) {
+            t.setTimeZone(QTimeZone::UTC);
+            return t;
+        }
+    }
+    return {};
+}
+
 QString HistoryModel::displayPath(const QString &path)
 {
-    const QString home = QDir::homePath();
     QString shown = path;
-    if (shown == home)
-        shown = QStringLiteral("~");
-    else if (shown.startsWith(home + u'/'))
-        shown = u'~' + shown.mid(home.size());
+    // The home folder as "~", also when the path or the home folder has a symbolic link
+    // (macOS: /var is /private/var).
+    // Read once: the view asks for each cell, and canonicalPath() reads the disk.
+    static const QStringList homes{QDir::homePath(), QDir(QDir::homePath()).canonicalPath()};
+    for (const QString &home : homes) {
+        if (home.isEmpty() || home == u'/')
+            continue;
+        if (shown == home) {
+            shown = QStringLiteral("~");
+            break;
+        }
+        if (shown.startsWith(home + u'/')) {
+            shown = u'~' + shown.mid(home.size());
+            break;
+        }
+    }
     return QDir::toNativeSeparators(shown);
 }
 
@@ -124,10 +156,13 @@ QVariant HistoryModel::data(const QModelIndex &index, int role) const
     const BatchSummary &s = m_batches.at(index.row());
     if (role == Qt::DisplayRole || role == Qt::ToolTipRole) {
         switch (index.column()) {
-        case When:
-            return whenText(s.started, QDateTime::currentDateTime());
+        case When: {
+            const QDateTime started = startedOf(s);
+            return started.isValid() ? whenText(started, QDateTime::currentDateTime())
+                                     : tr("Unknown");
+        }
         case Items:
-            return QLocale().toString(s.itemCount);
+            return s.damaged ? QString() : QLocale().toString(s.itemCount);
         case Folders:
             if (role == Qt::ToolTipRole && s.undoOf.isEmpty()) {
                 QStringList shown;
