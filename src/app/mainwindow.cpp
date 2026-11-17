@@ -731,6 +731,10 @@ void MainWindow::connectActions()
     connect(a.showSteps, &QAction::toggled, m_flowStripSlot, &QWidget::setVisible);
     connect(a.highlightChanged, &QAction::toggled, m_table, &ItemTableView::setHighlightChanged);
     connect(m_actionBar, &ActionBar::addNumberingClicked, this, [this] {
+        if (const int off = offNumberingRule(); off >= 0) {
+            m_ruleModel.setEnabled(off, true);
+            return;
+        }
         if (auto *add = m_actions.addRuleMenu->findChild<QAction *>(
                     QStringLiteral("addRule_numbering")))
             add->trigger();
@@ -842,7 +846,17 @@ void MainWindow::updateConflictTip()
                 onlyDuplicates = false;
         }
     }
-    m_actionBar->setConflictTip(onlyDuplicates);
+    m_actionBar->setConflictTip(onlyDuplicates, offNumberingRule() + 1);
+}
+
+int MainWindow::offNumberingRule() const
+{
+    const ctrm::RuleChain &chain = m_ruleModel.chain();
+    for (int i = 0; i < chain.size(); ++i) {
+        if (chain.at(i)->type() == QLatin1StringView("numbering") && !chain.at(i)->enabled)
+            return i;
+    }
+    return -1;
 }
 
 void MainWindow::updateTablePage()

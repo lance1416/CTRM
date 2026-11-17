@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "actions.h"
 #include "appcontext.h"
 #include "controllers/itemadder.h"
 #include "exec/batchservice.h"
@@ -14,6 +15,7 @@
 #include "rules/numberingrule.h"
 #include "rules/replacerule.h"
 #include "temptree.h"
+#include "ui/windowstate.h"
 #include "widgets/actionbar.h"
 #include "widgets/emptystate.h"
 #include "widgets/flowstrip.h"
@@ -139,6 +141,7 @@ private slots:
     void addReadsFolderAgain();
     void activationReadsFolderAgain();
     void conflictTipShown();
+    void conflictTipNarrow();
     void conflictInActiveWindow();
     void activationWhileApplyingPreview();
     void tabOrder();
@@ -376,14 +379,16 @@ void TestMainWindow::activationReadsFolderAgain()
 
 void TestMainWindow::conflictTipShown()
 {
-    // S11: the tip is one line in the reason area of the action bar: no bar, no layout shift.
+    // S11, ui-design 9.3: "Same names:" and a link-style Add Numbering in the reason area of the
+    // action bar. No bar, no layout shift, no close button.
     Fixture f;
     f.window.show();
     f.addFiles({QStringLiteral("x1.txt"), QStringLiteral("x2.txt")});
     QVERIFY(!f.child<MessageBar>("conflictTip"));
     auto *tip = f.child<QLabel>("conflictTipText");
-    auto *add = f.child<QPushButton>("addNumberingButton");
+    auto *add = f.child<QToolButton>("addNumberingButton");
     QVERIFY(tip && add);
+    QVERIFY(qobject_cast<TertiaryButton *>(add));
     QVERIFY(f.window.actionBar()->isAncestorOf(tip));
     QVERIFY(f.window.actionBar()->isAncestorOf(add));
     QVERIFY(!f.shown(tip));
@@ -391,10 +396,13 @@ void TestMainWindow::conflictTipShown()
     f.window.ruleModel().insertRule(0, regexRemoveDigits());
     QVERIFY(f.shown(tip));
     QVERIFY(f.shown(add));
-    QCOMPARE(tip->text(), QStringLiteral("Same names."));
+    QVERIFY(f.shown(f.child<QLabel>("renameReason"))); // the blocked reason stays
+    QCOMPARE(tip->text(), QStringLiteral("Same names:"));
+    QCOMPARE(tip->toolTip(),
+             QStringLiteral("The new names are the same. Add a Numbering rule, or turn on \"Add "
+                            "a number to duplicate names\" in Chain options."));
     QCOMPARE(add->text(), QStringLiteral("Add Numbering"));
-    QVERIFY(!add->isDefault());
-    QVERIFY(!add->autoDefault());
+
     // The tip does not change the height of the bar or the place of the table.
     QCoreApplication::processEvents();
     const int barHeight = f.window.actionBar()->height();
@@ -404,11 +412,21 @@ void TestMainWindow::conflictTipShown()
     QCOMPARE(f.window.actionBar()->height(), barHeight);
     QCOMPARE(f.window.tableSlot()->geometry(), tableRect);
     f.window.actionBar()->setConflictTip(true);
+
     add->click();
     QCOMPARE(f.window.ruleModel().rowCount(), 2);
     QCOMPARE(f.window.ruleModel().chain().at(1)->type(), QStringLiteral("numbering"));
     QCOMPARE(f.window.currentPreview().summary.conflicts, 0);
     QVERIFY(!f.shown(tip));
+    QVERIFY(!f.shown(add));
+
+    // A Numbering rule that is off: the link turns it on.
+    f.window.ruleModel().setEnabled(1, false);
+    QVERIFY(f.shown(add));
+    QCOMPARE(add->text(), QStringLiteral("Turn On Rule 2"));
+    add->click();
+    QCOMPARE(f.window.ruleModel().rowCount(), 2);
+    QVERIFY(f.window.ruleModel().chain().at(1)->enabled);
     QVERIFY(!f.shown(add));
 
     // A conflict with a name on disk is not a duplicate in the batch: no tip.
@@ -419,6 +437,35 @@ void TestMainWindow::conflictTipShown()
     f.window.actions().refresh->trigger(); // the folder cache reads y.txt
     QCOMPARE(f.window.currentPreview().summary.conflicts, 3);
     QVERIFY(!f.shown(tip));
+}
+
+void TestMainWindow::conflictTipNarrow()
+{
+    // ui-design 9.3: when the action bar is too narrow, the tip text hides first.
+    QWidget parent;
+    const Actions actions = createActions(&parent);
+    ActionBar bar(actions, &parent);
+    PreviewSummary s;
+    s.willChange = 2;
+    s.conflicts = 2;
+    WindowStateInput in;
+    in.itemCount = 4;
+    in.enabledRuleCount = 1;
+    in.summary = s;
+    bar.setState(computeWindowState(in), s);
+    bar.setConflictTip(true);
+    parent.resize(2100, 200);
+    bar.setGeometry(0, 0, 2000, bar.sizeHint().height());
+    parent.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&parent));
+    auto *tip = bar.findChild<QLabel *>(QStringLiteral("conflictTipText"));
+    auto *add = bar.findChild<QToolButton *>(QStringLiteral("addNumberingButton"));
+    QVERIFY(tip->isVisible() && add->isVisible());
+    bar.resize(bar.minimumSizeHint().width() - tip->sizeHint().width(), bar.height());
+    QTRY_VERIFY(!tip->isVisible());
+    QVERIFY(add->isVisible());
+    bar.resize(2000, bar.height());
+    QTRY_VERIFY(tip->isVisible());
 }
 
 void TestMainWindow::conflictInActiveWindow()

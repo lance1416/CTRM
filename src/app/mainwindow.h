@@ -87,6 +87,7 @@ private:
     void previewReady(const ctrm::PreviewResult &result, quint64 generation);
     void updateWindowState();
     void updateConflictTip();
+    int offNumberingRule() const; // row of the first Numbering rule that is off, or -1
     void updateTablePage();
     void updateListActions();
     void setShowMode(ShowMode mode);

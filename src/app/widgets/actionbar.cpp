@@ -68,7 +68,7 @@ ActionBar::ActionBar(const Actions &actions, QWidget *parent)
     , m_reasonIcon(new QLabel(m_normalPage))
     , m_reason(new QLabel(m_normalPage))
     , m_tipText(new QLabel(m_normalPage))
-    , m_addNumbering(pushButton(QStringLiteral("addNumberingButton"), m_normalPage))
+    , m_addNumbering(new TertiaryButton(m_normalPage))
     , m_skip(pushButton(QStringLiteral("skipButton"), m_normalPage))
     , m_rename(pushButton(QStringLiteral("renameButton"), m_normalPage))
     , m_progressLabel(new QLabel(m_progressPage))
@@ -88,10 +88,16 @@ ActionBar::ActionBar(const Actions &actions, QWidget *parent)
     m_reason->setTextFormat(Qt::PlainText);
     m_tipText->setObjectName(QStringLiteral("conflictTipText"));
     m_tipText->setTextFormat(Qt::PlainText);
-    m_tipText->setText(tr("Same names."));
-    m_addNumbering->setText(tr("Add Numbering"));
-    m_addNumbering->setToolTip(tr("Add a Numbering rule, so that each name is different."));
-    connect(m_addNumbering, &QPushButton::clicked, this, &ActionBar::addNumberingClicked);
+    m_tipText->setText(tr("Same names:"));
+    m_tipText->setToolTip(tr("The new names are the same. Add a Numbering rule, or turn on \"Add "
+                             "a number to duplicate names\" in Chain options."));
+    // A link-style tertiary button: a fix, not a main action (5.1).
+    m_addNumbering->setObjectName(QStringLiteral("addNumberingButton"));
+    m_addNumbering->setAutoRaise(true);
+    m_addNumbering->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    m_addNumbering->setForegroundRole(QPalette::Link);
+    connect(m_addNumbering, &QToolButton::clicked, this, &ActionBar::addNumberingClicked);
+    updateLinkColor();
     connect(m_skip, &QPushButton::clicked, actions.skipAndRename, &QAction::trigger);
     connect(m_rename, &QPushButton::clicked, actions.rename, &QAction::trigger);
 
@@ -188,17 +194,36 @@ void ActionBar::setState(const WindowStateInfo &info, const ctrm::PreviewSummary
     updateAccent();
 }
 
-void ActionBar::setConflictTip(bool shown)
+void ActionBar::setConflictTip(bool shown, int offNumberingRule)
 {
     m_tipWanted = shown;
+    m_addNumbering->setText(offNumberingRule > 0 ? tr("Turn On Rule %1").arg(offNumberingRule)
+                                                 : tr("Add Numbering"));
     updateTip();
 }
 
 void ActionBar::updateTip()
 {
     const bool shown = m_tipWanted && m_info.state == WindowState::Blocked;
-    m_tipText->setVisible(shown);
     m_addNumbering->setVisible(shown);
+    m_tipText->setVisible(shown);
+    // ui-design 9.3: when the bar is too narrow, the tip text hides first; the link stays.
+    if (shown && m_normalPage->layout()->minimumSize().width() > m_normalPage->width() &&
+        isVisible())
+        m_tipText->setVisible(false);
+}
+
+void ActionBar::updateLinkColor()
+{
+    QPalette link;
+    link.setColor(QPalette::ButtonText, palette().color(QPalette::Link));
+    m_addNumbering->setPalette(link);
+}
+
+void ActionBar::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    updateTip();
 }
 
 void ActionBar::updateSummary(const ctrm::PreviewSummary &summary)
@@ -328,6 +353,7 @@ void ActionBar::changeEvent(QEvent *event)
     case QEvent::PaletteChange:
     case QEvent::StyleChange:
     case QEvent::FontChange:
+        updateLinkColor();
         updateReasonIcon();
         updateSummary(m_summary);
         updateAccent();

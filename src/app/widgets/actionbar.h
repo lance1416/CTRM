@@ -27,19 +27,20 @@ public:
     void setState(const WindowStateInfo &info, const ctrm::PreviewSummary &summary);
     void showProgress(int done, int total); // switches to progress + Cancel after 1 s
     void hideProgress();
-    // ui-design 9.3 (S11): "Same names. [Add Numbering]" in the reason area, when all conflicts
-    // are duplicate names in the batch.
-    void setConflictTip(bool shown);
+    // ui-design 9.3 (S11): "Same names: Add Numbering" right of the reason, when all conflicts
+    // are duplicate names in the batch. offNumberingRule > 0: the link says "Turn On Rule N".
+    void setConflictTip(bool shown, int offNumberingRule = 0);
     QPushButton *renameButton() const;
     QPushButton *skipButton() const;
 
 signals:
     void problemLinkClicked();  // sets filter to Problems
     void warningsLinkClicked(); // sets filter to Warnings
-    void addNumberingClicked();
+    void addNumberingClicked(); // also for "Turn On Rule N"
 
 protected:
     void changeEvent(QEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
 
 private:
     void updateSummary(const ctrm::PreviewSummary &summary);
@@ -47,6 +48,7 @@ private:
     void updateReasonIcon();
     void revealProgress();
     void updateTip();
+    void updateLinkColor();
     void announce(const QString &summaryText);
 
     Actions m_actions;
@@ -63,7 +65,7 @@ private:
     QLabel *m_reasonIcon;
     QLabel *m_reason;
     QLabel *m_tipText;
-    QPushButton *m_addNumbering;
+    QToolButton *m_addNumbering;
     bool m_tipWanted = false;
     QPushButton *m_skip;
     QPushButton *m_rename;
