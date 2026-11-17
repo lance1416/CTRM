@@ -369,7 +369,7 @@ private:
         // The tallest page, not the current one: the list height does not change when the
         // user selects another rule (R1-01).
         const int editorHint = tallestPage() + 2 * m_editor->frameWidth();
-        const int listHeight = std::clamp(total - editorHint, listMin, listHint);
+        const int listHeight = wholeRows(total - editorHint, listMin, listHint, editorHint, total);
         const QList<int> wanted{listHeight, std::max(0, total - listHeight)};
         if (sizes() != wanted) {
             const int before = sizes().value(0);
@@ -378,6 +378,32 @@ private:
                 m_list->scrollTo(m_list->currentIndex());
         }
     }
+
+    // The list height for the space that the tallest page leaves: whole rows only, so no row
+    // is cut. 3 rows stay when the page is then cut by about one field row or less; the fade
+    // and the scroll show the rest (R2-02).
+    int wholeRows(int space, int listMin, int listHint, int editorHint, int total) const
+    {
+        const int row = m_list->sizeHintForRow(0);
+        if (row <= 0)
+            return std::clamp(space, listMin, listHint);
+        // The list page has the list and its tool buttons: the list part is whole rows.
+        const int listOnly = m_list->sizeHint().height();
+        const int overhead = listHint - listOnly;
+        const int frames = listOnly - (listOnly - 2 * m_list->frameWidth()) / row * row;
+        const int maxRows = (listOnly - frames) / row;
+        const auto height = [&](int rows) {
+            return std::max(listMin, overhead + frames + rows * row);
+        };
+        const int rows = std::clamp((space - overhead - frames) / row, 1, maxRows);
+        const int keep = std::min(kKeptRows, maxRows);
+        if (rows < keep && editorHint - (total - height(keep)) <= kMaxCut)
+            return height(keep);
+        return height(rows);
+    }
+
+    static constexpr int kKeptRows = 3;
+    static constexpr int kMaxCut = 40; // about one field row (ui-design 4.4)
 
     int tallestPage() const
     {
@@ -493,7 +519,12 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     auto *listLayout = new QVBoxLayout(listPage);
     listLayout->setContentsMargins(0, 0, 0, 0);
     listLayout->addWidget(m_list);
-    listLayout->addLayout(buttonRow);
+    // The tool buttons keep their height (the macOS style gives a lower minimum), so the list
+    // gets the rest of the page in whole rows (R2-02).
+    auto *buttonBar = new QWidget;
+    buttonBar->setLayout(buttonRow);
+    buttonBar->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    listLayout->addWidget(buttonBar);
 
     // The editor pages, one for each rule type, in a scroll area.
     m_editors->addWidget(m_noRulePage);

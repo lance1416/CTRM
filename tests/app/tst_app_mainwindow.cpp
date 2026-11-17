@@ -40,6 +40,7 @@
 #include <QScrollArea>
 #include <QSettings>
 #include <QSplitter>
+#include <QStackedWidget>
 #include <QStatusBar>
 #include <QTableView>
 #include <QTemporaryDir>
@@ -132,6 +133,7 @@ private slots:
     void contextStores();
     void editorGetsHeightAtMinimum();
     void listHeightStableOnSelect();
+    void listWholeRows();
     void splitterDoubleClickRefits();
     void splitterHandlesPlain();
     void focusEditorFirstField();
@@ -893,6 +895,45 @@ void TestMainWindow::listHeightStableOnSelect()
         QApplication::processEvents();
         QCOMPARE(list->height(), high);
     }
+}
+
+void TestMainWindow::listWholeRows()
+{
+    // R2-02 (ui-design 4.4): the list shows whole rows only. It keeps 3 rows when the tallest
+    // page is then cut by about one field row (40 px) or less.
+    Fixture f;
+    f.window.show();
+    f.window.resize(1200, 760);
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    for (const char *type : {"numbering", "remove", "replace", "insert", "changeCase"})
+        f.addRuleAction(QString::fromLatin1(type))->trigger();
+    QApplication::processEvents();
+    auto *list = f.child<QListView>("ruleList");
+    auto *scroll = f.child<QScrollArea>("editorScroll");
+    auto *pages = qobject_cast<QStackedWidget *>(scroll->widget());
+    QVERIFY(list && pages);
+    const int row = list->sizeHintForRow(0);
+    const int frames = 2 * list->frameWidth();
+    int tallest = 0;
+    for (int i = 0; i < pages->count(); ++i)
+        tallest = std::max(tallest, pages->widget(i)->sizeHint().height());
+    bool keptCut = false;
+    for (int h = f.window.minimumHeight(); h <= 1100; h += 7) {
+        f.window.resize(1200, h);
+        QApplication::processEvents();
+        const QString at = QStringLiteral("height %1: list %2").arg(h).arg(list->height());
+        QVERIFY2((list->height() - frames) % row == 0, qPrintable(at));
+        const int rows = (list->height() - frames) / row;
+        QVERIFY2(rows >= 1 && rows <= 5, qPrintable(at));
+        const int cut = tallest + 2 * scroll->frameWidth() - scroll->height();
+        if (rows < 3) // 3 rows would cut the tallest page by more than 40 px
+            QVERIFY2(cut + (3 - rows) * row > 40, qPrintable(at));
+        if (rows == 3 && cut > 0)
+            keptCut = true; // the fade and the scroll show the rest
+        if (rows > 3)
+            QVERIFY2(cut <= 0, qPrintable(at)); // more rows only when the page fits
+    }
+    QVERIFY(keptCut);
 }
 
 void TestMainWindow::splitterDoubleClickRefits()
