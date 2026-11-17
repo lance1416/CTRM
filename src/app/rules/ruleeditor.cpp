@@ -6,12 +6,15 @@
 #include "theme/typography.h"
 #include "widgets/formutils.h"
 
+#include <QComboBox>
 #include <QEvent>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QVBoxLayout>
+
+#include <algorithm>
 
 namespace ctrm::app {
 
@@ -124,10 +127,38 @@ void RuleEditor::emitEdited()
     emit ruleEdited();
 }
 
+bool RuleEditor::event(QEvent *event)
+{
+    if (event->type() == QEvent::Polish)
+        matchComboWidths(); // the subclass has added its rows
+    return QWidget::event(event);
+}
+
+void RuleEditor::matchComboWidths()
+{
+    QList<QComboBox *> combos;
+    for (int row = 0; row < m_form->rowCount(); ++row) {
+        QLayoutItem *item = m_form->itemAt(row, QFormLayout::FieldRole);
+        if (auto *combo = qobject_cast<QComboBox *>(item ? item->widget() : nullptr))
+            combos.append(combo);
+    }
+    int widest = 0;
+    for (QComboBox *combo : std::as_const(combos)) {
+        combo->setMinimumWidth(0);
+        widest = std::max(widest, combo->sizeHint().width());
+    }
+    for (QComboBox *combo : std::as_const(combos))
+        combo->setMinimumWidth(widest);
+}
+
 void RuleEditor::changeEvent(QEvent *event)
 {
     if (event->type() == QEvent::FontChange)
         updateFonts();
+    if (event->type() == QEvent::FontChange || event->type() == QEvent::StyleChange) {
+        // The combo boxes get the change after this widget.
+        QTimer::singleShot(0, this, [this] { matchComboWidths(); });
+    }
     if (event->type() == QEvent::PaletteChange || event->type() == QEvent::StyleChange) {
         for (const QPointer<QWidget> &row : std::as_const(m_errorRows)) {
             if (row)

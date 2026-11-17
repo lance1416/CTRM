@@ -115,6 +115,7 @@ private slots:
     void extensionWritesRule();
     void inlineFieldsFullHeight();
     void tabOrderFollowsRows();
+    void comboWidthsMatch();
     void extensionFolderNote();
     void chainOptionsDefaults();
     void chainOptionsChangedCount();
@@ -373,6 +374,31 @@ bool fieldsFullHeight(const QStringList &names, const std::function<void(Editor 
 }
 
 } // namespace
+
+void TestAppEditors2::comboWidthsMatch()
+{
+    // M25 (ui-design 6.1 rule 8): combo boxes alone on their row have one width; Padding keeps
+    // its size hint; the separator field is for a few characters.
+    Fixture<NumberingEditor, NumberingRule> numbering;
+    NumberingEditor *n = numbering.editor.get();
+    QVERIFY(QTest::qWaitForWindowExposed(n));
+    auto *scope = child<QComboBox>(n, "scope");
+    auto *applyTo = child<QComboBox>(n, "applyTo");
+    auto *padding = child<QComboBox>(n, "padding");
+    QCOMPARE(scope->width(), applyTo->width());
+    QCOMPARE(padding->width(), padding->sizeHint().width());
+    auto *separator = child<QLineEdit>(n, "separator");
+    QCOMPARE(separator->minimumWidth(), separator->maximumWidth());
+    QVERIFY(separator->width() < scope->width() / 2);
+
+    std::unique_ptr<RuleEditor> replace(createRuleEditor(QStringLiteral("replace"), nullptr));
+    replace->resize(480, 640);
+    replace->show();
+    QVERIFY(QTest::qWaitForWindowExposed(replace.get()));
+    const int mode = child<QComboBox>(replace.get(), "mode")->width();
+    QCOMPARE(child<QComboBox>(replace.get(), "occurrence")->width(), mode);
+    QCOMPARE(child<QComboBox>(replace.get(), "applyTo")->width(), mode);
+}
 
 void TestAppEditors2::tabOrderFollowsRows()
 {

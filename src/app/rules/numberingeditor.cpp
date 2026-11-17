@@ -62,6 +62,7 @@ NumberingEditor::NumberingEditor(QWidget *parent)
     m_index->setRange(0, kMaxSpin);
     m_index->setAccessibleName(tr("Index"));
     m_separator->setText(defaults.separator);
+    setCharacterWidth(m_separator, 3); // one or a few characters (ui-design 6.1 rule 8)
     m_orderNote->setWordWrap(true);
     makeDimCaption(m_orderNote, this);
 

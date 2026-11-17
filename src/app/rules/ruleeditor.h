@@ -42,8 +42,13 @@ protected:
     // Emits ruleEdited() now. A pending text change is part of this signal.
     void emitEdited();
     void changeEvent(QEvent *event) override;
+    bool event(QEvent *event) override;
 
 private:
+    // Combo boxes alone on their form row get the widest size hint of them (ui-design 6.1
+    // rule 8, M25).
+    void matchComboWidths();
+
     void updateFonts();
 
     QLabel *m_title;
