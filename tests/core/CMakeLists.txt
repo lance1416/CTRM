@@ -15,3 +15,6 @@ ctrm_set_warnings(ctrm_crash_helper)
 add_dependencies(tst_safety ctrm_crash_helper)
 target_compile_definitions(tst_safety PRIVATE
     CTRM_CRASH_HELPER="$<TARGET_FILE:ctrm_crash_helper>")
+
+# Timing tests (QSKIP in Debug). The Release perf job runs only this label.
+set_tests_properties(tst_previewengine PROPERTIES LABELS perf)
