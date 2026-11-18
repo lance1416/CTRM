@@ -199,7 +199,7 @@ void ItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option,
     if (rtl)
         band.moveRight(textRect.right() - x0);
     QColor colour = opt.palette.color(QPalette::Highlight);
-    colour.setAlphaF(0.25);
+    colour.setAlphaF(0.25F);
     painter->fillRect(band, colour);
 }
 

@@ -30,8 +30,8 @@ constexpr int kStepperWidth = tokens::iconXs + 2 * tokens::space1;
 constexpr int kStepperGap = tokens::space1 / 2;
 // The primary button: 8% lighter on hover, 8% darker when pressed (design-tokens 4.5).
 // A disabled push button has its fill at 50%; a disabled icon at 35%.
-constexpr qreal kDisabledFill = 0.5;
-constexpr qreal kDisabledIcon = 0.35;
+constexpr float kDisabledFill = 0.5F;
+constexpr float kDisabledIcon = 0.35F;
 // The focus ring is 2 px inside the widget: Qt clips each widget to its rectangle, so the
 // design ring (3 px outside) has no space.
 constexpr qreal kFocusRingWidth = 2.0;

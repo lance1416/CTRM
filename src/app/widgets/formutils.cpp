@@ -161,26 +161,26 @@ public:
         const QRect r = rect.adjusted(0, 0, 0, -std::min(m_padBelow, rect.height()));
         QWidget *w = widget();
         const QSize hint = sizeHint();
-        const Qt::Alignment align = QStyle::visualAlignment(w->layoutDirection(), alignment());
+        const Qt::Alignment aligned = QStyle::visualAlignment(w->layoutDirection(), alignment());
         int width = std::min(r.width(), w->maximumWidth());
-        if (align & Qt::AlignHorizontal_Mask)
+        if (aligned & Qt::AlignHorizontal_Mask)
             width = std::min(width, hint.width());
         width = std::max(width, std::min(r.width(), w->minimumWidth()));
         int height = w->hasHeightForWidth() ? w->heightForWidth(width) : hint.height();
-        if (!(align & Qt::AlignVertical_Mask) &&
+        if (!(aligned & Qt::AlignVertical_Mask) &&
             (w->sizePolicy().verticalPolicy() & QSizePolicy::GrowFlag))
             height = r.height();
         height = std::clamp(height, w->minimumHeight(),
                             std::max(w->minimumHeight(), std::min(r.height(), w->maximumHeight())));
         int x = r.x();
-        if (align & Qt::AlignRight)
+        if (aligned & Qt::AlignRight)
             x = r.right() + 1 - width;
-        else if (align & Qt::AlignHCenter)
+        else if (aligned & Qt::AlignHCenter)
             x = r.x() + (r.width() - width) / 2;
         int y = r.y() + (r.height() - height) / 2; // centred, as a form row (6.1 rule 15)
-        if (align & Qt::AlignTop)
+        if (aligned & Qt::AlignTop)
             y = r.y();
-        else if (align & Qt::AlignBottom)
+        else if (aligned & Qt::AlignBottom)
             y = r.bottom() + 1 - height;
         w->setGeometry(x, y, width, height);
     }

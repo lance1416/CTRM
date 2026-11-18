@@ -12,7 +12,7 @@ namespace ctrm::app {
 
 namespace {
 
-constexpr qreal kDisabledIcon = 0.35; // a disabled icon at 35% (design-tokens 4.5)
+constexpr float kDisabledIcon = 0.35F; // a disabled icon at 35% (design-tokens 4.5)
 constexpr qreal kFocusRingWidth = 2.0;
 
 void fillRounded(QPainter &painter, const QRectF &rect, const QColor &colour)

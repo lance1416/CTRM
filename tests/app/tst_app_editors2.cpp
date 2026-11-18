@@ -553,8 +553,9 @@ void TestAppEditors2::comboWidthsMatch()
 void TestAppEditors2::tabOrderFollowsRows()
 {
     // ui-design 12 (with M29): Tab goes down the form rows; Apply to is not first.
-    for (const QString &type :
+    for (const char *name :
          {"replace", "insert", "remove", "changeCase", "numbering", "extension", "cleanup"}) {
+        const QString type = QString::fromLatin1(name);
         std::unique_ptr<RuleEditor> e(createRuleEditor(type, nullptr));
         QFormLayout *form = e->form();
         const auto formRow = [form](const QWidget *w) {
@@ -571,7 +572,7 @@ void TestAppEditors2::tabOrderFollowsRows()
             if (row < 0 || !(w->focusPolicy() & Qt::TabFocus))
                 continue;
             order.append(w->objectName());
-            QVERIFY2(row >= last, qPrintable(type + u": " + order.join(u' ')));
+            QVERIFY2(row >= last, qPrintable(type + QStringLiteral(": ") + order.join(u' ')));
             last = row;
         }
     }

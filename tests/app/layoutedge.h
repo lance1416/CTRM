@@ -75,9 +75,9 @@ inline QList<int> fieldVisualLefts(QLayoutItem *item, const QWidget *to)
             int rowSpan = 0;
             int columnSpan = 0;
             grid->getItemPosition(i, &row, &column, &rowSpan, &columnSpan);
-            QWidget *w = grid->itemAt(i)->widget();
-            if (column == 0 && w && !w->isHidden())
-                lefts.append(visualLeft(w, to));
+            QWidget *cell = grid->itemAt(i)->widget();
+            if (column == 0 && cell && !cell->isHidden())
+                lefts.append(visualLeft(cell, to));
         }
     }
     return lefts;
