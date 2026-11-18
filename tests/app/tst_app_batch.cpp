@@ -276,7 +276,9 @@ void TestBatch::skipShowsCascade()
 
 void TestBatch::renameWaitsForCurrentPreview()
 {
-    // More than kWorkerThreshold items: the preview runs on the worker thread.
+    // More than kWorkerThreshold items: the preview runs on the worker thread. The rule changes
+    // only f0.txt: each rename syncs the journal to the disk, and 2001 synced renames took
+    // longer than the wait on a loaded machine.
     Fixture f;
     QStringList names;
     for (int i = 0; i <= PreviewScheduler::kWorkerThreshold; ++i) {
@@ -284,19 +286,22 @@ void TestBatch::renameWaitsForCurrentPreview()
         f.file(names.last());
     }
     f.add(names);
-    auto rule = std::make_unique<InsertRule>();
-    rule->text = QStringLiteral("x_");
+    auto rule = std::make_unique<ReplaceRule>();
+    rule->find = QStringLiteral("f0");
+    rule->replace = QStringLiteral("x_f0");
     f.window.ruleModel().insertRule(0, std::move(rule));
     QTRY_VERIFY_WITH_TIMEOUT(f.window.previewIsCurrent(), 30'000);
 
-    static_cast<InsertRule *>(f.window.ruleModel().chain().at(0))->text = QStringLiteral("y_");
+    static_cast<ReplaceRule *>(f.window.ruleModel().chain().at(0))->replace =
+            QStringLiteral("y_f0");
     f.window.ruleModel().ruleChanged(0);
     QVERIFY(!f.window.previewIsCurrent());
     f.batch.renameNow();
-    QVERIFY(f.waitForBatch(120'000));
+    QVERIFY(f.waitForBatch());
     QVERIFY(f.exists(QStringLiteral("y_f0.txt")));
     QVERIFY(!f.exists(QStringLiteral("x_f0.txt")));
     QVERIFY(!f.exists(QStringLiteral("f0.txt")));
+    QVERIFY(f.exists(QStringLiteral("f10.txt")));
 }
 
 void TestBatch::previewChangedStops()
