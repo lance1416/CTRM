@@ -12,6 +12,7 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
+#include <QScreen>
 #include <QSettings>
 #include <QSplitter>
 #include <QTemporaryDir>
@@ -102,6 +103,7 @@ private slots:
     void actionsShortcuts();
     void actionsHaveText();
     void windowMinimumSize();
+    void windowDefaultSize();
     void splitterRatio();
     void menusExist();
     void toolbarHasNoRename();
@@ -254,6 +256,25 @@ void TestAppShell::windowMinimumSize()
     QVERIFY(w.actionBarSlot());
     QVERIFY(w.messageBarSlot());
     QCOMPARE(w.windowTitle(), QStringLiteral("CTRM"));
+}
+
+void TestAppShell::windowDefaultSize()
+{
+    // O06a: a new install opens at window-default; a saved smaller size is kept.
+    TestContext t;
+    QByteArray saved;
+    {
+        MainWindow w(*t.ctx);
+        QCOMPARE(w.size(), QSize(1280, 860));
+        const QRect screen = w.screen()->availableGeometry();
+        if (screen.width() < 1000 || screen.height() < 700)
+            QSKIP("The screen is too small for a saved size of 1000 x 700.");
+        w.resize(1000, 700);
+        saved = w.saveGeometry();
+    }
+    t.ctx->settings().setWindowGeometry(saved);
+    MainWindow w(*t.ctx);
+    QCOMPARE(w.size(), QSize(1000, 700));
 }
 
 void TestAppShell::splitterRatio()

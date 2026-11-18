@@ -6,6 +6,7 @@
 #include "fs/itemsource.h"
 #include "text/plural.h"
 #include "theme/icons.h"
+#include "theme/tokens.h"
 #include "widgets/actionbar.h"
 #include "widgets/emptystate.h"
 #include "widgets/flowstrip.h"
@@ -50,8 +51,6 @@ namespace {
 
 constexpr int kMinimumWidth = 900;
 constexpr int kMinimumHeight = 560;
-constexpr int kDefaultWidth = 1200;
-constexpr int kDefaultHeight = 760;
 // The rule panel and the table have the ratio 1 : 2 (ui-design 4.1).
 constexpr int kRuleStretch = 1;
 constexpr int kTableStretch = 2;
@@ -86,7 +85,8 @@ MainWindow::MainWindow(AppContext &ctx, QWidget *parent)
     setObjectName(QStringLiteral("mainWindow"));
     setWindowTitle(QStringLiteral("CTRM"));
     setMinimumSize(kMinimumWidth, kMinimumHeight);
-    resize(kDefaultWidth, kDefaultHeight);
+    // window-default (O06a). A saved geometry replaces it in restoreLayout(), also a smaller one.
+    resize(tokens::defaultWidth, tokens::defaultHeight);
 #ifdef Q_OS_MACOS
     setUnifiedTitleAndToolBarOnMac(true);
 #endif
@@ -494,7 +494,8 @@ void MainWindow::buildCentralWidget()
     m_mainSplitter->addWidget(right);
     m_mainSplitter->setStretchFactor(0, kRuleStretch);
     m_mainSplitter->setStretchFactor(1, kTableStretch);
-    m_mainSplitter->setSizes({kRuleStretch * kDefaultWidth, kTableStretch * kDefaultWidth});
+    m_mainSplitter->setSizes(
+            {kRuleStretch * tokens::defaultWidth, kTableStretch * tokens::defaultWidth});
     layout->addWidget(m_mainSplitter, 1);
 
     m_actionBarSlot = makeSlot("actionBarSlot", central);
