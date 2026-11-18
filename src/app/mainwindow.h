@@ -71,6 +71,7 @@ protected:
     // while CTRM is not active.
     void changeEvent(QEvent *e) override;
     void closeEvent(QCloseEvent *e) override; // saves geometry, state, splitters
+    void showEvent(QShowEvent *e) override;   // the start focus (ui-design 10.3)
 
 private:
     void buildMenus();
@@ -111,6 +112,7 @@ private:
     quint64 m_previewGeneration = 0;
     WindowStateInfo m_state;
     bool m_running = false;
+    bool m_startFocusSet = false;
     bool m_resultShown = false;
     int m_renamedCount = 0;
     bool m_clearMessageShown = false; // "Cleared N items." or "Removed N items." with Undo

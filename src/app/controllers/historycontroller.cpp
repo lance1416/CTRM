@@ -15,6 +15,8 @@
 #include <QAction>
 #include <QApplication>
 #include <QJsonDocument>
+#include <QKeyEvent>
+#include <QKeySequence>
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPlainTextEdit>
@@ -84,9 +86,8 @@ HistoryController::HistoryController(MainWindow &w, AppContext &ctx, BatchContro
 
     const Actions &a = m_w.actions();
     connect(a.history, &QAction::triggered, this, [this] { showHistory(); });
-    connect(a.undoRename, &QAction::triggered, this, qOverload<>(&HistoryController::quickUndo));
-    connect(&m_batch, &BatchController::resultUndoClicked, this,
-            &HistoryController::quickUndoFromResult);
+    connect(a.undoRename, &QAction::triggered, this, &HistoryController::quickUndo);
+    connect(&m_batch, &BatchController::resultUndoClicked, this, &HistoryController::quickUndo);
     connect(&m_batch, &BatchController::batchFinished, this,
             [this](const FinishResult &result, const QString &batchId, const QString &undoOf) {
                 if (undoOf.isEmpty() && batchId == m_batch.lastBatchId()) {
@@ -105,7 +106,7 @@ HistoryController::HistoryController(MainWindow &w, AppContext &ctx, BatchContro
     });
     connect(&m_w.itemModel(), &ItemTableModel::listChanged, this,
             &HistoryController::updateUndoAction);
-    connect(qApp, &QApplication::focusChanged, this, &HistoryController::updateUndoAction);
+    qApp->installEventFilter(this);
     updateUndoAction();
 }
 
@@ -150,30 +151,32 @@ void HistoryController::showHistory(const QString &selectBatchId)
 
 bool HistoryController::quickUndoAvailable() const
 {
-    return quickUndoAvailable(TextFocus::Blocks);
-}
-
-bool HistoryController::quickUndoAvailable(TextFocus textFocus) const
-{
     const QString id = m_batch.lastBatchId();
     return !id.isEmpty() && id != m_clearedBatchId && !m_batch.isRunning() &&
-           m_batch.lastBatchListVersion() == m_w.itemModel().listVersion() &&
-           (textFocus == TextFocus::Ignored || !textFieldHasFocus());
+           m_batch.lastBatchListVersion() == m_w.itemModel().listVersion();
+}
+
+bool HistoryController::eventFilter(QObject *watched, QEvent *event)
+{
+    // A shortcut override that the focus widget accepts goes to the widget as a key press, and
+    // the action (also a native menu item) does not trigger.
+    if (event->type() == QEvent::ShortcutOverride && watched == QApplication::focusWidget() &&
+        textFieldHasFocus()) {
+        auto *key = static_cast<QKeyEvent *>(event);
+        const QKeySequence pressed(key->keyCombination());
+        for (const QKeySequence &shortcut : m_w.actions().undoRename->shortcuts()) {
+            if (shortcut.matches(pressed) == QKeySequence::ExactMatch) {
+                event->accept();
+                return false;
+            }
+        }
+    }
+    return QObject::eventFilter(watched, event);
 }
 
 void HistoryController::quickUndo()
 {
-    quickUndo(TextFocus::Blocks);
-}
-
-void HistoryController::quickUndoFromResult()
-{
-    quickUndo(TextFocus::Ignored);
-}
-
-void HistoryController::quickUndo(TextFocus textFocus)
-{
-    if (!quickUndoAvailable(textFocus))
+    if (!quickUndoAvailable())
         return;
     QString error;
     const UndoPreview preview = m_ctx.batchService().previewUndo(m_batch.lastBatchId(), &error);

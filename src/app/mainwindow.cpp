@@ -33,6 +33,7 @@
 #include <QMetaMethod>
 #include <QPushButton>
 #include <QScopedValueRollback>
+#include <QShowEvent>
 #include <QSizePolicy>
 #include <QSplitter>
 #include <QStackedWidget>
@@ -127,6 +128,17 @@ MainWindow::MainWindow(AppContext &ctx, QWidget *parent)
     m_table->setHighlightChanged(m_actions.highlightChanged->isChecked());
     m_itemModel.setPortableNames(m_ruleModel.chain().options.portableNames);
     requestPreview();
+}
+
+void MainWindow::showEvent(QShowEvent *e)
+{
+    QMainWindow::showEvent(e);
+    // ui-design 10.3 (audit R6-04): the start focus is the item area (the table, or Add Files
+    // when the list is empty), not a text field. A focus set before the first show is lost.
+    if (!m_startFocusSet) {
+        m_startFocusSet = true;
+        focusTable();
+    }
 }
 
 MainWindow::~MainWindow()
@@ -897,7 +909,12 @@ int MainWindow::offNumberingRule() const
 void MainWindow::updateTablePage()
 {
     const bool empty = m_itemModel.rowCount() == 0;
+    // When the empty state hides, Qt gives its focus to the next widget, the Filter field. The
+    // focus goes to the table instead (audit R6-04).
+    const bool focusInEmptyState = m_emptyState->isAncestorOf(QApplication::focusWidget());
     m_tablePages->setCurrentWidget(empty ? static_cast<QWidget *>(m_emptyState) : m_tablePage);
+    if (focusInEmptyState && !empty)
+        focus(m_table);
     const bool noMatch = !empty && m_proxy.rowCount() == 0;
     const bool hadFocus = m_table->hasFocus();
     m_tableOrNoMatch->setCurrentWidget(noMatch ? m_noMatch : static_cast<QWidget *>(m_table));

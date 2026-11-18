@@ -29,11 +29,14 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListView>
+#include <QMenu>
+#include <QMenuBar>
 #include <QPushButton>
 #include <QSettings>
 #include <QTableView>
 #include <QTemporaryDir>
 #include <QTimeZone>
+#include <QToolBar>
 #include <QtTest>
 
 #include <memory>
@@ -170,7 +173,8 @@ private slots:
     void quickUndoOpensPreview();
     void quickUndoWeakOpensPreview();
     void quickUndoUnavailableAfterListChange();
-    void ctrlZInTextField();
+    void startFocusIsTable();
+    void undoIgnoresTextFocus();
     void historyStatesShown();
     void whenText();
     void undoBatchButtonByState();
@@ -259,24 +263,67 @@ void TestHistory::quickUndoUnavailableAfterListChange()
     QCOMPARE(f.window.actions().undoRename->text(), QStringLiteral("Undo Rename"));
 }
 
-void TestHistory::ctrlZInTextField()
+void TestHistory::startFocusIsTable()
 {
+    // ui-design 10.3 (audit R6-04): no text field gets the focus at start. The empty list
+    // has Add Files; when the items come, the table gets the focus, not the Filter field.
+    Fixture f;
+    f.window.show();
+    QVERIFY(QTest::qWaitForWindowActive(&f.window));
+    QTRY_COMPARE(QApplication::focusWidget(),
+                 f.window.findChild<QPushButton *>(QStringLiteral("emptyAddFiles")));
+    f.window.itemAdder().addPaths({f.tree.file(QStringLiteral("a.txt"), "x")});
+    QTRY_COMPARE(QApplication::focusWidget(), f.window.tableView());
+}
+
+void TestHistory::undoIgnoresTextFocus()
+{
+    // ui-design 10.3 (audit R6-04): the toolbar Undo and Edit > Undo Rename follow the batch
+    // only. Only the Ctrl+Z key goes to a focused text field.
     Fixture f;
     f.window.show();
     QVERIFY(QTest::qWaitForWindowActive(&f.window));
     QVERIFY(!f.renameOld({"old_a.txt", "old_b.txt"}).isEmpty());
     f.window.activateWindow();
     QVERIFY(QTest::qWaitForWindowActive(&f.window));
-    f.window.tableView()->setFocus();
-    QTRY_VERIFY(f.window.actions().undoRename->isEnabled());
-    QCOMPARE(f.window.actions().undoRename->text(), QStringLiteral("Undo Rename of 2 Items"));
     auto *filter = f.window.findChild<QLineEdit *>(QStringLiteral("filterField"));
     QVERIFY(filter);
     filter->setFocus();
-    QTRY_VERIFY(!f.window.actions().undoRename->isEnabled());
-    QVERIFY(!f.history.quickUndoAvailable());
-    f.window.tableView()->setFocus();
-    QTRY_VERIFY(f.window.actions().undoRename->isEnabled());
+    QTRY_COMPARE(QApplication::focusWidget(), filter);
+
+    QAction *undo = f.window.actions().undoRename;
+    QVERIFY(f.history.quickUndoAvailable());
+    QVERIFY(undo->isEnabled());
+    QCOMPARE(undo->text(), QStringLiteral("Undo Rename of 2 Items"));
+    auto *toolBar = f.window.findChild<QToolBar *>(QStringLiteral("mainToolBar"));
+    QVERIFY(toolBar);
+    QWidget *toolButton = toolBar->widgetForAction(undo);
+    QVERIFY(toolButton);
+    QVERIFY(toolButton->isEnabled());
+    QMenu *editMenu = nullptr;
+    for (QAction *menu : f.window.menuBar()->actions()) {
+        if (menu->menu() && menu->menu()->actions().contains(undo))
+            editMenu = menu->menu();
+    }
+    QVERIFY(editMenu);
+
+    // Ctrl+Z in the field undoes the typed text; the rename stays.
+    QTest::keyClicks(filter, QStringLiteral("ab"));
+    QCOMPARE(filter->text(), QStringLiteral("ab"));
+    QTest::keyClick(filter, Qt::Key_Z, Qt::ControlModifier);
+    QVERIFY(filter->text() != QStringLiteral("ab"));
+    QTest::qWait(50);
+    QVERIFY(!f.batch.isRunning());
+    QVERIFY(f.exists(QStringLiteral("new_a.txt")));
+    QVERIFY(undo->isEnabled());
+    filter->clear();
+
+    // A click on the toolbar button undoes the rename, with the focus still in the field.
+    QCOMPARE(QApplication::focusWidget(), filter);
+    QVERIFY(f.run([&] { QTest::mouseClick(toolButton, Qt::LeftButton); }));
+    QVERIFY(f.exists(QStringLiteral("old_a.txt")));
+    QVERIFY(f.exists(QStringLiteral("old_b.txt")));
+    QVERIFY(!undo->isEnabled());
 }
 
 void TestHistory::historyStatesShown()
