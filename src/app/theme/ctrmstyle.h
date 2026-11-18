@@ -7,7 +7,8 @@ namespace ctrm::app {
 
 // The app style over the platform style (design-tokens 4.4 and 4.5). It draws:
 // - the text field and the spin box: fill-control, radius-control, no border, height control-h;
-// - the push button (not flat): fill-control or accent-fill, height control-h;
+// - the push button: fill-control or accent-fill, height control-h; a flat push button is a
+//   borderless button (no fill at rest, fill-hover and fill-pressed);
 // - the toolbar button: no fill at rest, fill-hover and fill-pressed.
 // All other controls are the platform style. On macOS the platform focus ring of the text field
 // and the spin box stays; the other focus rings are drawn by this style.

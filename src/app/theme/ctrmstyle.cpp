@@ -117,7 +117,12 @@ const QStyleOptionSpinBox *framedSpinBox(const QStyleOption *option)
 const QStyleOptionButton *styledPushButton(const QStyleOption *option)
 {
     const auto *button = qstyleoption_cast<const QStyleOptionButton *>(option);
-    return button && !(button->features & QStyleOptionButton::Flat) ? button : nullptr;
+    return button;
+}
+
+bool isFlat(const QStyleOptionButton *button)
+{
+    return button->features & QStyleOptionButton::Flat;
 }
 
 const QStyleOptionToolButton *toolBarButton(const QStyleOption *option, const QWidget *widget)
@@ -133,6 +138,14 @@ QColor pushButtonFill(const QStyleOptionButton *button)
     const bool enabled = button->state & QStyle::State_Enabled;
     const bool down = button->state & (QStyle::State_Sunken | QStyle::State_On);
     const bool hover = button->state & QStyle::State_MouseOver;
+    if (isFlat(button)) {
+        // A borderless button (design-tokens 4.5): no fill at rest.
+        if (!enabled)
+            return {};
+        if (down)
+            return c.fillPressed;
+        return hover ? c.fillHover : QColor();
+    }
     if (!enabled) {
         QColor fill = c.fillControl;
         fill.setAlphaF(kDisabledFill);
@@ -148,11 +161,22 @@ QColor pushButtonFill(const QStyleOptionButton *button)
     return hover ? c.fillHover : c.fillControl;
 }
 
+int pushButtonRadius(const QStyleOptionButton *button)
+{
+    return isFlat(button) ? tokens::radiusHover : tokens::radiusControl;
+}
+
+// The horizontal padding: space-3 for a push button, space-1 for a borderless button.
+int pushButtonPadding(const QStyleOptionButton *button)
+{
+    return isFlat(button) ? tokens::space1 : tokens::space3;
+}
+
 QColor pushButtonText(const QStyleOptionButton *button)
 {
     if (!(button->state & QStyle::State_Enabled))
         return CtrmColors::fromPalette(button->palette).stateNeutral;
-    if (button->features & QStyleOptionButton::DefaultButton)
+    if (!isFlat(button) && (button->features & QStyleOptionButton::DefaultButton))
         return button->palette.color(QPalette::HighlightedText);
     return button->palette.color(QPalette::ButtonText);
 }
@@ -212,11 +236,12 @@ void CtrmStyle::drawControl(ControlElement element, const QStyleOption *option, 
         label.rect = proxy()->subElementRect(SE_PushButtonContents, button, widget);
         proxy()->drawControl(CE_PushButtonLabel, &label, painter, widget);
         if (keyboardFocus(button))
-            drawFocusRing(painter, button->rect, button->palette, tokens::radiusControl);
+            drawFocusRing(painter, button->rect, button->palette, pushButtonRadius(button));
         return;
     }
     case CE_PushButtonBevel: {
-        fillRounded(painter, button->rect, pushButtonFill(button), tokens::radiusControl);
+        if (const QColor fill = pushButtonFill(button); fill.isValid())
+            fillRounded(painter, button->rect, fill, pushButtonRadius(button));
         if (button->features & QStyleOptionButton::HasMenu) {
             // The menu indicator is the platform arrow (audit C01). QMacStyle draws its arrow
             // only in its own bevel, so on macOS it is chevron-xs-down.
@@ -371,7 +396,8 @@ QRect CtrmStyle::subElementRect(SubElement element, const QStyleOption *option,
         break;
     case SE_PushButtonContents:
         if (const QStyleOptionButton *button = styledPushButton(option)) {
-            QRect r = option->rect.adjusted(tokens::space3, 0, -tokens::space3, 0);
+            const int padding = pushButtonPadding(button);
+            QRect r = option->rect.adjusted(padding, 0, -padding, 0);
             if (button->features & QStyleOptionButton::HasMenu)
                 r.setRight(r.right() -
                            proxy()->pixelMetric(PM_MenuButtonIndicator, button, widget));
@@ -454,8 +480,8 @@ QSize CtrmStyle::sizeFromContents(ContentsType type, const QStyleOption *option,
         break;
     case CT_PushButton:
         if (const QStyleOptionButton *button = styledPushButton(option)) {
-            int width = size.width() + 2 * tokens::space3;
-            if (!button->text.isEmpty())
+            int width = size.width() + 2 * pushButtonPadding(button);
+            if (!isFlat(button) && !button->text.isEmpty())
                 width = qMax(width, kPushButtonMinWidth);
             return {width, tokens::controlH};
         }

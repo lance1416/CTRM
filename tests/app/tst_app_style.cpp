@@ -122,6 +122,7 @@ private slots:
     void spinBoxFilled();
     void pushButtonStates();
     void primaryButtonStates();
+    void flatButtonStates();
     void tertiaryNeverNativeFrame();
     void iconButtonLook();
     void toolBarButtonHover();
@@ -226,6 +227,32 @@ void TestAppStyle::primaryButtonStates()
     QVERIFY2(near(centre(), fill.darker(108)), qPrintable(describe(centre(), fill.darker(108))));
     // White text keeps 4.5:1 on the fill (design-tokens 2.6).
     QVERIFY(contrastRatio(fill, QColor(Qt::white)) >= 4.5);
+}
+
+void TestAppStyle::flatButtonStates()
+{
+    // C02, C15: a flat push button (message bar action) is a borderless button: no fill at
+    // rest, fill-hover on hover, fill-pressed when pressed, space-1 padding, height control-h.
+    Styled s;
+    auto *button = s.add(new QPushButton(QStringLiteral("Undo")));
+    button->setFlat(true);
+    QPalette accent = darkPalette();
+    accent.setColor(QPalette::ButtonText, accent.color(QPalette::Accent));
+    button->setPalette(accent);
+    button->resize(button->sizeHint());
+    QCOMPARE(button->sizeHint().height(), tokens::controlH);
+    QCOMPARE(button->sizeHint().width(),
+             button->fontMetrics().size(Qt::TextShowMnemonic, button->text()).width() +
+                     2 * tokens::space1);
+    const CtrmColors c = s.colors();
+    const QColor window = darkPalette().color(QPalette::Window);
+    const int midY = tokens::controlH / 2;
+    const auto at = [&](int x) { return paint(button).pixelColor(x, midY); };
+    QVERIFY2(near(at(1), window), qPrintable(describe(at(1), window)));
+    button->setAttribute(Qt::WA_UnderMouse, true);
+    QVERIFY2(near(at(1), c.fillHover), qPrintable(describe(at(1), c.fillHover)));
+    button->setDown(true);
+    QVERIFY2(near(at(1), c.fillPressed), qPrintable(describe(at(1), c.fillPressed)));
 }
 
 void TestAppStyle::tertiaryNeverNativeFrame()
