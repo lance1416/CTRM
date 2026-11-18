@@ -10,6 +10,7 @@
 
 #include <QAccessible>
 #include <QAction>
+#include <QEnterEvent>
 #include <QEvent>
 #include <QFontMetrics>
 #include <QHBoxLayout>
@@ -31,6 +32,46 @@ namespace {
 
 constexpr int kProgressDelayMs = 1000;
 constexpr int kAnnounceDelayMs = 500;
+
+// A link in the count summary (design-tokens 4.5): `accent` text with no underline at rest,
+// underlined on hover (R5-06).
+class LinkLabel : public QLabel
+{
+public:
+    LinkLabel(const QString &href, const QString &text, QWidget *parent)
+        : QLabel(parent)
+        , m_href(href)
+        , m_text(text.toHtmlEscaped())
+    {
+        setTextFormat(Qt::RichText);
+        setTextInteractionFlags(Qt::LinksAccessibleByMouse | Qt::LinksAccessibleByKeyboard);
+        setAccessibleName(text);
+        setLinkText(false);
+    }
+
+protected:
+    void enterEvent(QEnterEvent *event) override
+    {
+        QLabel::enterEvent(event);
+        setLinkText(true);
+    }
+    void leaveEvent(QEvent *event) override
+    {
+        QLabel::leaveEvent(event);
+        setLinkText(false);
+    }
+
+private:
+    void setLinkText(bool hover)
+    {
+        setText(QStringLiteral("<a href=\"%1\" style=\"text-decoration:%2\">%3</a>")
+                        .arg(m_href, hover ? QStringLiteral("underline") : QStringLiteral("none"),
+                             m_text));
+    }
+
+    QString m_href;
+    QString m_text;
+};
 
 // The designer icon of a problem button, in the palette of the button (C07, design-tokens 5).
 void applyProblemIcon(QToolButton *button)
@@ -389,14 +430,9 @@ void ActionBar::updateSummary(const ctrm::PreviewSummary &summary)
             addLabel(icon);
         }
         const QString text = summaryPartText(part.part, part.count);
-        auto *label = new QLabel(m_summaryWidget);
+        QLabel *label = nullptr;
         if (*part.link) {
-            const QString link = QString::fromLatin1(part.link);
-            label->setTextFormat(Qt::RichText);
-            label->setText(QStringLiteral("<a href=\"%1\">%2</a>").arg(link, text.toHtmlEscaped()));
-            label->setTextInteractionFlags(Qt::LinksAccessibleByMouse |
-                                           Qt::LinksAccessibleByKeyboard);
-            label->setAccessibleName(text);
+            label = new LinkLabel(QString::fromLatin1(part.link), text, m_summaryWidget);
             connect(label, &QLabel::linkActivated, this, [this](const QString &href) {
                 if (href == QLatin1StringView("warnings"))
                     emit warningsLinkClicked();
@@ -404,6 +440,7 @@ void ActionBar::updateSummary(const ctrm::PreviewSummary &summary)
                     emit problemLinkClicked();
             });
         } else {
+            label = new QLabel(m_summaryWidget);
             label->setTextFormat(Qt::PlainText);
             label->setText(text);
         }

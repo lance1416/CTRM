@@ -12,6 +12,7 @@
 #include <QAccessible>
 #include <QAction>
 #include <QApplication>
+#include <QEnterEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QProgressBar>
@@ -720,6 +721,20 @@ void TestAppWindowState::problemLinks()
     emit warning->linkActivated(QStringLiteral("warnings"));
     QCOMPARE(problems.size(), 1);
     QCOMPARE(warnings.size(), 1);
+
+    // R5-06 (design-tokens 4.5): a link has no underline at rest; the underline shows on hover.
+    const auto underlined = [](const QLabel *label) {
+        return !label->text().contains(QLatin1StringView("text-decoration:none"));
+    };
+    QVERIFY(!underlined(conflicts));
+    QEnterEvent enter(QPointF(1, 1), QPointF(1, 1), QPointF(1, 1));
+    QCoreApplication::sendEvent(conflicts, &enter);
+    QVERIFY(underlined(conflicts));
+    QVERIFY(conflicts->text().contains(QLatin1StringView("text-decoration:underline")));
+    QEvent leave(QEvent::Leave);
+    QCoreApplication::sendEvent(conflicts, &leave);
+    QVERIFY(!underlined(conflicts));
+    QCOMPARE(visibleLabelWithText(&bar, QStringLiteral("2 conflicts")), conflicts);
 
     // Previous and Next problem show only when there are blocking problems (7.6).
     auto *next = bar.findChild<QToolButton *>(QStringLiteral("nextProblemButton"));
