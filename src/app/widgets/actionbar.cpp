@@ -3,6 +3,7 @@
 
 #include "theme/colors.h"
 #include "theme/icons.h"
+#include "theme/tokens.h"
 #include "theme/typography.h"
 #include "widgets/buttonstyle.h"
 #include "widgets/tertiarybutton.h"
@@ -105,11 +106,17 @@ ActionBar::ActionBar(const Actions &actions, QWidget *parent)
     connect(m_skip, &QPushButton::clicked, actions.skipAndRename, &QAction::trigger);
     connect(m_rename, &QPushButton::clicked, actions.rename, &QAction::trigger);
 
+    // design-tokens 4.1: space-2 between items; space-1 between the two icon buttons (C07).
+    auto *problems = new QHBoxLayout;
+    problems->setContentsMargins(0, 0, 0, 0);
+    problems->setSpacing(tokens::space1);
+    problems->addWidget(m_previousProblem);
+    problems->addWidget(m_nextProblem);
     auto *normal = new QHBoxLayout(m_normalPage);
     normal->setContentsMargins(0, 0, 0, 0);
+    normal->setSpacing(tokens::space2);
     normal->addWidget(m_summaryWidget);
-    normal->addWidget(m_previousProblem);
-    normal->addWidget(m_nextProblem);
+    normal->addLayout(problems);
     normal->addStretch(1);
     normal->addWidget(m_reasonIcon);
     normal->addWidget(m_reason);
@@ -127,13 +134,17 @@ ActionBar::ActionBar(const Actions &actions, QWidget *parent)
     connect(m_cancel, &QPushButton::clicked, actions.cancelBatch, &QAction::trigger);
     auto *progress = new QHBoxLayout(m_progressPage);
     progress->setContentsMargins(0, 0, 0, 0);
+    progress->setSpacing(tokens::space2);
     progress->addWidget(m_progressLabel);
     progress->addWidget(m_progressBar, 1);
     progress->addWidget(m_cancel);
 
     m_pages->addWidget(m_normalPage);
     m_pages->addWidget(m_progressPage);
+    // O07, design-tokens 4.2: inset space-3 on all sides.
     auto *layout = new QHBoxLayout(this);
+    layout->setContentsMargins(tokens::space3, tokens::space3, tokens::space3, tokens::space3);
+    layout->setSpacing(0);
     layout->addWidget(m_pages);
     updateFixedLook();
 

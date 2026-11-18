@@ -780,7 +780,8 @@ void TestAppWindowState::messageBarOneLine()
     QVERIFY(qAbs(centreY(undo) - textCentre()) <= 1);
     QVERIFY(qAbs(centreY(close) - textCentre()) <= 1);
     const int tallest = qMax(undo->height(), close->height());
-    QVERIFY2(bar->height() <= tallest + 2 * 6 + 2, qPrintable(QString::number(bar->height())));
+    QVERIFY2(bar->height() <= tallest + 2 * tokens::space2 + 1,
+             qPrintable(QString::number(bar->height())));
 }
 
 QTEST_MAIN(TestAppWindowState)

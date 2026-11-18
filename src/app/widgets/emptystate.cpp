@@ -3,6 +3,7 @@
 
 #include "text/plural.h"
 #include "theme/icons.h"
+#include "theme/tokens.h"
 #include "theme/typography.h"
 #include "widgets/buttonstyle.h"
 
@@ -137,20 +138,27 @@ EmptyState::EmptyState(const Actions &actions, QWidget *parent)
     toast->setObjectName(QStringLiteral("emptyToast"));
     toast->setForegroundRole(QPalette::PlaceholderText);
 
+    // O07, design-tokens 4.1 and 4.6: space-6 around the content, space-2 between the buttons,
+    // space-3 between the groups, space-1 between the two lines of the note.
     auto *buttons = new QHBoxLayout;
+    buttons->setSpacing(tokens::space2);
     buttons->addStretch(1);
     buttons->addWidget(m_addFiles);
     buttons->addWidget(m_addFolder);
     buttons->addStretch(1);
 
     auto *layout = new QVBoxLayout(this);
+    layout->setContentsMargins(tokens::space6, tokens::space6, tokens::space6, tokens::space6);
+    layout->setSpacing(0);
     layout->addStretch(1);
     layout->addWidget(m_icon);
+    layout->addSpacing(tokens::space3);
     layout->addWidget(m_title);
-    layout->addSpacing(style()->pixelMetric(QStyle::PM_LayoutVerticalSpacing, nullptr, this));
+    layout->addSpacing(tokens::space3);
     layout->addLayout(buttons);
-    layout->addSpacing(style()->pixelMetric(QStyle::PM_LayoutVerticalSpacing, nullptr, this));
+    layout->addSpacing(tokens::space3);
     layout->addWidget(note);
+    layout->addSpacing(tokens::space1);
     layout->addWidget(toast);
     layout->addStretch(1);
 

@@ -570,12 +570,22 @@ QWidget *MainWindow::buildTablePage()
             visible = option.rect;
         m_filter->setFixedHeight(std::max(m_filter->sizeHint().height(), visible.height()));
     }
+    // O07, C08 (ui-design 4.1, design-tokens 4.2): inset space-3, space-3 above and space-2
+    // below a row of header-h, so the table starts at the y of the rule list. A label is
+    // space-1 from its control; the two groups are space-4 apart.
+    filterBar->setObjectName(QStringLiteral("filterBar"));
+    filterBar->setFixedHeight(tokens::space3 + tokens::headerH + tokens::space2);
     auto *filterLayout = new QHBoxLayout(filterBar);
-    filterLayout->addWidget(filterLabel);
-    filterLayout->addWidget(m_filter, 1);
-    filterLayout->addSpacing(filterLayout->spacing() * 2);
-    filterLayout->addWidget(showLabel);
-    filterLayout->addWidget(m_show);
+    filterLayout->setContentsMargins(tokens::space3, tokens::space3, tokens::space3,
+                                     tokens::space2);
+    filterLayout->setSpacing(0);
+    filterLayout->addWidget(filterLabel, 0, Qt::AlignVCenter);
+    filterLayout->addSpacing(tokens::space1);
+    filterLayout->addWidget(m_filter, 1, Qt::AlignVCenter);
+    filterLayout->addSpacing(tokens::space4);
+    filterLayout->addWidget(showLabel, 0, Qt::AlignVCenter);
+    filterLayout->addSpacing(tokens::space1);
+    filterLayout->addWidget(m_show, 0, Qt::AlignVCenter);
 
     // The table, or the text when the filter hides all rows (ui-design 5.4).
     m_tableOrNoMatch = new QStackedWidget(page);

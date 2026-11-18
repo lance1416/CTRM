@@ -32,6 +32,7 @@
 #include <QFile>
 #include <QHeaderView>
 #include <QLabel>
+#include <QLayout>
 #include <QLineEdit>
 #include <QListView>
 #include <QMenu>
@@ -146,6 +147,7 @@ private slots:
     void filterChangedOnly();
     void filterEmptyText();
     void filterBarSameHeight();
+    void barsShareLeftEdge();
     void blockingReasonTooltip();
     void refreshDetectsMissing();
     void addReadsFolderAgain();
@@ -823,6 +825,36 @@ void TestMainWindow::filterBarSameHeight()
     if (!visible.isValid())
         visible = combo->rect();
     QCOMPARE(field->height(), visible.height());
+}
+
+void TestMainWindow::barsShareLeftEdge()
+{
+    // O07, design-tokens 4.2: the first item of each bar starts at x = space-3. The filter row
+    // is space-3 + header-h + space-2 high (C08).
+    Fixture f;
+    f.window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    f.addFiles({QStringLiteral("a.txt")});
+    f.window.messageBar()->showMessage(StateIcon::Done, QStringLiteral("Done."), {});
+    QApplication::processEvents();
+    const auto leftIn = [](QWidget *child, QWidget *bar) {
+        return child->mapTo(bar, QPoint(0, 0)).x();
+    };
+    auto *strip = f.child<FlowStrip>("flowStrip");
+    QCOMPARE(leftIn(f.child<QLabel>("flowStep1Icon"), strip), tokens::space3);
+    auto *bar = f.window.messageBar();
+    QCOMPARE(leftIn(f.child<QLabel>("messageBarIcon"), bar), tokens::space3);
+    QCOMPARE(bar->height(), tokens::space2 * 2 + 1 + f.child<QLabel>("messageBarText")->height());
+    ActionBar *actionBar = f.window.actionBar();
+    QCOMPARE(leftIn(f.child<QWidget>("countSummary"), actionBar), tokens::space3);
+    QCOMPARE(actionBar->layout()->contentsMargins(),
+             QMargins(tokens::space3, tokens::space3, tokens::space3, tokens::space3));
+    auto *filterBar = f.child<QWidget>("filterBar");
+    QVERIFY(filterBar);
+    QCOMPARE(filterBar->height(), tokens::space3 + tokens::headerH + tokens::space2);
+    QCOMPARE(filterBar->layout()->contentsMargins().left(), tokens::space3);
+    QCOMPARE(f.window.tableView()->mapTo(f.child<QWidget>("tablePage"), QPoint(0, 0)).y(),
+             filterBar->height());
 }
 
 void TestMainWindow::editorGetsHeightAtMinimum()

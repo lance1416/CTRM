@@ -2,6 +2,7 @@
 #include "widgets/messagebar.h"
 
 #include "theme/colors.h"
+#include "theme/tokens.h"
 #include "widgets/tertiarybutton.h"
 
 #include <QAccessible>
@@ -16,10 +17,6 @@
 namespace ctrm::app {
 
 namespace {
-
-constexpr int kPaddingX = 10;
-constexpr int kPaddingY = 6;
-constexpr int kGap = 10;
 
 QColor stateColor(StateIcon icon, const CtrmColors &c)
 {
@@ -73,11 +70,12 @@ MessageBar::MessageBar(QWidget *parent)
         emit closed();
     });
 
-    // Mockup .msgbar (M11): one centre line, padding 6 px x 10 px, a separator under it.
+    // M11, O07: one centre line, inset space-3 x space-2, gap space-2, a separator under it.
     m_buttonLayout->setContentsMargins(0, 0, 0, 0);
+    m_buttonLayout->setSpacing(tokens::space2);
     auto *row = new QHBoxLayout;
-    row->setContentsMargins(kPaddingX, kPaddingY, kPaddingX, kPaddingY);
-    row->setSpacing(kGap);
+    row->setContentsMargins(tokens::space3, tokens::space2, tokens::space3, tokens::space2);
+    row->setSpacing(tokens::space2);
     row->addWidget(m_icon, 0, Qt::AlignVCenter);
     row->addWidget(m_text, 1);
     row->addLayout(m_buttonLayout);
