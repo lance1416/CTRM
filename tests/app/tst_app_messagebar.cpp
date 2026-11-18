@@ -17,7 +17,7 @@ namespace {
 QPalette lightPalette()
 {
     QPalette p;
-    p.setColor(QPalette::Window, QColor(0xECECEC));
+    p.setColor(QPalette::Window, QColor(0xFFFFFF)); // as macOS light mode
     p.setColor(QPalette::Base, QColor(0xFFFFFF));
     p.setColor(QPalette::Button, QColor(0xFFFFFF));
     p.setColor(QPalette::Text, QColor(0x1D1D1F));
@@ -86,6 +86,9 @@ void TestAppMessageBar::actionText()
 
     const CtrmColors colors = CtrmColors::fromPalette(palette);
     const QColor tint = bar->palette().color(QPalette::Window);
+    // R5-09: the tint is drawn over `window`.
+    if (icon == StateIcon::Done)
+        QCOMPARE(tint, mix(colors.stateDone, colors.window, 0.12));
     const QColor text = button->palette().color(QPalette::Active, QPalette::ButtonText);
     // C15: `text` (the Text role), never `accent`; the same in an inactive window.
     QCOMPARE(text, palette.color(QPalette::Text));

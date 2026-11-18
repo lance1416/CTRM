@@ -6,6 +6,7 @@
 #include "text/messages.h"
 #include "text/plural.h"
 #include "theme/colors.h"
+#include "theme/surface.h"
 #include "theme/tokens.h"
 #include "widgets/emptystate.h"
 #include "widgets/itemdelegate.h"
@@ -123,6 +124,9 @@ ItemTableView::ItemTableView(ItemTableModel &model, ItemFilterProxy &proxy, QWid
     setDefaultDropAction(Qt::MoveAction);
     setDragDropOverwriteMode(false);
     setDropIndicatorShown(true);
+
+    // R5-09: no frame; in high contrast a line on the left edge (design-tokens 2.1).
+    setSurfaceEdges(this, Qt::LeftEdge);
 
     QHeaderView *vertical = verticalHeader();
     vertical->hide();

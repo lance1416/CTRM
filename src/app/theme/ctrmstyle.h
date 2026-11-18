@@ -24,6 +24,8 @@ public:
     ~CtrmStyle() override;
 
     void polish(QWidget *widget) override;
+    // R5-09: the Window role becomes the `window` surface colour (design-tokens 2.1).
+    void polish(QPalette &palette) override;
     using QProxyStyle::polish;
 
     void drawPrimitive(PrimitiveElement element, const QStyleOption *option, QPainter *painter,

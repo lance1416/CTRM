@@ -16,6 +16,7 @@
 #include "rules/unsupportedrule.h"
 #include "theme/colors.h"
 #include "theme/icons.h"
+#include "theme/surface.h"
 #include "theme/tokens.h"
 #include "theme/typography.h"
 #include "widgets/buttonstyle.h"
@@ -494,6 +495,8 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     m_addRule->setObjectName(QStringLiteral("addRuleButton"));
     m_emptyText->setObjectName(QStringLiteral("emptyText"));
     m_list->setObjectName(QStringLiteral("ruleList"));
+    // R5-09: no frame; in high contrast a line around the list (design-tokens 2.1).
+    setSurfaceEdges(m_list, Qt::LeftEdge | Qt::TopEdge | Qt::RightEdge | Qt::BottomEdge);
 
     // Header: "Rules", "top to bottom", Add Rule.
     auto *title = new QLabel(tr("Rules"));

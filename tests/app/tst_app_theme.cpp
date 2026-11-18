@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "theme/colors.h"
 #include "theme/icons.h"
+#include "theme/surface.h"
 #include "theme/tokens.h"
 #include "theme/typography.h"
 #include "widgets/tertiarybutton.h"
@@ -9,10 +10,12 @@
 #include <QDir>
 #include <QFile>
 #include <QImage>
+#include <QListView>
 #include <QPalette>
 #include <QRegularExpression>
 #include <QStyle>
 #include <QStyleFactory>
+#include <QTableView>
 #include <QtTest>
 
 #include <cmath>
@@ -92,6 +95,8 @@ private slots:
     void sharedIconsLoad();
     void tertiaryIconButtonProperty();
     void iconStrokeWidth();
+    void surfaceWindow();
+    void surfaceEdges();
 };
 
 void TestAppTheme::mixFormula()
@@ -387,6 +392,92 @@ void TestAppTheme::tertiaryIconButtonProperty()
     QVERIFY(button.isIconButton());
     button.setIconButton(false);
     QCOMPARE(button.property("iconButton").toBool(), false);
+}
+
+void TestAppTheme::surfaceWindow()
+{
+    // R5-09 (design-tokens 2.1, surface rule): `window` is the palette Window. When the system
+    // gives Window equal or almost equal to Base (macOS light: both white), `window` is `text`
+    // mixed 8% over `base`, so the panel and the bars differ from the table.
+    QPalette white = referencePalette(false);
+    white.setColor(QPalette::Window, QColor(0xFFFFFF));
+    white.setColor(QPalette::Text, QColor(0x1D1D1F));
+    CtrmColors c = CtrmColors::fromPalette(white);
+    QCOMPARE(c.window, mix(QColor(0x1D1D1F), QColor(0xFFFFFF), 0.08));
+    QVERIFY2(near(c.window, QColor(0xEEEEEE), 2), qPrintable(c.window.name()));
+    // Almost equal (less than 0.03 in relative luminance) counts as equal.
+    white.setColor(QPalette::Window, QColor(0xFDFDFD));
+    QCOMPARE(CtrmColors::fromPalette(white).window, c.window);
+    // The control fills are on `window`, also when the palette Window is white.
+    QCOMPARE(c.fillControl, mix(QColor(0x1D1D1F), c.window, 0.06));
+
+    // A palette with a clear difference keeps its Window (light reference). Dark mode always
+    // keeps its Window (the dark reference differs from base by less than 0.03 too).
+    for (const bool dark : {false, true}) {
+        const QPalette p = referencePalette(dark);
+        QCOMPARE(CtrmColors::fromPalette(p).window, p.color(QPalette::Window));
+    }
+
+    // High contrast: only the palette roles.
+    QPalette high;
+    high.setColor(QPalette::Window, Qt::white);
+    high.setColor(QPalette::Base, Qt::white);
+    high.setColor(QPalette::Text, Qt::black);
+    high.setColor(QPalette::WindowText, Qt::black);
+    c = CtrmColors::fromPalette(high);
+    if (c.tintsEnabled)
+        QSKIP("The colour scheme of this run is known: not high contrast.");
+    QCOMPARE(c.window, QColor(Qt::white));
+}
+
+void TestAppTheme::surfaceEdges()
+{
+    // R5-09: the rule list and the table have no frame; the surface colour shows the edges. In
+    // high contrast a 1 px separator (Mid) line shows the given edges.
+    QWidget window;
+    window.resize(300, 200);
+    auto *list = new QListView(&window);
+    list->setGeometry(10, 10, 200, 150);
+    setSurfaceEdges(list, Qt::LeftEdge | Qt::TopEdge | Qt::RightEdge | Qt::BottomEdge);
+    QCOMPARE(list->frameShape(), QFrame::NoFrame);
+    auto *edge = list->findChild<QWidget *>(QStringLiteral("surfaceEdge"));
+    QVERIFY(edge);
+    QPalette normal = referencePalette(false);
+    list->setPalette(normal);
+    QVERIFY(edge->isHidden());
+
+    QPalette high;
+    high.setColor(QPalette::Window, Qt::white);
+    high.setColor(QPalette::Base, Qt::white);
+    high.setColor(QPalette::Text, Qt::black);
+    high.setColor(QPalette::WindowText, Qt::black);
+    high.setColor(QPalette::Mid, QColor(0x808080));
+    if (CtrmColors::fromPalette(high).tintsEnabled)
+        QSKIP("The colour scheme of this run is known: not high contrast.");
+    list->setPalette(high);
+    QVERIFY(!edge->isHidden());
+    QCOMPARE(edge->geometry(), list->rect());
+    QImage image(list->size(), QImage::Format_ARGB32);
+    image.fill(Qt::white);
+    edge->render(&image, QPoint(), QRegion(), QWidget::DrawWindowBackground);
+    QCOMPARE(image.pixelColor(0, 50), QColor(0x808080));
+    QCOMPARE(image.pixelColor(199, 50), QColor(0x808080));
+    QCOMPARE(image.pixelColor(100, 0), QColor(0x808080));
+    QCOMPARE(image.pixelColor(100, 149), QColor(0x808080));
+    QCOMPARE(image.pixelColor(100, 50), QColor(Qt::white)); // transparent inside
+
+    // The table: the left edge only.
+    auto *table = new QTableView(&window);
+    table->setGeometry(0, 0, 200, 150);
+    setSurfaceEdges(table, Qt::LeftEdge);
+    table->setPalette(high);
+    auto *tableEdge = table->findChild<QWidget *>(QStringLiteral("surfaceEdge"));
+    QVERIFY(tableEdge && !tableEdge->isHidden());
+    image.fill(Qt::white);
+    tableEdge->render(&image, QPoint(), QRegion(), QWidget::DrawWindowBackground);
+    QCOMPARE(image.pixelColor(0, 50), QColor(0x808080));
+    QCOMPARE(image.pixelColor(199, 50), QColor(Qt::white));
+    QCOMPARE(image.pixelColor(100, 0), QColor(Qt::white));
 }
 
 QTEST_MAIN(TestAppTheme)

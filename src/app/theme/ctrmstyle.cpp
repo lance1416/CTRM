@@ -251,6 +251,14 @@ bool CtrmStyle::macBase() const
     return baseStyle()->name().compare(QStringLiteral("macos"), Qt::CaseInsensitive) == 0;
 }
 
+void CtrmStyle::polish(QPalette &palette)
+{
+    QProxyStyle::polish(palette);
+    const QColor window = CtrmColors::fromPalette(palette).window;
+    for (const auto group : {QPalette::Active, QPalette::Inactive, QPalette::Disabled})
+        palette.setColor(group, QPalette::Window, window);
+}
+
 void CtrmStyle::polish(QWidget *widget)
 {
     QProxyStyle::polish(widget);

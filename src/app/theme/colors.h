@@ -18,6 +18,9 @@ struct CtrmColors
     // Control fills (design-tokens 4.4): text over window. Rest fill of text fields, combo
     // boxes, spin boxes and secondary push buttons; hover and pressed of each button type.
     QColor fillControl, fillHover, fillPressed;
+    // The `window` surface (design-tokens 2.1, surface rule): the palette Window, or `text` 8%
+    // over `base` when the palette gives Window almost equal to Base (macOS light mode).
+    QColor window;
     // The primary button fill (design-tokens 2.2): accent, darker until on-accent text has 4.5:1
     // on it, also on hover (8% lighter).
     QColor accentFill;

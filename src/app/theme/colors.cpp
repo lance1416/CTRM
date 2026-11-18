@@ -23,6 +23,10 @@ constexpr qreal kFillHoverStepDark = 0.08, kFillHoverStepLight = 0.06;
 constexpr double kOnAccentMinimum = 4.5;
 constexpr int kAccentFillStep = 105; // percent, for QColor::darker
 constexpr int kAccentFillSteps = 40;
+// The surface rule (design-tokens 2.1): Window and Base closer than this in relative luminance
+// are one colour; then `window` is `text` mixed kWindowFromText over `base`.
+constexpr double kSurfaceMinimumDifference = 0.03;
+constexpr qreal kWindowFromText = 0.08;
 constexpr qreal kFillPressedStepDark = 0.16, kFillPressedStepLight = 0.12;
 
 double linear(double channel)
@@ -89,7 +93,14 @@ CtrmColors CtrmColors::fromPalette(const QPalette &p)
     c.tintConflict = mix(QColor(kConflictTintSource), base, kTintAmount);
     c.tintError = mix(QColor(kErrorTintSource), base, kTintAmount);
     const QColor text = p.color(QPalette::Text);
-    const QColor window = p.color(QPalette::Window);
+    const Qt::ColorScheme scheme = QGuiApplication::styleHints()->colorScheme();
+    c.tintsEnabled = !detail::isHighContrast(scheme, text, base);
+    c.window = p.color(QPalette::Window).toRgb();
+    // Light mode only: dark mode keeps the palette value. High contrast: only the palette roles.
+    if (!dark && c.tintsEnabled &&
+        std::abs(relativeLuminance(c.window) - relativeLuminance(base)) < kSurfaceMinimumDifference)
+        c.window = mix(text, base, kWindowFromText);
+    const QColor window = c.window;
     const qreal rest = dark ? kFillControlDark : kFillControlLight;
     c.fillControl = mix(text, window, rest);
     c.fillHover = mix(text, window, rest + (dark ? kFillHoverStepDark : kFillHoverStepLight));
@@ -100,8 +111,6 @@ CtrmColors CtrmColors::fromPalette(const QPalette &p)
                                                           c.onAccent) < kOnAccentMinimum;
          ++i)
         c.accentFill = c.accentFill.darker(kAccentFillStep);
-    const Qt::ColorScheme scheme = QGuiApplication::styleHints()->colorScheme();
-    c.tintsEnabled = !detail::isHighContrast(scheme, p.color(QPalette::Text), base);
     return c;
 }
 

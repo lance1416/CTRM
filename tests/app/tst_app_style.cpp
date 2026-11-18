@@ -165,6 +165,7 @@ private slots:
     void oneFocusRing();
     void toggleCentredInTallRow();
     void headerNoSeparatorAfterLast();
+    void paletteWindowSurface();
 };
 
 void TestAppStyle::lineEditFilled()
@@ -720,6 +721,29 @@ void TestAppStyle::headerNoSeparatorAfterLast()
     QVERIFY(rightEdgeIsInside(2));
     // The style draws separators at all: the first section has one (Fusion and macOS).
     QVERIFY(!rightEdgeIsInside(0));
+}
+
+void TestAppStyle::paletteWindowSurface()
+{
+    // R5-09: the app style puts the computed `window` into the Window role of the app palette,
+    // so each `window` surface (panels, bars, dialogs) differs from `base` (table, list).
+    CtrmStyle style(QApplication::style()->name());
+    QPalette p = lightPalette(); // Window = Base = white, as macOS light mode
+    const CtrmColors c = CtrmColors::fromPalette(p);
+    style.polish(p);
+    for (const auto group : {QPalette::Active, QPalette::Inactive, QPalette::Disabled})
+        QCOMPARE(p.color(group, QPalette::Window), c.window);
+    QCOMPARE(p.color(QPalette::Base), QColor(0xFFFFFF));
+    QVERIFY(p.color(QPalette::Window) != p.color(QPalette::Base));
+    // Polish again: no change; the fills stay the same.
+    QPalette again = p;
+    style.polish(again);
+    QCOMPARE(again.color(QPalette::Window), c.window);
+    QCOMPARE(CtrmColors::fromPalette(again).fillControl, c.fillControl);
+    // Dark mode keeps its Window.
+    QPalette dark = darkPalette();
+    style.polish(dark);
+    QCOMPARE(dark.color(QPalette::Window), darkPalette().color(QPalette::Window));
 }
 
 QTEST_MAIN(TestAppStyle)

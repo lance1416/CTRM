@@ -168,7 +168,7 @@ void MessageBar::updateColors()
     if (colors.tintsEnabled) {
         QPalette tint;
         tint.setColor(QPalette::Window,
-                      mix(stateColor(m_stateIcon, colors), base.color(QPalette::Base), 0.12));
+                      mix(stateColor(m_stateIcon, colors), colors.window, 0.12)); // R5-09
         setPalette(tint);
     }
     setAutoFillBackground(colors.tintsEnabled);
