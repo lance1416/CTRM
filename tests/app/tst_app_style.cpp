@@ -166,6 +166,10 @@ private slots:
     void toggleCentredInTallRow();
     void headerNoSeparatorAfterLast();
     void paletteWindowSurface();
+    void focusFrameOnFullSpinBox();
+    void disabledFieldsHalfFill();
+    void disabledTextDim();
+    void disabledComboHalf();
 };
 
 void TestAppStyle::lineEditFilled()
@@ -746,6 +750,114 @@ void TestAppStyle::paletteWindowSurface()
     QPalette dark = darkPalette();
     style.polish(dark);
     QCOMPARE(dark.color(QPalette::Window), darkPalette().color(QPalette::Window));
+}
+
+void TestAppStyle::focusFrameOnFullSpinBox()
+{
+    // R6-01: QMacStyle puts the focus frame on the line edit inside a spin box. The app style
+    // moves it to the spin box, so that one ring goes around the full field, stepper included.
+    Styled s;
+    auto *spin = s.add(new QSpinBox);
+    QFocusFrame frame(&s.window);
+    frame.setStyle(s.style.get());
+    frame.setWidget(spin->findChild<QLineEdit *>());
+    QEvent show(QEvent::Show);
+    QApplication::sendEvent(&frame, &show);
+    QCOMPARE(frame.widget(), spin);
+    // A plain line edit keeps its frame.
+    auto *edit = s.add(new QLineEdit);
+    frame.setWidget(edit);
+    QApplication::sendEvent(&frame, &show);
+    QCOMPARE(frame.widget(), edit);
+}
+
+void TestAppStyle::disabledFieldsHalfFill()
+{
+    // R6-03: a disabled text field and spin box have the fill at 50% (design-tokens 4.5).
+    for (const QPalette &palette : {darkPalette(), lightPalette()}) {
+        Styled s(palette);
+        auto *edit = s.add(new QLineEdit);
+        auto *spin = s.add(new QSpinBox);
+        edit->resize(160, tokens::controlH);
+        edit->setEnabled(false);
+        spin->setEnabled(false);
+        const QColor window = palette.color(QPalette::Window);
+        const QColor half = mix(s.colors().fillControl, window, 0.5);
+        const QColor editPixel = paint(edit).pixelColor(edit->width() - 4, tokens::controlH / 2);
+        QVERIFY2(near(editPixel, half), qPrintable(describe(editPixel, half)));
+        const QColor spinPixel = paint(spin).pixelColor(tokens::radiusControl + 1, 2);
+        QVERIFY2(near(spinPixel, half), qPrintable(describe(spinPixel, half)));
+    }
+}
+
+void TestAppStyle::disabledTextDim()
+{
+    // R6-03: the text and the placeholder of a disabled field are text-dim.
+    CtrmStyle style(QApplication::style()->name());
+    for (QPalette p : {darkPalette(), lightPalette()}) {
+        const QColor dim = CtrmColors::fromPalette(p).stateNeutral;
+        style.polish(p);
+        QCOMPARE(p.color(QPalette::Disabled, QPalette::Text), dim);
+        QCOMPARE(p.color(QPalette::Disabled, QPalette::PlaceholderText), dim);
+        QVERIFY(p.color(QPalette::Active, QPalette::Text) != dim);
+    }
+}
+
+void TestAppStyle::disabledComboHalf()
+{
+    // R6-03: a disabled combo box is the enabled combo box at 50% over its background, and its
+    // label is text-dim.
+    Styled s;
+    auto *combo = s.add(new QComboBox);
+    combo->addItem(QStringLiteral("MMMM"));
+    combo->resize(combo->sizeHint());
+    const QColor window = s.palette.color(QPalette::Window);
+    const auto draw = [&](bool enabled) {
+        combo->setEnabled(enabled);
+        QStyleOptionComboBox option;
+        option.initFrom(combo);
+        option.rect = combo->rect();
+        option.subControls = QStyle::SC_All;
+        option.editable = false;
+        option.frame = true;
+        QImage image(combo->size(), QImage::Format_ARGB32_Premultiplied);
+        image.fill(window);
+        QPainter painter(&image);
+        s.style->drawComplexControl(QStyle::CC_ComboBox, &option, &painter, combo);
+        return image;
+    };
+    const QImage on = draw(true);
+    const QImage off = draw(false);
+    for (int y = 0; y < on.height(); ++y) {
+        for (int x = 0; x < on.width(); ++x) {
+            const QColor want = mix(on.pixelColor(x, y), window, 0.5);
+            QVERIFY2(near(off.pixelColor(x, y), want, 3),
+                     qPrintable(QStringLiteral("%1,%2 ").arg(x).arg(y) +
+                                describe(off.pixelColor(x, y), want)));
+        }
+    }
+
+    // The label: the strongest pixel is text-dim.
+    combo->setEnabled(false);
+    QStyleOptionComboBox option;
+    option.initFrom(combo);
+    option.rect = combo->rect();
+    option.currentText = combo->currentText();
+    QImage label(combo->size(), QImage::Format_ARGB32_Premultiplied);
+    label.fill(window);
+    QPainter painter(&label);
+    s.style->drawControl(QStyle::CE_ComboBoxLabel, &option, &painter, combo);
+    painter.end();
+    QColor strongest = window;
+    for (int y = 0; y < label.height(); ++y)
+        for (int x = 0; x < label.width(); ++x)
+            if (std::abs(label.pixelColor(x, y).lightness() - window.lightness()) >
+                std::abs(strongest.lightness() - window.lightness()))
+                strongest = label.pixelColor(x, y);
+    if (strongest == window)
+        QSKIP("This style draws no combo box label (QMacStyle without Cocoa).");
+    const QColor dim = s.colors().stateNeutral;
+    QVERIFY2(near(strongest, dim, 6), qPrintable(describe(strongest, dim)));
 }
 
 QTEST_MAIN(TestAppStyle)

@@ -7,7 +7,9 @@
 
 #include <QAbstractSpinBox>
 #include <QApplication>
+#include <QEvent>
 #include <QFocusFrame>
+#include <QImage>
 #include <QLineEdit>
 #include <QPainter>
 #include <QPushButton>
@@ -177,6 +179,15 @@ void drawToolBarLabel(QPainter *painter, const QStyleOptionToolButton *tool, con
     painter->restore();
 }
 
+// The fill of a text field, a spin box: fill-control, at 50% when disabled (design-tokens 4.5).
+QColor fieldFill(const QStyleOption *option)
+{
+    QColor fill = CtrmColors::fromPalette(option->palette).fillControl;
+    if (!(option->state & QStyle::State_Enabled))
+        fill.setAlphaF(kDisabledFill);
+    return fill;
+}
+
 QColor pushButtonFill(const QStyleOptionButton *button)
 {
     const CtrmColors c = CtrmColors::fromPalette(button->palette);
@@ -254,18 +265,51 @@ bool CtrmStyle::macBase() const
 void CtrmStyle::polish(QPalette &palette)
 {
     QProxyStyle::polish(palette);
-    const QColor window = CtrmColors::fromPalette(palette).window;
+    const CtrmColors c = CtrmColors::fromPalette(palette);
     for (const auto group : {QPalette::Active, QPalette::Inactive, QPalette::Disabled})
-        palette.setColor(group, QPalette::Window, window);
+        palette.setColor(group, QPalette::Window, c.window);
+    // R6-03: the text and the placeholder of a disabled field are text-dim.
+    palette.setColor(QPalette::Disabled, QPalette::Text, c.stateNeutral);
+    palette.setColor(QPalette::Disabled, QPalette::PlaceholderText, c.stateNeutral);
 }
 
 void CtrmStyle::polish(QWidget *widget)
 {
     QProxyStyle::polish(widget);
+    // R6-01: QMacStyle puts its focus frame on the line edit inside a spin box. Move it to the
+    // spin box, so the ring goes around the full field.
+    if (auto *frame = qobject_cast<QFocusFrame *>(widget); frame && frame != m_ringFrame)
+        frame->installEventFilter(this);
     // Hover states (design-tokens 4.5) need the hover events.
     if (qobject_cast<QPushButton *>(widget) || qobject_cast<QToolButton *>(widget) ||
         qobject_cast<QAbstractSpinBox *>(widget))
         widget->setAttribute(Qt::WA_Hover);
+}
+
+void CtrmStyle::unpolish(QWidget *widget)
+{
+    if (qobject_cast<QFocusFrame *>(widget))
+        widget->removeEventFilter(this);
+    QProxyStyle::unpolish(widget);
+}
+
+bool CtrmStyle::eventFilter(QObject *watched, QEvent *event)
+{
+    if (auto *frame = qobject_cast<QFocusFrame *>(watched)) {
+        switch (event->type()) {
+        case QEvent::Show:
+        case QEvent::Move:
+        case QEvent::Resize:
+            if (QWidget *target = frame->widget(); target && qobject_cast<QLineEdit *>(target)) {
+                if (auto *spin = qobject_cast<QAbstractSpinBox *>(target->parentWidget()))
+                    frame->setWidget(spin);
+            }
+            break;
+        default:
+            break;
+        }
+    }
+    return QProxyStyle::eventFilter(watched, event);
 }
 
 void CtrmStyle::drawPrimitive(PrimitiveElement element, const QStyleOption *option,
@@ -276,8 +320,7 @@ void CtrmStyle::drawPrimitive(PrimitiveElement element, const QStyleOption *opti
             edit && qobject_cast<const QAbstractSpinBox *>(edit->parentWidget()))
             return; // the spin box draws the fill
         if (isFramedLineEdit(option, widget)) {
-            const CtrmColors c = CtrmColors::fromPalette(option->palette);
-            fillRounded(painter, option->rect, c.fillControl, tokens::radiusControl);
+            fillRounded(painter, option->rect, fieldFill(option), tokens::radiusControl);
             if (!macBase() && keyboardFocus(option))
                 drawFocusRing(painter, option->rect, option->palette, tokens::radiusControl);
             return;
@@ -291,6 +334,17 @@ void CtrmStyle::drawPrimitive(PrimitiveElement element, const QStyleOption *opti
 void CtrmStyle::drawControl(ControlElement element, const QStyleOption *option, QPainter *painter,
                             const QWidget *widget) const
 {
+    if (element == CE_ComboBoxLabel && !(option->state & State_Enabled)) {
+        // R6-03: the label of a disabled combo box is text-dim.
+        if (const auto *combo = qstyleoption_cast<const QStyleOptionComboBox *>(option)) {
+            QStyleOptionComboBox dim = *combo;
+            const QColor neutral = CtrmColors::fromPalette(combo->palette).stateNeutral;
+            for (const auto role : {QPalette::ButtonText, QPalette::Text, QPalette::WindowText})
+                dim.palette.setColor(QPalette::Disabled, role, neutral);
+            QProxyStyle::drawControl(element, &dim, painter, widget);
+            return;
+        }
+    }
     if (element == CE_FocusFrame && macBase()) {
         // QMacStyle shows a focus frame around the focus widget.
         const auto *frame = qobject_cast<const QFocusFrame *>(widget);
@@ -436,7 +490,7 @@ void CtrmStyle::drawComplexControl(ComplexControl control, const QStyleOptionCom
     if (control == CC_SpinBox) {
         if (const QStyleOptionSpinBox *spin = framedSpinBox(option)) {
             const CtrmColors c = CtrmColors::fromPalette(spin->palette);
-            fillRounded(painter, spin->rect, c.fillControl, tokens::radiusControl);
+            fillRounded(painter, spin->rect, fieldFill(spin), tokens::radiusControl);
             if (spin->buttonSymbols != QAbstractSpinBox::NoButtons) {
                 const bool enabled = spin->state & State_Enabled;
                 for (const SubControl part : {SC_SpinBoxUp, SC_SpinBoxDown}) {
@@ -456,6 +510,29 @@ void CtrmStyle::drawComplexControl(ComplexControl control, const QStyleOptionCom
             }
             if (!macBase() && keyboardFocus(spin))
                 drawFocusRing(painter, spin->rect, spin->palette, tokens::radiusControl);
+            return;
+        }
+    }
+    if (control == CC_ComboBox && !(option->state & State_Enabled)) {
+        // R6-03: a disabled combo box is the enabled one at 50% (the fill at 50%). The native
+        // disabled combo box keeps the full fill.
+        if (const auto *combo = qstyleoption_cast<const QStyleOptionComboBox *>(option)) {
+            const qreal ratio = painter->device()->devicePixelRatioF();
+            QImage image(combo->rect.size() * ratio, QImage::Format_ARGB32_Premultiplied);
+            image.setDevicePixelRatio(ratio);
+            image.fill(Qt::transparent);
+            QStyleOptionComboBox enabled = *combo;
+            enabled.state |= State_Enabled;
+            enabled.palette.setCurrentColorGroup(QPalette::Active);
+            enabled.rect.moveTopLeft(QPoint(0, 0));
+            {
+                QPainter imagePainter(&image);
+                QProxyStyle::drawComplexControl(control, &enabled, &imagePainter, widget);
+            }
+            painter->save();
+            painter->setOpacity(painter->opacity() * kDisabledFill);
+            painter->drawImage(combo->rect.topLeft(), image);
+            painter->restore();
             return;
         }
     }
