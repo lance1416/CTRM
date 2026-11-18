@@ -59,9 +59,10 @@ ExtensionEditor::ExtensionEditor(QWidget *parent)
     f->addRow(tr("Action:"), actionGroup);
     alignLabelToFirstRow(qobject_cast<QLabel *>(f->labelForField(actionGroup)),
                          m_actions->button(int(Action::Lower)));
-    QWidget *onlyForRow = makeInlineField(m_onlyIfMatches, {m_onlyForHint});
-    onlyForRow->setFocusProxy(m_onlyIfMatches); // the label mnemonic goes to the field
+    // A field group: the visible edge of the field is the field edge (C04).
+    QLayout *onlyForRow = makeFieldGroup({makeInlineField(m_onlyIfMatches, {m_onlyForHint})});
     f->addRow(tr("&Only for:"), onlyForRow);
+    qobject_cast<QLabel *>(f->labelForField(onlyForRow))->setBuddy(m_onlyIfMatches);
     f->addRow(QString(), m_folderNote);
     f->setRowVisible(m_folderNote, false);
 

@@ -14,11 +14,15 @@
 #include "rules/removerule.h"
 #include "rules/replaceeditor.h"
 #include "rules/ruleeditorfactory.h"
+#include "rules/ruleregistry.h"
+#include "theme/tokens.h"
 #include "widgets/formutils.h"
 
+#include <QAbstractSpinBox>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QFormLayout>
+#include <QGridLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QRadioButton>
@@ -116,6 +120,7 @@ private slots:
     void inlineFieldsFullHeight();
     void tabOrderFollowsRows();
     void comboWidthsMatch();
+    void formRhythm();
     void extensionFolderNote();
     void chainOptionsDefaults();
     void chainOptionsChangedCount();
@@ -365,7 +370,12 @@ bool fieldsFullHeight(const QStringList &names, const std::function<void(Editor 
     bool ok = true;
     for (const QString &name : names) {
         auto *field = e->template findChild<QWidget *>(name);
-        if (!field || field->height() < field->sizeHint().height()) {
+        // The form rhythm gives a control its fixed height (control-h, C03); without one, the
+        // size hint.
+        const int full = field && field->minimumHeight() == field->maximumHeight()
+                                 ? field->minimumHeight()
+                                 : (field ? field->sizeHint().height() : 0);
+        if (!field || field->height() < full) {
             qWarning() << "squashed" << name << (field ? field->geometry() : QRect());
             ok = false;
         }
@@ -374,6 +384,111 @@ bool fieldsFullHeight(const QStringList &names, const std::function<void(Editor 
 }
 
 } // namespace
+
+namespace {
+
+// The first widget of a field item: the widget, or the widget in row 0, column 0 of a group.
+QLayoutItem *firstControlItem(QLayoutItem *field)
+{
+    if (field->widget())
+        return field;
+    auto *grid = qobject_cast<QGridLayout *>(field->layout());
+    return grid ? grid->itemAtPosition(0, 0) : nullptr;
+}
+
+} // namespace
+
+void TestAppEditors2::formRhythm()
+{
+    // C03, C04, C09 (ui-design 6.1 rules 2, 8, 15): control rows are control-h high with
+    // space-2 between rows (32 px pitch); check box and radio rows in a group have a 24 px
+    // pitch; all visible edges are on the field edge; a text field or combo box alone on its
+    // row fills the field column up to field-w-max; the label text is centred on its first row.
+    using namespace ctrm::app::tokens;
+    for (const QString &type : ctrm::ruleTypes()) {
+        std::unique_ptr<RuleEditor> editor(createRuleEditor(type, nullptr));
+        QVERIFY(editor);
+        editor->resize(520, 900);
+        editor->show();
+        QVERIFY(QTest::qWaitForWindowExposed(editor.get()));
+        QApplication::processEvents();
+        QFormLayout *form = editor->form();
+        int edge = -1;
+        int previousBottom = -1;
+        for (int row = 0; row < form->rowCount(); ++row) {
+            QLayoutItem *field = form->itemAt(row, QFormLayout::FieldRole);
+            if (!field || !form->isRowVisible(row))
+                continue;
+            const QString at = QStringLiteral("%1 row %2").arg(type).arg(row);
+            // The visible rect: for a group, the union of its controls (the grid itself can
+            // start above them, for the layout margins of the style).
+            QRect rect = field->geometry();
+            if (QLayout *group = field->layout()) {
+                rect = QRect();
+                for (int i = 0; i < group->count(); ++i) {
+                    QLayoutItem *item = group->itemAt(i);
+                    if (item->widget() && !item->widget()->isHidden())
+                        rect |= item->geometry();
+                }
+            }
+            if (previousBottom >= 0)
+                QVERIFY2(rect.top() - previousBottom == space2,
+                         qPrintable(at +
+                                    QStringLiteral(": gap %1").arg(rect.top() - previousBottom)));
+            previousBottom = rect.bottom() + 1;
+            QLayoutItem *first = firstControlItem(field);
+            QVERIFY2(first, qPrintable(at));
+            if (edge < 0)
+                edge = first->geometry().left();
+            QVERIFY2(first->geometry().left() == edge,
+                     qPrintable(at + QStringLiteral(": edge %1, not %2")
+                                             .arg(first->geometry().left())
+                                             .arg(edge)));
+            QWidget *w = first->widget();
+            const bool control = qobject_cast<QLineEdit *>(w) || qobject_cast<QComboBox *>(w) ||
+                                 qobject_cast<QAbstractSpinBox *>(w) ||
+                                 qobject_cast<QToolButton *>(w);
+            const bool check = qobject_cast<QCheckBox *>(w) || qobject_cast<QRadioButton *>(w);
+            if (control || check) {
+                QCOMPARE(first->geometry().height(), control ? controlH : controlH - space1);
+                if (auto *label = qobject_cast<QLabel *>(
+                            form->itemAt(row, QFormLayout::LabelRole)
+                                    ? form->itemAt(row, QFormLayout::LabelRole)->widget()
+                                    : nullptr);
+                    label && !label->text().isEmpty()) {
+                    QVERIFY2(qAbs(label->geometry().center().y() -
+                                  first->geometry().center().y()) <= 1,
+                             qPrintable(at + QStringLiteral(": label centre %1 %2 vs %3 %4 w %5")
+                                                     .arg(label->geometry().top())
+                                                     .arg(label->height())
+                                                     .arg(first->geometry().top())
+                                                     .arg(first->geometry().height())
+                                                     .arg(first->widget()->geometry().top())));
+                }
+            }
+            if (auto *grid = qobject_cast<QGridLayout *>(field->layout())) {
+                for (int r = 1; r < grid->rowCount(); ++r) {
+                    QLayoutItem *a = grid->itemAtPosition(r - 1, 0);
+                    QLayoutItem *b = grid->itemAtPosition(r, 0);
+                    if (!a || !b || !a->widget() || !b->widget() || b->widget()->isHidden())
+                        continue;
+                    const bool plain = qobject_cast<QAbstractButton *>(a->widget()) &&
+                                       grid->itemAtPosition(r - 1, 1) == nullptr;
+                    if (plain) // a check box or radio row with no sub-field
+                        QVERIFY2(b->geometry().top() - a->geometry().top() == controlH,
+                                 qPrintable(at + QStringLiteral(" group row %1").arg(r)));
+                }
+            }
+            if ((qobject_cast<QLineEdit *>(field->widget()) ||
+                 qobject_cast<QComboBox *>(field->widget())) &&
+                field->widget()->minimumWidth() != field->widget()->maximumWidth()) {
+                const int column = form->geometry().right() + 1 - edge;
+                QVERIFY2(rect.width() == std::min(column, fieldWMax),
+                         qPrintable(at + QStringLiteral(": width %1").arg(rect.width())));
+            }
+        }
+    }
+}
 
 void TestAppEditors2::comboWidthsMatch()
 {

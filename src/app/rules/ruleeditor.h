@@ -16,7 +16,7 @@ class Rule;
 
 namespace ctrm::app {
 
-// The base of all rule editor pages: a title ("Rule 2: Replace", Heading style) above a form.
+// The base of all rule editor pages: a title ("Rule 2: Replace", LabelStrong style) above a form.
 class RuleEditor : public QWidget
 {
     Q_OBJECT
@@ -45,10 +45,6 @@ protected:
     bool event(QEvent *event) override;
 
 private:
-    // Combo boxes alone on their form row get the widest size hint of them (ui-design 6.1
-    // rule 8, M25).
-    void matchComboWidths();
-
     void updateFonts();
 
     QLabel *m_title;

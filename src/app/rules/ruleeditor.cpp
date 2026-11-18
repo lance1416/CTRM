@@ -3,10 +3,10 @@
 
 #include "theme/colors.h"
 #include "theme/icons.h"
+#include "theme/tokens.h"
 #include "theme/typography.h"
 #include "widgets/formutils.h"
 
-#include <QComboBox>
 #include <QEvent>
 #include <QFormLayout>
 #include <QHBoxLayout>
@@ -65,10 +65,10 @@ RuleEditor::RuleEditor(QWidget *parent)
     m_title->setObjectName(QStringLiteral("ruleEditorTitle"));
     m_title->setTextFormat(Qt::PlainText);
     auto *layout = new QVBoxLayout(this);
-    // The rule panel gives the side margins: the title starts on the line of the "Rules"
-    // header, and the form on the line of Chain options (M19).
-    const QMargins margins = layout->contentsMargins();
-    layout->setContentsMargins(0, margins.top(), 0, margins.bottom());
+    // The rule panel gives the margins: the title starts on the line of the "Rules" header, and
+    // the form on the line of Chain options (M19, O06b). space-2 under the title (6.1 rule 17).
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(tokens::space2);
     layout->addWidget(m_title);
     auto *formWidget = new QWidget(this);
     m_form = makeForm(formWidget);
@@ -130,35 +130,14 @@ void RuleEditor::emitEdited()
 bool RuleEditor::event(QEvent *event)
 {
     if (event->type() == QEvent::Polish)
-        matchComboWidths(); // the subclass has added its rows
+        applyFormRhythm(m_form); // the subclass has added its rows (ui-design 6.1 rule 15)
     return QWidget::event(event);
-}
-
-void RuleEditor::matchComboWidths()
-{
-    QList<QComboBox *> combos;
-    for (int row = 0; row < m_form->rowCount(); ++row) {
-        QLayoutItem *item = m_form->itemAt(row, QFormLayout::FieldRole);
-        if (auto *combo = qobject_cast<QComboBox *>(item ? item->widget() : nullptr))
-            combos.append(combo);
-    }
-    int widest = 0;
-    for (QComboBox *combo : std::as_const(combos)) {
-        combo->setMinimumWidth(0);
-        widest = std::max(widest, combo->sizeHint().width());
-    }
-    for (QComboBox *combo : std::as_const(combos))
-        combo->setMinimumWidth(widest);
 }
 
 void RuleEditor::changeEvent(QEvent *event)
 {
     if (event->type() == QEvent::FontChange)
         updateFonts();
-    if (event->type() == QEvent::FontChange || event->type() == QEvent::StyleChange) {
-        // The combo boxes get the change after this widget.
-        QTimer::singleShot(0, this, [this] { matchComboWidths(); });
-    }
     if (event->type() == QEvent::PaletteChange || event->type() == QEvent::StyleChange) {
         for (const QPointer<QWidget> &row : std::as_const(m_errorRows)) {
             if (row)
@@ -170,7 +149,8 @@ void RuleEditor::changeEvent(QEvent *event)
 
 void RuleEditor::updateFonts()
 {
-    m_title->setFont(typeStyle(TypeToken::Heading, font()));
+    // A child of the panel header "Rules": not larger than it (C14).
+    m_title->setFont(typeStyle(TypeToken::LabelStrong, font()));
 }
 
 } // namespace ctrm::app

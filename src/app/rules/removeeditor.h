@@ -45,6 +45,7 @@ private:
     QCheckBox *m_rangeFromEnd;
     QSpinBox *m_count;
     QLayout *m_classesGroup;
+    QLayout *m_fromRow;
     QList<std::pair<QCheckBox *, quint32>> m_classes;
     QLineEdit *m_customText;
     QLineEdit *m_open;

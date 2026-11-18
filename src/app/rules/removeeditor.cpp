@@ -89,9 +89,10 @@ RemoveEditor::RemoveEditor(QWidget *parent)
 
     QFormLayout *f = form();
     f->addRow(tr("&Mode:"), m_mode);
-    QWidget *fromRow = makeInlineField(m_from, {m_rangeFromEnd});
-    fromRow->setFocusProxy(m_from); // the label mnemonic goes to the spin box
-    f->addRow(tr("&From:"), fromRow);
+    // A field group: the visible edge of the spin box is the field edge (C04).
+    m_fromRow = makeFieldGroup({makeInlineField(m_from, {m_rangeFromEnd})});
+    f->addRow(tr("&From:"), m_fromRow);
+    qobject_cast<QLabel *>(f->labelForField(m_fromRow))->setBuddy(m_from);
     f->addRow(tr("&Count:"), m_count);
     f->addRow(tr("Remove:"), m_classesGroup);
     alignLabelToFirstRow(qobject_cast<QLabel *>(f->labelForField(m_classesGroup)),
@@ -179,7 +180,7 @@ void RemoveEditor::updateModeRows()
 {
     const auto mode = Mode(m_mode->currentData().toInt());
     QFormLayout *f = form();
-    f->setRowVisible(m_from->parentWidget(), mode == Mode::Range);
+    f->setRowVisible(m_fromRow, mode == Mode::Range);
     f->setRowVisible(m_count, mode == Mode::Range);
     f->setRowVisible(m_classesGroup, mode == Mode::Characters);
     for (QWidget *w : QList<QWidget *>{m_open, m_close, m_occurrence, m_keepDelimiters})

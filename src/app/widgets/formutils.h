@@ -32,6 +32,22 @@ QWidget *makeInlineField(QWidget *first, const QList<QWidget *> &more);
 // It applies again when the font or the style of the label or the control changes.
 void alignLabelToFirstRow(QLabel *label, QWidget *firstControl);
 
+// The vertical rhythm, spacing and field widths of a form (ui-design 6.1 rules 2, 8, 14 and 15;
+// design-tokens 4). Call it after the rows are added. It applies again on a font or style change.
+// - Spacing: space-2 between rows and from label to field; space-1 between group rows.
+// - Text fields, spin boxes, combo boxes and buttons have the visible height control-h; check
+//   boxes and radio buttons 20 px. The visible rect is the layout item rect: the style margins
+//   (the macOS focus ring) are outside it, so the visible edges are on the field edge (C04).
+// - Labels have the visible height of the first row of their field, text centred: the label
+//   baseline is the baseline of the first control (6.2).
+// - A text field or a combo box alone on its row fills the field column up to field-w-max. A
+//   field with a fixed width keeps it.
+void applyFormRhythm(QFormLayout *form);
+
+// The visible height of a form control (control-h or the 20 px of a check box or radio button).
+// 0 for other widgets.
+int formControlHeight(const QWidget *w);
+
 // Gives the label columns of all forms the width of the widest label (ui-design 6.1 rule 9).
 class LabelColumnSync : public QObject
 {

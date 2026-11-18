@@ -47,6 +47,8 @@ ChainOptionsWidget::ChainOptionsWidget(QWidget *parent)
         });
     }
 
+    applyFormRhythm(m_form); // the rhythm of the rule editors (C03)
+
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(m_header, 0, Qt::AlignLeft);

@@ -86,9 +86,10 @@ NumberingEditor::NumberingEditor(QWidget *parent)
     QFormLayout *f = form();
     f->addRow(tr("&Start at:"), m_start);
     f->addRow(tr("S&tep:"), m_step);
-    QWidget *paddingRow = makeInlineField(m_padding, {m_example});
-    paddingRow->setFocusProxy(m_padding); // the label mnemonic goes to the combo box
+    // A field group: the visible edge of the combo box is the field edge (C04).
+    QLayout *paddingRow = makeFieldGroup({makeInlineField(m_padding, {m_example})});
     f->addRow(tr("&Padding:"), paddingRow);
+    qobject_cast<QLabel *>(f->labelForField(paddingRow))->setBuddy(m_padding);
     QLayout *positionGroup = makeFieldGroup(positionRows);
     f->addRow(tr("Position:"), positionGroup);
     alignLabelToFirstRow(qobject_cast<QLabel *>(f->labelForField(positionGroup)),

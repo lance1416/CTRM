@@ -203,7 +203,8 @@ void TestAppForms::baselineAfterFontChange()
                  qPrintable(QStringLiteral("label %1, radio %2")
                                     .arg(f.labelBaseline())
                                     .arg(f.radioBaseline())));
-    QVERIFY(f.caseLabel->minimumHeight() >= f.radios.first()->sizeHint().height());
+    // The label is as high as the visible part of the radio (without the margins of the style).
+    QVERIFY(f.caseLabel->minimumHeight() >= QWidgetItem(f.radios.first()).sizeHint().height());
 }
 
 void TestAppForms::oneFieldEdge()
@@ -372,7 +373,8 @@ void TestAppForms::editorTitle()
     QVERIFY(title);
     QCOMPARE(title->text(), QStringLiteral("Rule 2: Replace"));
     QCOMPARE(title->font().weight(), QFont::DemiBold);
-    QVERIFY(qFuzzyCompare(title->font().pointSizeF(), editor.font().pointSizeF() * 1.15));
+    // LabelStrong: not larger than the "Rules" header of the panel (C14).
+    QVERIFY(qFuzzyCompare(title->font().pointSizeF(), editor.font().pointSizeF()));
     QCOMPARE(editor.ruleType(), QStringLiteral("replace"));
     QCOMPARE(editor.form()->rowCount(), 2);
 }
