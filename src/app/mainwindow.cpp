@@ -37,7 +37,6 @@
 #include <QStackedWidget>
 #include <QStatusBar>
 #include <QStyle>
-#include <QStyleOptionComboBox>
 #include <QToolBar>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -559,18 +558,9 @@ QWidget *MainWindow::buildTablePage()
     m_show->addItem(tr("Problems"), int(ShowMode::Problems));
     m_show->addItem(tr("Warnings"), int(ShowMode::Warnings));
     showLabel->setBuddy(m_show);
-    // The field has the visible height of the Show control (audit M18). On macOS the combo box
-    // widget is taller than the frame it draws (focus ring), so use its layout item rect.
-    {
-        QStyleOptionComboBox option;
-        option.initFrom(m_show);
-        option.rect = QRect(QPoint(), m_show->sizeHint());
-        QRect visible =
-                m_show->style()->subElementRect(QStyle::SE_ComboBoxLayoutItem, &option, m_show);
-        if (!visible.isValid())
-            visible = option.rect;
-        m_filter->setFixedHeight(std::max(m_filter->sizeHint().height(), visible.height()));
-    }
+    // C05: the filled field has control-h from the app style; the native Show combo box also
+    // paints a control-h bezel. Both are centred on the header-h row (C08), so their visible
+    // edges match.
     // O07, C08 (ui-design 4.1, design-tokens 4.2): inset space-3, space-3 above and space-2
     // below a row of header-h, so the table starts at the y of the rule list. A label is
     // space-1 from its control; the two groups are space-4 apart.

@@ -814,7 +814,8 @@ void TestMainWindow::ruleMenuButtonsArePushButtons()
 
 void TestMainWindow::filterBarSameHeight()
 {
-    // M18: the filter field and the Show control have the same height (mockup, ui-design 6.1).
+    // C05: the filter field gets its height from the style (control-h with the app style), not
+    // from the combo box. Both are centred on the header row.
     Fixture f;
     f.window.show();
     f.addFiles({QStringLiteral("a.txt")});
@@ -822,14 +823,13 @@ void TestMainWindow::filterBarSameHeight()
     auto *combo = f.child<QComboBox>("showCombo");
     QVERIFY(field && combo);
     QApplication::processEvents();
-    // On macOS the combo box widget is taller than its frame (the focus ring is outside it):
-    // compare the visible frame of the combo box with the field.
-    QStyleOptionComboBox option;
-    option.initFrom(combo);
-    QRect visible = combo->style()->subElementRect(QStyle::SE_ComboBoxLayoutItem, &option, combo);
-    if (!visible.isValid())
-        visible = combo->rect();
-    QCOMPARE(field->height(), visible.height());
+    QCOMPARE(field->minimumHeight(), 0);
+    QCOMPARE(field->maximumHeight(), QWIDGETSIZE_MAX);
+    QCOMPARE(field->height(), field->sizeHint().height());
+    auto *filterBar = f.child<QWidget>("filterBar");
+    const int rowCentre = tokens::space3 + tokens::headerH / 2;
+    QVERIFY(qAbs(field->geometry().center().y() + 1 - rowCentre) <= 1);
+    QVERIFY(qAbs(combo->mapTo(filterBar, combo->rect().center()).y() + 1 - rowCentre) <= 1);
 }
 
 void TestMainWindow::barsShareLeftEdge()
