@@ -89,8 +89,11 @@ QIcon coloredIcon(const QString &name, const QColor &color)
     QSvgRenderer renderer(svg);
     QIcon icon;
     if (renderer.isValid()) {
+        // The canvas of the file is the icon size: icon-s (16) or icon-xs (12).
+        const int size =
+                renderer.defaultSize().width() > 0 ? renderer.defaultSize().width() : kIconSize;
         for (const qreal ratio : kPixelRatios)
-            icon.addPixmap(render(renderer, kIconSize, ratio, color.alphaF()));
+            icon.addPixmap(render(renderer, size, ratio, color.alphaF()));
     }
     cache.insert(key, icon);
     return icon;
@@ -113,6 +116,8 @@ QString stateFile(StateIcon s)
         return QStringLiteral("state-rolled-back");
     case StateIcon::Excluded:
         return QStringLiteral("state-excluded");
+    case StateIcon::FlowDone:
+        return QStringLiteral("flow-done");
     }
     return {};
 }
@@ -129,6 +134,7 @@ QColor stateColor(StateIcon s, const CtrmColors &c)
     case StateIcon::Warning:
         return c.stateWarning;
     case StateIcon::Done:
+    case StateIcon::FlowDone:
         return c.stateDone;
     case StateIcon::RolledBack:
     case StateIcon::Excluded:
@@ -193,6 +199,11 @@ QIcon toolIcon(ToolIcon t, const QPalette &p)
     Q_UNUSED(themeName);
 #endif
     return coloredIcon(file, p.color(QPalette::WindowText));
+}
+
+QIcon toolIcon(const QString &name, const QPalette &p)
+{
+    return coloredIcon(name, p.color(QPalette::WindowText));
 }
 
 QIcon appIcon()

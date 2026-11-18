@@ -3,6 +3,9 @@
 <RCC version="1.0">
     <qresource prefix="/">
         <file>icons/app-toast.svg</file>
+        <file>icons/chevron-xs-down.svg</file>
+        <file>icons/chevron-xs-right.svg</file>
+        <file>icons/flow-done.svg</file>
         <file>icons/state-change.svg</file>
         <file>icons/state-conflict.svg</file>
         <file>icons/state-done.svg</file>
@@ -19,9 +22,11 @@
         <file>icons/tool-duplicate.svg</file>
         <file>icons/tool-history.svg</file>
         <file>icons/tool-info.svg</file>
+        <file>icons/tool-left.svg</file>
         <file>icons/tool-presets.svg</file>
         <file>icons/tool-refresh.svg</file>
         <file>icons/tool-remove.svg</file>
+        <file>icons/tool-right.svg</file>
         <file>icons/tool-undo.svg</file>
         <file>icons/tool-up.svg</file>
     </qresource>

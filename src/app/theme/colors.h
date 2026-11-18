@@ -15,6 +15,9 @@ struct CtrmColors
 {
     QColor stateChange, stateConflict, stateWarning, stateError, stateDone, stateNeutral;
     QColor tintConflict, tintError;
+    // Control fills (design-tokens 4.4): text over window. Rest fill of text fields, combo
+    // boxes, spin boxes and secondary push buttons; hover and pressed of each button type.
+    QColor fillControl, fillHover, fillPressed;
     bool tintsEnabled = true; // false on a high-contrast theme
     static CtrmColors fromPalette(const QPalette &p);
 };

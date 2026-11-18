@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "theme/colors.h"
 #include "theme/icons.h"
+#include "theme/tokens.h"
 #include "theme/typography.h"
+#include "widgets/tertiarybutton.h"
 
 #include <QApplication>
 #include <QImage>
@@ -82,6 +84,10 @@ private slots:
     void iconsLoad();
     void stateIconUsesColor();
     void toolIconUsesWindowText();
+    void tokenValues();
+    void fillValues();
+    void sharedIconsLoad();
+    void tertiaryIconButtonProperty();
 };
 
 void TestAppTheme::mixFormula()
@@ -311,6 +317,72 @@ void TestAppTheme::toolIconUsesWindowText()
     p.setColor(QPalette::WindowText, QColor(0x123456));
     const QImage image = toolIcon(ToolIcon::Delete, p).pixmap(QSize(16, 16), 2.0).toImage();
     QVERIFY(hasPixel(image, QColor(0x123456)));
+}
+
+void TestAppTheme::tokenValues()
+{
+    // design-tokens 4.1 to 4.4 (audit v0.2 section 4).
+    namespace t = ctrm::app::tokens;
+    QCOMPARE((QList<int>{t::space1, t::space2, t::space3, t::space4, t::space5, t::space6}),
+             (QList<int>{4, 8, 12, 16, 20, 24}));
+    QCOMPARE((QList<int>{t::controlH, t::controlHLarge, t::rowH, t::rowH2, t::headerH, t::hitMin}),
+             (QList<int>{24, 32, 24, 40, 32, 24}));
+    QCOMPARE((QList<int>{t::fieldWMax, t::iconXs, t::iconS}), (QList<int>{280, 12, 16}));
+    QCOMPARE((QList<int>{t::radiusControl, t::radiusHover, t::radiusPanel}), (QList<int>{6, 5, 8}));
+    QCOMPARE((QList<int>{t::defaultWidth, t::defaultHeight}), (QList<int>{1280, 860}));
+}
+
+void TestAppTheme::fillValues()
+{
+    // design-tokens 4.4: text over window at 10/18/26% (dark) and 6/12/18% (light).
+    const CtrmColors dark = CtrmColors::fromPalette(referencePalette(true));
+    QVERIFY2(near(dark.fillControl, QColor(0x3D3D3F), 1),
+             qPrintable(describe(dark.fillControl, QColor(0x3D3D3F))));
+    QVERIFY2(near(dark.fillHover, QColor(0x4C4C4E), 1),
+             qPrintable(describe(dark.fillHover, QColor(0x4C4C4E))));
+    QVERIFY2(near(dark.fillPressed, QColor(0x5B5B5C), 1),
+             qPrintable(describe(dark.fillPressed, QColor(0x5B5B5C))));
+    const CtrmColors light = CtrmColors::fromPalette(referencePalette(false));
+    QVERIFY2(near(light.fillControl, QColor(0xE0E0E0), 1),
+             qPrintable(describe(light.fillControl, QColor(0xE0E0E0))));
+    QVERIFY2(near(light.fillHover, QColor(0xD4D4D4), 1),
+             qPrintable(describe(light.fillHover, QColor(0xD4D4D4))));
+    QVERIFY2(near(light.fillPressed, QColor(0xC8C8C8), 1),
+             qPrintable(describe(light.fillPressed, QColor(0xC8C8C8))));
+}
+
+void TestAppTheme::sharedIconsLoad()
+{
+    // The icon names of audit v0.2 section 4.
+    const QPalette p = referencePalette(false);
+    for (const char *name : {"tool-left", "tool-right", "tool-remove"}) {
+        const QIcon icon = toolIcon(QString::fromLatin1(name), p);
+        QVERIFY2(!icon.isNull(), name);
+        QCOMPARE(icon.pixmap(QSize(16, 16), 2.0).size(), QSize(32, 32));
+    }
+    // The chevrons are drawn on a 12 px canvas (icon-xs): sharp at 1x and 2x.
+    for (const char *name : {"chevron-xs-right", "chevron-xs-down"}) {
+        const QIcon icon = toolIcon(QString::fromLatin1(name), p);
+        QVERIFY2(!icon.isNull(), name);
+        QCOMPARE(icon.availableSizes().value(0), QSize(12, 12));
+        QCOMPARE(icon.pixmap(QSize(12, 12), 2.0).size(), QSize(24, 24));
+    }
+    const CtrmColors c = CtrmColors::fromPalette(p);
+    const QIcon done = stateIcon(StateIcon::FlowDone, c);
+    QVERIFY(!done.isNull());
+    const QImage image = done.pixmap(QSize(16, 16), 2.0).toImage();
+    QVERIFY(hasPixel(image, c.stateDone));
+    QVERIFY(hasPixel(image, QColor(0xFFFFFF)));
+}
+
+void TestAppTheme::tertiaryIconButtonProperty()
+{
+    TertiaryButton button;
+    QCOMPARE(button.property("iconButton").toBool(), false);
+    QVERIFY(button.setProperty("iconButton", true));
+    QVERIFY(button.isIconButton());
+    button.setIconButton(false);
+    QCOMPARE(button.property("iconButton").toBool(), false);
 }
 
 QTEST_MAIN(TestAppTheme)

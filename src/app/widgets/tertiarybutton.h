@@ -11,13 +11,22 @@ namespace ctrm::app {
 class TertiaryButton : public QToolButton
 {
     Q_OBJECT
+    // The icon-button look (design-tokens 4.5): a hit-min square, the icon in text-dim at rest.
+    // false: the borderless-button look (flow step, link-style button).
+    Q_PROPERTY(bool iconButton READ isIconButton WRITE setIconButton)
 public:
     explicit TertiaryButton(QWidget *parent = nullptr);
+
+    bool isIconButton() const;
+    void setIconButton(bool on);
 
     bool framed() const; // the frame shows now
 
 protected:
     void paintEvent(QPaintEvent *event) override;
+
+private:
+    bool m_iconButton = false;
 };
 
 } // namespace ctrm::app

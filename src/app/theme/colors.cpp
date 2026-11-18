@@ -16,6 +16,10 @@ constexpr QRgb kConflictTintSource = 0xE0A000;
 constexpr QRgb kErrorTintSource = 0xD03030;
 constexpr qreal kTintAmount = 0.12;
 constexpr double kHighContrastMinimum = 15.0;
+// Control fills: the amount of text over window (design-tokens 4.4).
+constexpr qreal kFillControlDark = 0.10, kFillControlLight = 0.06;
+constexpr qreal kFillHoverStepDark = 0.08, kFillHoverStepLight = 0.06;
+constexpr qreal kFillPressedStepDark = 0.16, kFillPressedStepLight = 0.12;
 
 double linear(double channel)
 {
@@ -80,6 +84,12 @@ CtrmColors CtrmColors::fromPalette(const QPalette &p)
     c.stateNeutral = mix(placeholder, base, placeholder.alphaF());
     c.tintConflict = mix(QColor(kConflictTintSource), base, kTintAmount);
     c.tintError = mix(QColor(kErrorTintSource), base, kTintAmount);
+    const QColor text = p.color(QPalette::Text);
+    const QColor window = p.color(QPalette::Window);
+    const qreal rest = dark ? kFillControlDark : kFillControlLight;
+    c.fillControl = mix(text, window, rest);
+    c.fillHover = mix(text, window, rest + (dark ? kFillHoverStepDark : kFillHoverStepLight));
+    c.fillPressed = mix(text, window, rest + (dark ? kFillPressedStepDark : kFillPressedStepLight));
     const Qt::ColorScheme scheme = QGuiApplication::styleHints()->colorScheme();
     c.tintsEnabled = !detail::isHighContrast(scheme, p.color(QPalette::Text), base);
     return c;

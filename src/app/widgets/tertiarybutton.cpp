@@ -13,6 +13,20 @@ TertiaryButton::TertiaryButton(QWidget *parent)
     setAutoRaise(true);
 }
 
+bool TertiaryButton::isIconButton() const
+{
+    return m_iconButton;
+}
+
+void TertiaryButton::setIconButton(bool on)
+{
+    if (m_iconButton == on)
+        return;
+    m_iconButton = on;
+    updateGeometry();
+    update();
+}
+
 bool TertiaryButton::framed() const
 {
     return isDown() || hasFocus() || (isEnabled() && underMouse());

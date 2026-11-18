@@ -32,6 +32,7 @@ QColor stateColor(StateIcon icon, const CtrmColors &c)
     case StateIcon::Error:
         return c.stateError;
     case StateIcon::Done:
+    case StateIcon::FlowDone:
         return c.stateDone;
     case StateIcon::RolledBack:
     case StateIcon::Excluded:

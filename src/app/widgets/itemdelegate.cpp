@@ -96,6 +96,7 @@ QString ItemDelegate::rowStateName(const QModelIndex &index)
     case StateIcon::Warning:
         return tr("Warning");
     case StateIcon::Done:
+    case StateIcon::FlowDone: // not a row state
         return tr("Renamed");
     case StateIcon::RolledBack:
         return tr("Rolled back");
