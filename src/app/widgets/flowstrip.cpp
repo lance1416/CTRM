@@ -154,6 +154,10 @@ void FlowStrip::changeEvent(QEvent *event)
     case QEvent::DevicePixelRatioChange:
         updateSteps();
         break;
+    case QEvent::LanguageChange:
+        setAccessibleName(tr("Steps"));
+        updateSteps();
+        break;
     default:
         break;
     }
