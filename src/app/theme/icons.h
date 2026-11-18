@@ -3,6 +3,7 @@
 
 #include <QIcon>
 #include <QPalette>
+#include <QPixmap>
 
 namespace ctrm::app {
 
@@ -36,5 +37,10 @@ QIcon toolIcon(ToolIcon t, const QPalette &p);
 QIcon toolIcon(const QString &name, const QPalette &p);
 
 QIcon appIcon();
+
+// The icon at size, with each pixel in colour (the alpha of the icon stays). An icon button
+// recolours its icon for each state (design-tokens 4.5).
+QPixmap tintedPixmap(const QIcon &icon, const QSize &size, qreal devicePixelRatio,
+                     const QColor &colour);
 
 } // namespace ctrm::app

@@ -18,6 +18,8 @@ struct CtrmColors
     // Control fills (design-tokens 4.4): text over window. Rest fill of text fields, combo
     // boxes, spin boxes and secondary push buttons; hover and pressed of each button type.
     QColor fillControl, fillHover, fillPressed;
+    // The primary button fill (design-tokens 2.2): accent, darker until white text has 4.5:1.
+    QColor accentFill;
     bool tintsEnabled = true; // false on a high-contrast theme
     static CtrmColors fromPalette(const QPalette &p);
 };

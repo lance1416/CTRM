@@ -8,6 +8,7 @@
 #include "controllers/recoverycontroller.h"
 #include "mainwindow.h"
 #include "startup.h"
+#include "theme/ctrmstyle.h"
 #include "theme/icons.h"
 #include "version.h"
 
@@ -30,6 +31,8 @@ int main(int argc, char *argv[])
         QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
 #endif
 
+    // The app style over the platform style (design-tokens 4.4 and 4.5).
+    QApplication::setStyle(new ctrm::app::CtrmStyle(QApplication::style()->name()));
     QApplication::setWindowIcon(ctrm::app::appIcon());
 
     // One CTRM at a time, before the history is read (no recovery check in a second CTRM).

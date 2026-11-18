@@ -19,6 +19,10 @@ constexpr double kHighContrastMinimum = 15.0;
 // Control fills: the amount of text over window (design-tokens 4.4).
 constexpr qreal kFillControlDark = 0.10, kFillControlLight = 0.06;
 constexpr qreal kFillHoverStepDark = 0.08, kFillHoverStepLight = 0.06;
+// The primary button fill: darker in steps until white text has 4.5:1 (design-tokens 2.2).
+constexpr double kOnAccentMinimum = 4.5;
+constexpr int kAccentFillStep = 105; // percent, for QColor::darker
+constexpr int kAccentFillSteps = 40;
 constexpr qreal kFillPressedStepDark = 0.16, kFillPressedStepLight = 0.12;
 
 double linear(double channel)
@@ -90,6 +94,10 @@ CtrmColors CtrmColors::fromPalette(const QPalette &p)
     c.fillControl = mix(text, window, rest);
     c.fillHover = mix(text, window, rest + (dark ? kFillHoverStepDark : kFillHoverStepLight));
     c.fillPressed = mix(text, window, rest + (dark ? kFillPressedStepDark : kFillPressedStepLight));
+    c.accentFill = p.color(QPalette::Accent).toRgb();
+    for (int i = 0;
+         i < kAccentFillSteps && contrastRatio(c.accentFill, Qt::white) < kOnAccentMinimum; ++i)
+        c.accentFill = c.accentFill.darker(kAccentFillStep);
     const Qt::ColorScheme scheme = QGuiApplication::styleHints()->colorScheme();
     c.tintsEnabled = !detail::isHighContrast(scheme, p.color(QPalette::Text), base);
     return c;

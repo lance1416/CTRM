@@ -222,4 +222,16 @@ QIcon appIcon()
     return icon;
 }
 
+QPixmap tintedPixmap(const QIcon &icon, const QSize &size, qreal devicePixelRatio,
+                     const QColor &colour)
+{
+    QPixmap pixmap = icon.pixmap(size, devicePixelRatio);
+    if (pixmap.isNull())
+        return pixmap;
+    QPainter painter(&pixmap);
+    painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
+    painter.fillRect(pixmap.rect(), colour);
+    return pixmap;
+}
+
 } // namespace ctrm::app
