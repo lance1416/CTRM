@@ -128,6 +128,7 @@ private slots:
     void messageColumnAlways();
     void messageElidesAtEnd();
     void headerLeftAligned();
+    void iconColumnsHaveNoSeparator();
     void nameColumnsBalanced();
     void headerMenuHidesColumns();
     void tintsByStatus();
@@ -242,6 +243,25 @@ void TestAppTableView::headerLeftAligned()
     const QHeaderView *header = f.view->horizontalHeader();
     QCOMPARE(header->defaultAlignment() & Qt::AlignHorizontal_Mask, Qt::AlignLeft);
     QCOMPARE(header->font().weight(), QFont::DemiBold);
+}
+
+void TestAppTableView::iconColumnsHaveNoSeparator()
+{
+    // C10: no section separator after the Include and State columns: the right edge of each
+    // of these sections has the colour of its inside. The text columns keep their separators.
+    Fixture f({QStringLiteral("a.txt")});
+    f.show();
+    QHeaderView *header = f.view->horizontalHeader();
+    const QImage image = header->grab().toImage();
+    const qreal dpr = image.devicePixelRatio();
+    const int y = qRound(header->height() / 2 * dpr);
+    for (const int column : {int(ItemTableModel::Include), int(ItemTableModel::State)}) {
+        const int left = header->sectionViewportPosition(column);
+        const int right = left + header->sectionSize(column);
+        const QColor inside = image.pixelColor(qRound((left + 2) * dpr), y);
+        for (int x = qRound((right - 2) * dpr); x < qRound(right * dpr); ++x)
+            QCOMPARE(image.pixelColor(x, y), inside);
+    }
 }
 
 void TestAppTableView::nameColumnsBalanced()

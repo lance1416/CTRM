@@ -30,6 +30,31 @@ namespace ctrm::app {
 
 namespace {
 
+// C10: the narrow icon columns (Include, State) draw no section separator, as in Finder. The
+// style draws the separator on the right edge of the section rectangle, so these sections paint
+// a wider rectangle, clipped to their own.
+class ItemHeaderView : public QHeaderView
+{
+public:
+    explicit ItemHeaderView(QWidget *parent)
+        : QHeaderView(Qt::Horizontal, parent)
+    {}
+
+protected:
+    void paintSection(QPainter *painter, const QRect &rect, int logicalIndex) const override
+    {
+        if (logicalIndex != ItemTableModel::Include && logicalIndex != ItemTableModel::State) {
+            QHeaderView::paintSection(painter, rect, logicalIndex);
+            return;
+        }
+        constexpr int kSeparatorRoom = 4; // more than the separator at each scale
+        painter->save();
+        painter->setClipRect(rect, Qt::IntersectClip);
+        QHeaderView::paintSection(painter, rect.adjusted(0, 0, kSeparatorRoom, 0), logicalIndex);
+        painter->restore();
+    }
+};
+
 // Adds the screen reader text of the row (ui-design 14): state, old name, "will become", new
 // name, message.
 class RowTextModel : public QIdentityProxyModel
@@ -103,6 +128,7 @@ ItemTableView::ItemTableView(ItemTableModel &model, ItemFilterProxy &proxy, QWid
     vertical->setSectionResizeMode(QHeaderView::Fixed);
     updateRowHeight();
 
+    setHorizontalHeader(new ItemHeaderView(this));
     QHeaderView *header = horizontalHeader();
     header->setSectionsClickable(true);
     header->setHighlightSections(false);
