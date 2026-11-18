@@ -77,6 +77,7 @@ private slots:
     void tableRowHeight_data();
     void tableRowHeight();
     void preferencesSections();
+    void aboutRowGaps();
 };
 
 void TestAppDialogs::insets_data()
@@ -192,6 +193,23 @@ void TestAppDialogs::preferencesSections()
             const QRect above = items.at(2 * section - 1)->geometry();
             QCOMPARE(title->geometry().top() - above.bottom() - 1, tokens::space4);
         }
+    }
+}
+
+void TestAppDialogs::aboutRowGaps()
+{
+    // The rows are space-2 apart: the dialog is as high as its rows at its width, so no free
+    // height goes into a label (a centred label shows that height as a gap).
+    AboutDialog dialog(nullptr);
+    dialog.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+    for (QLabel *label : dialog.findChildren<QLabel *>()) {
+        const int needed = label->hasHeightForWidth() ? label->heightForWidth(label->width())
+                                                      : label->sizeHint().height();
+        QVERIFY2(label->height() == needed, qPrintable(QStringLiteral("%1: %2, needs %3")
+                                                               .arg(label->objectName())
+                                                               .arg(label->height())
+                                                               .arg(needed)));
     }
 }
 

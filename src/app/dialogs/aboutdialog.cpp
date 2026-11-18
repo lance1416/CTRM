@@ -75,7 +75,10 @@ AboutDialog::AboutDialog(QWidget *parent)
     layout->addWidget(tagline);
     layout->addWidget(licence);
     addButtonRow(layout, buttons);
-    setFixedWidth(qMax(360, sizeHint().width()));
+    // The height of the rows at this width: the size hint wraps the text at a smaller width, and
+    // its free height went into the centred labels as gaps.
+    const int width = qMax(360, sizeHint().width());
+    setFixedSize(width, heightForWidth(width));
 }
 
 } // namespace ctrm::app
