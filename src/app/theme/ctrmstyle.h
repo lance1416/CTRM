@@ -3,6 +3,10 @@
 
 #include <QProxyStyle>
 
+#include <memory>
+
+class QFocusFrame;
+
 namespace ctrm::app {
 
 // The app style over the platform style (design-tokens 4.4 and 4.5). It draws:
@@ -17,6 +21,7 @@ class CtrmStyle : public QProxyStyle
     Q_OBJECT
 public:
     explicit CtrmStyle(const QString &baseKey);
+    ~CtrmStyle() override;
 
     void polish(QWidget *widget) override;
     using QProxyStyle::polish;
@@ -44,6 +49,12 @@ public:
 private:
     // The base style is QMacStyle. It draws the focus ring of text fields and spin boxes.
     bool macBase() const;
+    // A hidden text field with a focus frame: QMacStyle draws the text field ring for it, so the
+    // spin box gets the same ring as the text field.
+    const QFocusFrame *textFieldFocusFrame() const;
+
+    mutable std::unique_ptr<QWidget> m_ringHost;
+    mutable QFocusFrame *m_ringFrame = nullptr;
 };
 
 } // namespace ctrm::app

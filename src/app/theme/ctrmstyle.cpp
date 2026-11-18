@@ -7,6 +7,7 @@
 
 #include <QAbstractSpinBox>
 #include <QApplication>
+#include <QFocusFrame>
 #include <QLineEdit>
 #include <QPainter>
 #include <QPushButton>
@@ -33,6 +34,8 @@ constexpr qreal kDisabledIcon = 0.35;
 // The focus ring is 2 px inside the widget: Qt clips each widget to its rectangle, so the
 // design ring (3 px outside) has no space.
 constexpr qreal kFocusRingWidth = 2.0;
+// A toolbar text button has space-2 on each side of its content.
+constexpr int kToolBarButtonPadding = tokens::space2;
 // A push button with text is at least three control heights wide, as the platform buttons.
 constexpr int kPushButtonMinWidth = 3 * tokens::controlH;
 
@@ -132,6 +135,49 @@ const QStyleOptionToolButton *toolBarButton(const QStyleOption *option, const QW
     return qstyleoption_cast<const QStyleOptionToolButton *>(option);
 }
 
+// The label of a toolbar button: the icon at space-2 from the left edge, the text space-1 after
+// it (the icon button: the icon in the centre). A MenuToolButton gives no icon and no text here
+// and draws its own label.
+void drawToolBarLabel(QPainter *painter, const QStyleOptionToolButton *tool, const QWidget *widget)
+{
+    const bool enabled = tool->state & QStyle::State_Enabled;
+    const bool iconShown = !tool->icon.isNull() && tool->toolButtonStyle != Qt::ToolButtonTextOnly;
+    const bool textShown = !tool->text.isEmpty() &&
+                           (tool->toolButtonStyle != Qt::ToolButtonIconOnly || !iconShown);
+    const QRect r = tool->rect;
+    painter->save();
+    if (iconShown) {
+        const QPixmap pixmap =
+                tool->icon.pixmap(tool->iconSize, painter->device()->devicePixelRatioF());
+        QRect iconRect(QPoint(0, 0), tool->iconSize);
+        if (textShown)
+            iconRect.moveTo(r.left() + kToolBarButtonPadding,
+                            r.top() + (r.height() - tool->iconSize.height()) / 2);
+        else
+            iconRect.moveCenter(r.center());
+        painter->setOpacity(enabled ? 1.0 : kDisabledIcon);
+        painter->drawPixmap(QStyle::visualRect(tool->direction, r, iconRect), pixmap);
+        painter->setOpacity(1.0);
+    }
+    if (textShown) {
+        const int left = r.left() + kToolBarButtonPadding +
+                         (iconShown ? tool->iconSize.width() + tokens::space1 : 0);
+        const QRect textRect = QStyle::visualRect(
+                tool->direction, r,
+                QRect(left, r.top(), r.right() + 1 - kToolBarButtonPadding - left, r.height()));
+        int flags = Qt::AlignVCenter | Qt::AlignLeading | Qt::TextSingleLine;
+        const QStyle *style = widget ? widget->style() : QApplication::style();
+        flags |= style->styleHint(QStyle::SH_UnderlineShortcut, tool, widget)
+                         ? Qt::TextShowMnemonic
+                         : Qt::TextHideMnemonic;
+        painter->setFont(tool->font);
+        painter->setPen(enabled ? tool->palette.color(QPalette::ButtonText)
+                                : CtrmColors::fromPalette(tool->palette).stateNeutral);
+        painter->drawText(textRect, flags, tool->text);
+    }
+    painter->restore();
+}
+
 QColor pushButtonFill(const QStyleOptionButton *button)
 {
     const CtrmColors c = CtrmColors::fromPalette(button->palette);
@@ -187,6 +233,20 @@ CtrmStyle::CtrmStyle(const QString &baseKey)
     : QProxyStyle(baseKey)
 {}
 
+CtrmStyle::~CtrmStyle() = default;
+
+const QFocusFrame *CtrmStyle::textFieldFocusFrame() const
+{
+    if (!m_ringFrame) {
+        // QFocusFrame needs a widget that is not a window.
+        m_ringHost = std::make_unique<QWidget>();
+        auto *edit = new QLineEdit(m_ringHost.get());
+        m_ringFrame = new QFocusFrame(m_ringHost.get());
+        m_ringFrame->setWidget(edit);
+    }
+    return m_ringFrame;
+}
+
 bool CtrmStyle::macBase() const
 {
     return baseStyle()->name().compare(QStringLiteral("macos"), Qt::CaseInsensitive) == 0;
@@ -224,6 +284,18 @@ void CtrmStyle::drawPrimitive(PrimitiveElement element, const QStyleOption *opti
 void CtrmStyle::drawControl(ControlElement element, const QStyleOption *option, QPainter *painter,
                             const QWidget *widget) const
 {
+    if (element == CE_FocusFrame && macBase()) {
+        // QMacStyle shows a focus frame around the focus widget.
+        const auto *frame = qobject_cast<const QFocusFrame *>(widget);
+        const QWidget *target = frame ? frame->widget() : nullptr;
+        // A push button and a spin box get the text field ring: one ring, around the full
+        // control. (The native ring of a push button has the native button shape and position.)
+        const auto *spin = qobject_cast<const QAbstractSpinBox *>(target);
+        if (qobject_cast<const QPushButton *>(target) || (spin && spin->hasFrame())) {
+            QProxyStyle::drawControl(element, option, painter, textFieldFocusFrame());
+            return;
+        }
+    }
     const QStyleOptionButton *button = styledPushButton(option);
     if (!button) {
         QProxyStyle::drawControl(element, option, painter, widget);
@@ -235,7 +307,8 @@ void CtrmStyle::drawControl(ControlElement element, const QStyleOption *option, 
         QStyleOptionButton label = *button;
         label.rect = proxy()->subElementRect(SE_PushButtonContents, button, widget);
         proxy()->drawControl(CE_PushButtonLabel, &label, painter, widget);
-        if (keyboardFocus(button))
+        // On macOS the focus frame draws the ring (CE_FocusFrame).
+        if (!macBase() && keyboardFocus(button))
             drawFocusRing(painter, button->rect, button->palette, pushButtonRadius(button));
         return;
     }
@@ -292,9 +365,16 @@ void CtrmStyle::drawControl(ControlElement element, const QStyleOption *option, 
             painter->save();
             painter->setPen(pushButtonText(button));
             const QRect textRect = visualRect(button->direction, button->rect, content);
-            painter->drawText(
-                    textRect, flags | Qt::AlignHCenter,
-                    metrics.elidedText(button->text, Qt::ElideRight, textRect.width(), flags));
+            // QFontMetrics::elidedText() measures a "&" that TextHideMnemonic hides (macOS),
+            // so elide only text that does not fit, and then with no mnemonic.
+            if (textWidth <= textRect.width()) {
+                painter->drawText(textRect, flags | Qt::AlignHCenter, button->text);
+            } else {
+                QString plain = button->text;
+                plain.remove(QLatin1Char('&'));
+                painter->drawText(textRect, flags | Qt::AlignHCenter,
+                                  metrics.elidedText(plain, Qt::ElideRight, textRect.width()));
+            }
             painter->restore();
         }
         return;
@@ -358,13 +438,7 @@ void CtrmStyle::drawComplexControl(ComplexControl control, const QStyleOptionCom
             if (keyboardFocus(tool))
                 drawFocusRing(painter, fillRect, tool->palette, radius);
 
-            // As the label part of QCommonStyle's CC_ToolButton, with no panel.
-            QStyleOptionToolButton label = *tool;
-            const int frame = proxy()->pixelMetric(PM_DefaultFrameWidth, tool, widget);
-            label.rect = proxy()->subControlRect(CC_ToolButton, tool, SC_ToolButton, widget)
-                                 .adjusted(frame, frame, -frame, -frame);
-            label.state &= ~(State_Sunken | State_On | State_Raised);
-            proxy()->drawControl(CE_ToolButtonLabel, &label, painter, widget);
+            drawToolBarLabel(painter, tool, widget);
             if (tool->subControls & SC_ToolButtonMenu) {
                 drawChevron(painter,
                             proxy()->subControlRect(CC_ToolButton, tool, SC_ToolButtonMenu, widget),
@@ -478,6 +552,16 @@ QSize CtrmStyle::sizeFromContents(ContentsType type, const QStyleOption *option,
             return {size.width() + kFieldInset + right, tokens::controlH};
         }
         break;
+    case CT_ToolButton:
+        if (const QStyleOptionToolButton *tool = toolBarButton(option, widget)) {
+            // A toolbar text button: space-2 padding, control-h high, so the first icon is at
+            // space-3 with the toolbar margin (O07). An icon button: a hit-min square.
+            if (tool->toolButtonStyle != Qt::ToolButtonIconOnly || tool->icon.isNull())
+                return {size.width() + 2 * kToolBarButtonPadding, tokens::controlH};
+            return {qMax(tokens::hitMin, size.width() + 2 * tokens::space1),
+                    qMax(tokens::hitMin, size.height())};
+        }
+        break;
     case CT_PushButton:
         if (const QStyleOptionButton *button = styledPushButton(option)) {
             int width = size.width() + 2 * pushButtonPadding(button);
@@ -498,6 +582,11 @@ int CtrmStyle::pixelMetric(PixelMetric metric, const QStyleOption *option,
     switch (metric) {
     case PM_SpinBoxFrameWidth:
         return 0;
+    case PM_ToolBarFrameWidth:
+        return 0;
+    case PM_ToolBarItemMargin:
+        // The first icon of the toolbar starts at space-3 (design-tokens 4.2).
+        return tokens::space3 - kToolBarButtonPadding;
     case PM_ButtonShiftHorizontal:
     case PM_ButtonShiftVertical:
         if (styledPushButton(option))

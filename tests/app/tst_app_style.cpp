@@ -13,6 +13,7 @@
 
 #include <QApplication>
 #include <QComboBox>
+#include <QFocusFrame>
 #include <QFormLayout>
 #include <QImage>
 #include <QLineEdit>
@@ -125,11 +126,14 @@ private slots:
     void fieldEdgesOnLayout();
     void pushButtonStates();
     void primaryButtonStates();
+    void mnemonicTextWhole();
     void flatButtonStates();
     void tertiaryNeverNativeFrame();
     void iconButtonLook();
     void toolBarButtonHover();
     void toolBarMenuButtonIsTextButton();
+    void toolBarFirstIconAtInset();
+    void oneFocusRing();
 };
 
 void TestAppStyle::lineEditFilled()
@@ -261,6 +265,36 @@ void TestAppStyle::primaryButtonStates()
     QVERIFY2(near(centre(), fill.darker(108)), qPrintable(describe(centre(), fill.darker(108))));
     // White text keeps 4.5:1 on the fill (design-tokens 2.6).
     QVERIFY(contrastRatio(fill, QColor(Qt::white)) >= 4.5);
+}
+
+void TestAppStyle::mnemonicTextWhole()
+{
+    // A label with a mnemonic is not elided when it fits (area D check: "&Delete" showed "De...").
+    Styled s;
+    for (const QString &label :
+         {QStringLiteral("&Delete"), QStringLiteral("&Rename..."), QStringLiteral("Show &File")}) {
+        auto *button = s.add(new QPushButton(label));
+        button->resize(button->sizeHint());
+        const QImage image = paint(button);
+        const QColor fill = s.colors().fillControl;
+        int left = image.width();
+        int right = -1;
+        for (int y = 0; y < image.height(); ++y) {
+            for (int x = tokens::radiusControl; x < image.width() - tokens::radiusControl; ++x) {
+                if (!near(image.pixelColor(x, y), fill, 24)) {
+                    left = qMin(left, x);
+                    right = qMax(right, x);
+                }
+            }
+        }
+        QString plain = label;
+        plain.remove(QLatin1Char('&'));
+        const int expected = button->fontMetrics().horizontalAdvance(plain);
+        QVERIFY2(right - left + 1 >= expected - 3, qPrintable(QStringLiteral("%1: %2 < %3")
+                                                                      .arg(label)
+                                                                      .arg(right - left + 1)
+                                                                      .arg(expected)));
+    }
 }
 
 void TestAppStyle::flatButtonStates()
@@ -397,6 +431,81 @@ void TestAppStyle::toolBarMenuButtonIsTextButton()
     const QImage image = paint(button);
     const auto [top, bottom] = rowsOf(image, s.colors().fillHover, tokens::radiusControl + 1);
     QCOMPARE(bottom - top + 1, tokens::controlH);
+}
+
+void TestAppStyle::toolBarFirstIconAtInset()
+{
+    // O07, design-tokens 4.2: the first icon of the toolbar starts at x = space-3. Text buttons
+    // are control-h high; icon buttons are hit-min squares.
+    Styled s;
+    auto *bar = s.add(new QToolBar);
+    bar->setMovable(false);
+    bar->setIconSize(QSize(tokens::iconS, tokens::iconS));
+    bar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    QPixmap square(tokens::iconS, tokens::iconS);
+    square.fill(Qt::white);
+    QAction *add = bar->addAction(QIcon(square), QStringLiteral("Add Files"));
+    QAction *undo = bar->addAction(QIcon(square), QStringLiteral("Undo"));
+    for (QWidget *child : bar->findChildren<QWidget *>())
+        child->setStyle(s.style.get());
+    auto *undoButton = qobject_cast<QToolButton *>(bar->widgetForAction(undo));
+    undoButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    bar->resize(400, bar->sizeHint().height());
+    bar->layout()->activate();
+    auto *addButton = qobject_cast<QToolButton *>(bar->widgetForAction(add));
+    QCOMPARE(addButton->height(), tokens::controlH);
+    QCOMPARE(undoButton->size(), QSize(tokens::hitMin, tokens::hitMin));
+    const QImage image = paint(bar);
+    int first = -1;
+    for (int x = 0; x < image.width() && first < 0; ++x)
+        if (near(image.pixelColor(x, addButton->geometry().center().y()), QColor(Qt::white), 8))
+            first = x;
+    QCOMPARE(first, tokens::space3);
+}
+
+void TestAppStyle::oneFocusRing()
+{
+    // Area D check: one focus ring. On macOS the focus frame draws the text field ring around a
+    // spin box and a push button (not the square ring, not a second ring in the button).
+    Styled s;
+    auto *edit = s.add(new QLineEdit);
+    auto *spin = s.add(new QSpinBox);
+    auto *button = s.add(new QPushButton(QStringLiteral("Roll Back")));
+    button->setDefault(true);
+    const auto ring = [&](QWidget *target, QSize size) {
+        target->resize(size);
+        QFocusFrame frame(&s.window);
+        frame.setStyle(s.style.get());
+        frame.setWidget(target);
+        frame.resize(size + QSize(8, 8));
+        QImage image(frame.size(), QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::transparent);
+        QPainter painter(&image);
+        frame.render(&painter, QPoint(), QRegion(), QWidget::DrawChildren);
+        return image;
+    };
+    const QSize size(80, tokens::controlH);
+    // QMacStyle draws the ring only with Cocoa (offscreen it draws nothing): run this test
+    // with the cocoa platform and -style macOS to check the rings.
+    const QImage fieldRing = ring(edit, size);
+    QCOMPARE(ring(spin, size), fieldRing);
+    QCOMPARE(ring(button, size), fieldRing);
+
+    // The button draws no ring of its own on macOS; on the other styles it draws one.
+    QStyleOptionButton option;
+    option.initFrom(button);
+    option.rect = QRect(QPoint(0, 0), size);
+    option.features = QStyleOptionButton::DefaultButton;
+    option.state |= QStyle::State_HasFocus | QStyle::State_KeyboardFocusChange;
+    QImage image(size, QImage::Format_ARGB32_Premultiplied);
+    image.fill(darkPalette().color(QPalette::Window));
+    QPainter painter(&image);
+    s.style->drawControl(QStyle::CE_PushButton, &option, &painter, button);
+    painter.end();
+    const bool mac =
+            s.style->baseStyle()->name().compare(QStringLiteral("macos"), Qt::CaseInsensitive) == 0;
+    const QColor edge = image.pixelColor(1, size.height() / 2);
+    QCOMPARE(near(edge, s.colors().accentFill), mac);
 }
 
 QTEST_MAIN(TestAppStyle)
