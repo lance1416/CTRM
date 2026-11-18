@@ -467,7 +467,7 @@ void BatchController::showResultMessage(const FinishResult &result)
         if (renamed > 0 && m_undoOf.isEmpty()) {
             auto *undo = new QPushButton(tr("Undo"));
             undo->setObjectName(QStringLiteral("resultUndo"));
-            connect(undo, &QPushButton::clicked, m_w.actions().undoRename, &QAction::trigger);
+            connect(undo, &QPushButton::clicked, this, &BatchController::resultUndoClicked);
             buttons.append(undo);
         }
     } else if (result.state == BatchState::RolledBack) {

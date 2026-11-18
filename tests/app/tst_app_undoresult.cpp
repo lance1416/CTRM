@@ -16,6 +16,7 @@
 
 #include <QAction>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QScopeGuard>
 #include <QSettings>
@@ -117,6 +118,7 @@ private slots:
     void quickUndoShowsNamesOnDisk();
     void partialUndo();
     void refreshEndsResult();
+    void resultUndoWithTextFocus();
 };
 
 void TestUndoResult::quickUndoShowsNamesOnDisk()
@@ -184,6 +186,24 @@ void TestUndoResult::refreshEndsResult()
     QCOMPARE(f.postRun(), QStringList({QString::number(int(PostRun::None))}));
     QVERIFY(!f.window.messageBar()->isVisibleTo(&f.window));
     QCOMPARE(f.step(), QStringLiteral("Step 2 of 3, Add rules, current"));
+}
+
+void TestUndoResult::resultUndoWithTextFocus()
+{
+    // A click on Undo in the result bar undoes the batch, also when a text field has the focus.
+    // On macOS a push button takes no focus from a click, so the focus stays in the field.
+    Fixture f;
+    f.window.show();
+    QVERIFY(QTest::qWaitForWindowActive(&f.window));
+    f.renameOld({QStringLiteral("old_a.txt")});
+    auto *field = f.window.findChild<QLineEdit *>(QStringLiteral("filterField"));
+    QVERIFY(field);
+    field->setFocus(Qt::OtherFocusReason);
+    QCOMPARE(QApplication::focusWidget(), field);
+    QPushButton *undo = f.barButton("resultUndo");
+    QVERIFY(undo);
+    QVERIFY(f.run([&] { undo->click(); }));
+    QVERIFY(QFile::exists(f.tree.root() + QStringLiteral("/old_a.txt")));
 }
 
 QTEST_MAIN(TestUndoResult)

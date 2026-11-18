@@ -84,7 +84,9 @@ HistoryController::HistoryController(MainWindow &w, AppContext &ctx, BatchContro
 
     const Actions &a = m_w.actions();
     connect(a.history, &QAction::triggered, this, [this] { showHistory(); });
-    connect(a.undoRename, &QAction::triggered, this, &HistoryController::quickUndo);
+    connect(a.undoRename, &QAction::triggered, this, qOverload<>(&HistoryController::quickUndo));
+    connect(&m_batch, &BatchController::resultUndoClicked, this,
+            &HistoryController::quickUndoFromResult);
     connect(&m_batch, &BatchController::batchFinished, this,
             [this](const FinishResult &result, const QString &batchId, const QString &undoOf) {
                 if (undoOf.isEmpty() && batchId == m_batch.lastBatchId()) {
@@ -148,14 +150,30 @@ void HistoryController::showHistory(const QString &selectBatchId)
 
 bool HistoryController::quickUndoAvailable() const
 {
+    return quickUndoAvailable(TextFocus::Blocks);
+}
+
+bool HistoryController::quickUndoAvailable(TextFocus textFocus) const
+{
     const QString id = m_batch.lastBatchId();
     return !id.isEmpty() && id != m_clearedBatchId && !m_batch.isRunning() &&
-           m_batch.lastBatchListVersion() == m_w.itemModel().listVersion() && !textFieldHasFocus();
+           m_batch.lastBatchListVersion() == m_w.itemModel().listVersion() &&
+           (textFocus == TextFocus::Ignored || !textFieldHasFocus());
 }
 
 void HistoryController::quickUndo()
 {
-    if (!quickUndoAvailable())
+    quickUndo(TextFocus::Blocks);
+}
+
+void HistoryController::quickUndoFromResult()
+{
+    quickUndo(TextFocus::Ignored);
+}
+
+void HistoryController::quickUndo(TextFocus textFocus)
+{
+    if (!quickUndoAvailable(textFocus))
         return;
     QString error;
     const UndoPreview preview = m_ctx.batchService().previewUndo(m_batch.lastBatchId(), &error);

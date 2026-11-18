@@ -33,9 +33,12 @@ public:
 
     void showHistory(const QString &selectBatchId = {});
     void undoBatch(const QString &batchId); // History "Undo Batch...": always the preview
-    void quickUndo();                       // message bar Undo, actions.undoRename
+    void quickUndo();                       // actions.undoRename (Cmd+Z and the Edit menu)
+    // The Undo button of the result message. A click on it is never for a text field, so the
+    // focus does not matter: on macOS a button takes no focus from a click.
+    void quickUndoFromResult();
     // The last batch, the list did not change since (E6), no batch runs, and the focus is not
-    // in a text field.
+    // in a text field (Cmd+Z there undoes the text).
     bool quickUndoAvailable() const;
     void loadRules(const QString &batchId);
     void rollBack(const QString &batchId); // Roll Back... (in progress), Retry Roll Back...
@@ -46,6 +49,9 @@ public:
     static QString clearHistoryInformativeText(int damagedCount);
 
 private:
+    enum class TextFocus { Blocks, Ignored };
+    bool quickUndoAvailable(TextFocus textFocus) const;
+    void quickUndo(TextFocus textFocus);
     void runUndo(const ctrm::UndoPreview &preview);
     void updateUndoAction();
     void refreshWindow();

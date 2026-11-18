@@ -72,6 +72,7 @@ public:
 signals:
     void batchFinished(const ctrm::FinishResult &result, const QString &batchId,
                        const QString &undoOf);
+    void resultUndoClicked(); // the Undo button of the result message
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
