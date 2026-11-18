@@ -12,6 +12,8 @@
 #include "widgets/tertiarybutton.h"
 
 #include <QApplication>
+#include <QComboBox>
+#include <QFormLayout>
 #include <QImage>
 #include <QLineEdit>
 #include <QPainter>
@@ -120,6 +122,7 @@ class TestAppStyle : public QObject
 private slots:
     void lineEditFilled();
     void spinBoxFilled();
+    void fieldEdgesOnLayout();
     void pushButtonStates();
     void primaryButtonStates();
     void flatButtonStates();
@@ -184,6 +187,37 @@ void TestAppStyle::spinBoxFilled()
                                                       QStyle::SC_SpinBoxEditField, spin);
     QVERIFY(spin->rect().contains(up));
     QVERIFY(field.right() < up.left());
+}
+
+void TestAppStyle::fieldEdgesOnLayout()
+{
+    // Area D: in a form the visible edges of the text field, the spin box and the combo box are
+    // on the layout rectangle (one left edge). The field and the spin box fill their widget.
+    Styled s;
+    auto *form = new QFormLayout(&s.window);
+    auto *edit = new QLineEdit;
+    auto *spin = new QSpinBox;
+    auto *combo = new QComboBox;
+    combo->addItem(QStringLiteral("All"));
+    form->addRow(QStringLiteral("Find:"), edit);
+    form->addRow(QStringLiteral("Start:"), spin);
+    form->addRow(QStringLiteral("Mode:"), combo);
+    for (QWidget *w : s.window.findChildren<QWidget *>())
+        w->setStyle(s.style.get());
+    s.window.resize(400, 200);
+    s.window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&s.window));
+    const int column = form->itemAt(0, QFormLayout::FieldRole)->geometry().left();
+    QCOMPARE(edit->x(), column);
+    QCOMPARE(spin->x(), column);
+    QCOMPARE(form->itemAt(2, QFormLayout::FieldRole)->geometry().left(), column);
+    // The combo box: its layout item rectangle is its visible frame.
+    QStyleOptionComboBox option;
+    option.initFrom(combo);
+    option.rect = combo->rect();
+    const QRect visible =
+            combo->style()->subElementRect(QStyle::SE_ComboBoxLayoutItem, &option, combo);
+    QCOMPARE(combo->x() + visible.left(), column);
 }
 
 void TestAppStyle::pushButtonStates()
@@ -253,6 +287,16 @@ void TestAppStyle::flatButtonStates()
     QVERIFY2(near(at(1), c.fillHover), qPrintable(describe(at(1), c.fillHover)));
     button->setDown(true);
     QVERIFY2(near(at(1), c.fillPressed), qPrintable(describe(at(1), c.fillPressed)));
+    // The text has the ButtonText colour (accent in the message bar).
+    const QImage pressed = paint(button);
+    bool accentText = false;
+    for (int x = 0; x < pressed.width() && !accentText; ++x)
+        accentText = near(pressed.pixelColor(x, midY), accent.color(QPalette::Accent), 24);
+    QVERIFY(accentText);
+    // Disabled: no fill, also under the mouse.
+    button->setDown(false);
+    button->setEnabled(false);
+    QVERIFY2(near(at(1), window), qPrintable(describe(at(1), window)));
 }
 
 void TestAppStyle::tertiaryNeverNativeFrame()
