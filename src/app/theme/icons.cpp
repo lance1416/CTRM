@@ -157,6 +157,8 @@ std::pair<QString, QString> toolNames(ToolIcon t)
         return {QStringLiteral("tool-remove"), QStringLiteral("list-remove")};
     case ToolIcon::Clear:
         return {QStringLiteral("tool-clear"), QStringLiteral("edit-clear")};
+    case ToolIcon::Close:
+        return {QStringLiteral("tool-close"), QStringLiteral("window-close")};
     case ToolIcon::Delete:
         return {QStringLiteral("tool-delete"), QStringLiteral("edit-delete")};
     case ToolIcon::MoveUp:

@@ -173,8 +173,9 @@ void MessageBar::updateColors()
     }
     setAutoFillBackground(colors.tintsEnabled);
 
-    // design-tokens 5: the icon of the set, not the style pixmap.
-    m_close->setIcon(toolIcon(ToolIcon::Clear, base));
+    // design-tokens 5: the icon of the set, not the style pixmap. R5-07: a plain x (tool-close);
+    // tool-clear (x in a circle) is only for clearing a field.
+    m_close->setIcon(toolIcon(ToolIcon::Close, base));
     m_icon->setPixmap(stateIcon(m_stateIcon, colors)
                               .pixmap(QSize(tokens::iconS, tokens::iconS), devicePixelRatioF()));
     for (QPushButton *button : std::as_const(m_buttons)) {

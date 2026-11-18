@@ -21,6 +21,7 @@ enum class ToolIcon {
     Add,
     Remove,
     Clear,
+    Close,
     Delete,
     MoveUp,
     MoveDown,

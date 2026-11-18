@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "actions.h"
+#include "theme/icons.h"
 #include "theme/tokens.h"
 #include "ui/windowstate.h"
 #include "widgets/actionbar.h"
@@ -762,6 +763,12 @@ void TestAppWindowState::messageBar()
     QCOMPARE(close->iconSize(), QSize(tokens::iconS, tokens::iconS));
     QVERIFY(close->property("iconButton").toBool());
     QVERIFY(!close->icon().isNull());
+    // R5-07: the plain x (tool-close), not the x in a circle (tool-clear).
+    const auto image = [](const QIcon &icon) {
+        return icon.pixmap(QSize(tokens::iconS, tokens::iconS), 1.0).toImage();
+    };
+    QCOMPARE(image(close->icon()), image(toolIcon(ToolIcon::Close, bar.palette())));
+    QVERIFY(image(close->icon()) != image(toolIcon(ToolIcon::Clear, bar.palette())));
     close->click();
     QCOMPARE(closed.size(), 1);
     QVERIFY(!bar.isVisibleTo(&parent));

@@ -288,9 +288,9 @@ void TestAppTheme::iconsLoad()
     }
     for (const ToolIcon t :
          {ToolIcon::AddFiles, ToolIcon::AddFolder, ToolIcon::Add, ToolIcon::Remove, ToolIcon::Clear,
-          ToolIcon::Delete, ToolIcon::MoveUp, ToolIcon::MoveDown, ToolIcon::Duplicate,
-          ToolIcon::History, ToolIcon::Info, ToolIcon::Presets, ToolIcon::Refresh,
-          ToolIcon::Undo}) {
+          ToolIcon::Close, ToolIcon::Delete, ToolIcon::MoveUp, ToolIcon::MoveDown,
+          ToolIcon::Duplicate, ToolIcon::History, ToolIcon::Info, ToolIcon::Presets,
+          ToolIcon::Refresh, ToolIcon::Undo}) {
         const QIcon icon = toolIcon(t, referencePalette(false));
         QVERIFY(!icon.isNull());
         const QPixmap pixmap = icon.pixmap(QSize(16, 16), 1.0);
@@ -398,7 +398,7 @@ void TestAppTheme::iconStrokeWidth()
     const QDir dir(QStringLiteral(":/icons"));
     const QStringList files =
             dir.entryList({QStringLiteral("tool-*.svg"), QStringLiteral("chevron-*.svg")});
-    QCOMPARE(files.size(), 18); // 16 tool icons and 2 chevrons
+    QCOMPARE(files.size(), 19); // 17 tool icons and 2 chevrons
     static const QRegularExpression width(QStringLiteral("stroke-width=\"([^\"]*)\""));
     for (const QString &name : files) {
         QFile file(dir.filePath(name));
