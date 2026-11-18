@@ -23,8 +23,8 @@ const char *const kStepNames[] = {
         QT_TRANSLATE_NOOP("ctrm::app::FlowStrip", "Rename"),
 };
 
-// The step number in a circle at the given device pixel ratio. Current: filled with the accent
-// colour. Later: an outline and a dim number.
+// The step number in a circle at the given device pixel ratio. Current: accent-fill with an
+// on-accent number (R5-01). Later: an outline and a dim number.
 QPixmap numberPixmap(int number, bool current, const QPalette &p, const QFont &font, int size,
                      qreal dpr)
 {
@@ -36,9 +36,10 @@ QPixmap numberPixmap(int number, bool current, const QPalette &p, const QFont &f
     const QRectF circle = QRectF(0, 0, size, size).adjusted(0.5, 0.5, -0.5, -0.5);
     if (current) {
         painter.setPen(Qt::NoPen);
-        painter.setBrush(p.color(QPalette::Accent));
+        const CtrmColors colors = CtrmColors::fromPalette(p);
+        painter.setBrush(colors.accentFill);
         painter.drawEllipse(circle);
-        painter.setPen(p.color(QPalette::HighlightedText));
+        painter.setPen(colors.onAccent);
     } else {
         painter.setPen(QPen(p.color(QPalette::PlaceholderText), 1.0));
         painter.setBrush(Qt::NoBrush);

@@ -62,6 +62,23 @@ QPalette darkPalette()
     return p;
 }
 
+// Light palette as macOS gives it: the highlighted text is near-black (audit R5-01).
+QPalette lightPalette()
+{
+    QPalette p;
+    p.setColor(QPalette::Window, QColor(0xFFFFFF));
+    p.setColor(QPalette::Base, QColor(0xFFFFFF));
+    p.setColor(QPalette::Button, QColor(0xFFFFFF));
+    p.setColor(QPalette::Text, QColor(0x1D1D1F));
+    p.setColor(QPalette::WindowText, QColor(0x1D1D1F));
+    p.setColor(QPalette::ButtonText, QColor(0x1D1D1F));
+    p.setColor(QPalette::PlaceholderText, QColor(0x8A8A8E));
+    p.setColor(QPalette::Accent, QColor(0x0A60FF));
+    p.setColor(QPalette::Highlight, QColor(0xB3D7FF));
+    p.setColor(QPalette::HighlightedText, QColor(0x020F27));
+    return p;
+}
+
 // Paints the widget on the window colour, at 1x.
 QImage paint(QWidget *w)
 {
@@ -88,15 +105,18 @@ std::pair<int, int> rowsOf(const QImage &image, const QColor &c, int x)
     return {top, bottom};
 }
 
-// A widget with the app style and the dark palette, in a parent so that render() works.
+// A widget with the app style and a palette (dark by default), in a parent so that render()
+// works.
 struct Styled
 {
     std::unique_ptr<CtrmStyle> style{new CtrmStyle(QApplication::style()->name())};
+    QPalette palette;
     QWidget window;
-    Styled()
+    explicit Styled(const QPalette &p = darkPalette())
+        : palette(p)
     {
         window.setStyle(style.get());
-        window.setPalette(darkPalette());
+        window.setPalette(palette);
     }
     template <class W>
     W *add(W *w)
@@ -107,12 +127,12 @@ struct Styled
         w->setStyle(style.get());
         for (QWidget *child : w->template findChildren<QWidget *>())
             child->setStyle(style.get());
-        w->setPalette(darkPalette());
+        w->setPalette(palette);
         w->ensurePolished();
         w->resize(w->sizeHint());
         return w;
     }
-    CtrmColors colors() const { return CtrmColors::fromPalette(darkPalette()); }
+    CtrmColors colors() const { return CtrmColors::fromPalette(palette); }
 };
 
 } // namespace
@@ -126,6 +146,8 @@ private slots:
     void fieldEdgesOnLayout();
     void pushButtonStates();
     void primaryButtonStates();
+    void primaryTextOnAccent_data();
+    void primaryTextOnAccent();
     void mnemonicTextWhole();
     void flatButtonStates();
     void tertiaryNeverNativeFrame();
@@ -266,6 +288,45 @@ void TestAppStyle::primaryButtonStates()
     QVERIFY2(near(centre(), fill.darker(108)), qPrintable(describe(centre(), fill.darker(108))));
     // White text keeps 4.5:1 on the fill (design-tokens 2.6).
     QVERIFY(contrastRatio(fill, QColor(Qt::white)) >= 4.5);
+}
+
+void TestAppStyle::primaryTextOnAccent_data()
+{
+    QTest::addColumn<QPalette>("palette");
+    QTest::addRow("light") << lightPalette();
+    QTest::addRow("dark") << darkPalette();
+}
+
+void TestAppStyle::primaryTextOnAccent()
+{
+    // R5-01: the primary button text is on-accent (white) in both modes, never a palette role
+    // that changes with the mode. 4.5:1 or more on the fill at rest, on hover and when pressed.
+    QFETCH(QPalette, palette);
+    Styled s(palette);
+    const CtrmColors c = s.colors();
+    QCOMPARE(c.onAccent, QColor(Qt::white));
+    for (const QColor &fill : {c.accentFill, c.accentFill.lighter(108), c.accentFill.darker(108)})
+        QVERIFY2(contrastRatio(c.onAccent, fill) >= 4.5,
+                 qPrintable(QStringLiteral("white on ") + fill.name()));
+
+    auto *button = s.add(new QPushButton(QStringLiteral("WWWW")));
+    button->setDefault(true);
+    button->resize(button->sizeHint());
+    const QImage image = paint(button);
+    // The text pixels are white; no pixel is the highlighted text colour of the palette.
+    bool white = false;
+    bool dark = false;
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = tokens::radiusControl; x < image.width() - tokens::radiusControl; ++x) {
+            const QColor px = image.pixelColor(x, y);
+            white = white || near(px, c.onAccent, 24);
+            dark = dark || near(px, palette.color(QPalette::HighlightedText), 24);
+        }
+    }
+    QVERIFY(white);
+    // In dark mode the palette highlighted text is white too; then there is nothing to tell apart.
+    if (!near(palette.color(QPalette::HighlightedText), c.onAccent, 24))
+        QVERIFY(!dark);
 }
 
 void TestAppStyle::mnemonicTextWhole()

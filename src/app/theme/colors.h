@@ -18,11 +18,17 @@ struct CtrmColors
     // Control fills (design-tokens 4.4): text over window. Rest fill of text fields, combo
     // boxes, spin boxes and secondary push buttons; hover and pressed of each button type.
     QColor fillControl, fillHover, fillPressed;
-    // The primary button fill (design-tokens 2.2): accent, darker until white text has 4.5:1.
+    // The primary button fill (design-tokens 2.2): accent, darker until on-accent text has 4.5:1
+    // on it, also on hover (8% lighter).
     QColor accentFill;
+    // Text and marks on accent-fill: white in both modes (audit R5-01).
+    QColor onAccent;
     bool tintsEnabled = true; // false on a high-contrast theme
     static CtrmColors fromPalette(const QPalette &p);
 };
+
+// The percent step of the primary button fill on hover (lighter) and when pressed (darker).
+inline constexpr int kAccentStateStep = 108;
 
 // WCAG 2.1 contrast ratio, from 1 to 21. The order of the colours is not important.
 double contrastRatio(const QColor &a, const QColor &b);

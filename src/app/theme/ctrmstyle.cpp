@@ -27,7 +27,6 @@ constexpr int kFieldInset = tokens::space2 - kLineEditMargin;
 constexpr int kStepperWidth = tokens::iconXs + 2 * tokens::space1;
 constexpr int kStepperGap = tokens::space1 / 2;
 // The primary button: 8% lighter on hover, 8% darker when pressed (design-tokens 4.5).
-constexpr int kAccentStep = 108;
 // A disabled push button has its fill at 50%; a disabled icon at 35%.
 constexpr qreal kDisabledFill = 0.5;
 constexpr qreal kDisabledIcon = 0.35;
@@ -199,8 +198,8 @@ QColor pushButtonFill(const QStyleOptionButton *button)
     }
     if (button->features & QStyleOptionButton::DefaultButton) {
         if (down)
-            return c.accentFill.darker(kAccentStep);
-        return hover ? c.accentFill.lighter(kAccentStep) : c.accentFill;
+            return c.accentFill.darker(kAccentStateStep);
+        return hover ? c.accentFill.lighter(kAccentStateStep) : c.accentFill;
     }
     if (down)
         return c.fillPressed;
@@ -223,7 +222,7 @@ QColor pushButtonText(const QStyleOptionButton *button)
     if (!(button->state & QStyle::State_Enabled))
         return CtrmColors::fromPalette(button->palette).stateNeutral;
     if (!isFlat(button) && (button->features & QStyleOptionButton::DefaultButton))
-        return button->palette.color(QPalette::HighlightedText);
+        return CtrmColors::fromPalette(button->palette).onAccent; // R5-01: white in both modes
     return button->palette.color(QPalette::ButtonText);
 }
 

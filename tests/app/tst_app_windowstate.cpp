@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "actions.h"
+#include "theme/colors.h"
 #include "theme/icons.h"
 #include "theme/tokens.h"
 #include "ui/windowstate.h"
@@ -307,6 +308,42 @@ void TestAppWindowState::flowStripLooks()
         QCOMPARE(separator->pixmap().deviceIndependentSize().toSize(),
                  QSize(tokens::iconXs, tokens::iconXs));
     QCOMPARE(strip.sizePolicy().verticalPolicy(), QSizePolicy::Fixed);
+
+    // R5-01: the current step number is on-accent (white) on accent-fill in both modes, also
+    // when the palette gives a near-black highlighted text (macOS light mode).
+    for (const bool dark : {false, true}) {
+        QPalette p;
+        p.setColor(QPalette::Window, dark ? QColor(0x2B2B2D) : QColor(0xFFFFFF));
+        p.setColor(QPalette::Base, dark ? QColor(0x1E1E1E) : QColor(0xFFFFFF));
+        p.setColor(QPalette::Text, dark ? QColor(0xE3E3E3) : QColor(0x1D1D1F));
+        p.setColor(QPalette::WindowText, p.color(QPalette::Text));
+        p.setColor(QPalette::Accent, dark ? QColor(0x4C9AFF) : QColor(0x0A60FF));
+        p.setColor(QPalette::HighlightedText, dark ? QColor(0xFFFFFF) : QColor(0x020F27));
+        strip.setPalette(p);
+        strip.setState(computeWindowState(input(6, 1, summary(0))));
+        const CtrmColors c = CtrmColors::fromPalette(p);
+        const QImage icon = strip.findChild<QLabel *>(QStringLiteral("flowStep2Icon"))
+                                    ->pixmap()
+                                    .toImage()
+                                    .convertToFormat(QImage::Format_ARGB32);
+        const auto close = [](const QColor &a, const QColor &b) {
+            return qAbs(a.red() - b.red()) <= 24 && qAbs(a.green() - b.green()) <= 24 &&
+                   qAbs(a.blue() - b.blue()) <= 24;
+        };
+        bool fill = false;
+        bool white = false;
+        for (int y = 0; y < icon.height(); ++y) {
+            for (int x = 0; x < icon.width(); ++x) {
+                const QColor px = icon.pixelColor(x, y);
+                if (px.alpha() < 250)
+                    continue;
+                fill = fill || close(px, c.accentFill);
+                white = white || close(px, QColor(Qt::white));
+            }
+        }
+        QVERIFY2(fill, dark ? "dark" : "light");
+        QVERIFY2(white, dark ? "dark" : "light");
+    }
 
     // All steps done: the description names the last step.
     WindowStateInput in = input(6, 1, summary(0));

@@ -94,9 +94,11 @@ CtrmColors CtrmColors::fromPalette(const QPalette &p)
     c.fillControl = mix(text, window, rest);
     c.fillHover = mix(text, window, rest + (dark ? kFillHoverStepDark : kFillHoverStepLight));
     c.fillPressed = mix(text, window, rest + (dark ? kFillPressedStepDark : kFillPressedStepLight));
+    c.onAccent = QColor(Qt::white);
     c.accentFill = p.color(QPalette::Accent).toRgb();
-    for (int i = 0;
-         i < kAccentFillSteps && contrastRatio(c.accentFill, Qt::white) < kOnAccentMinimum; ++i)
+    for (int i = 0; i < kAccentFillSteps && contrastRatio(c.accentFill.lighter(kAccentStateStep),
+                                                          c.onAccent) < kOnAccentMinimum;
+         ++i)
         c.accentFill = c.accentFill.darker(kAccentFillStep);
     const Qt::ColorScheme scheme = QGuiApplication::styleHints()->colorScheme();
     c.tintsEnabled = !detail::isHighContrast(scheme, p.color(QPalette::Text), base);
