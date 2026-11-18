@@ -5,6 +5,7 @@
 #include "models/itemtablemodel.h"
 #include "theme/colors.h"
 #include "theme/icons.h"
+#include "theme/tokens.h"
 #include "widgets/emptystate.h"
 #include "widgets/itemdelegate.h"
 #include "widgets/itemtableview.h"
@@ -142,7 +143,7 @@ private slots:
     void selectedIds();
     void externalDrop();
     void emptyStatePrimary();
-    void emptyStateFusionLarger();
+    void emptyStateFusionSameHeight();
     void emptyStateDrop();
     void accessibleRowText();
 };
@@ -502,21 +503,12 @@ void TestAppTableView::emptyStatePrimary()
     QVERIFY(addFiles->isDefault());
     QVERIFY(!addFolder->isDefault());
     QCOMPARE(addFiles->text(), QStringLiteral("Add Files..."));
-    // One type step bigger with two times the padding (ui-design 5.2, audit M15). The macOS
-    // style keeps the native height, so the accent bezel stays.
-    QVERIFY(addFiles->font().pointSizeF() > addFolder->font().pointSizeF());
+    // R5-05: one row, one height (control-h-large), body-size text; the primary keeps the
+    // label-strong weight.
+    QCOMPARE(addFiles->height(), tokens::controlHLarge);
+    QCOMPARE(addFolder->height(), tokens::controlHLarge);
+    QCOMPARE(addFiles->font().pointSizeF(), addFolder->font().pointSizeF());
     QVERIFY(addFiles->font().weight() > addFolder->font().weight());
-    if (addFiles->style()->name() == QLatin1StringView("macos"))
-        QCOMPARE(addFiles->sizeHint().height(), addFolder->sizeHint().height());
-    else
-        QVERIFY(addFiles->sizeHint().height() > addFolder->sizeHint().height());
-    const auto sidePadding = [](const QPushButton *b) {
-        return b->sizeHint().width() - b->fontMetrics().horizontalAdvance(b->text());
-    };
-    QVERIFY2(sidePadding(addFiles) >= 2 * sidePadding(addFolder),
-             qPrintable(QStringLiteral("%1 %2")
-                                .arg(sidePadding(addFiles))
-                                .arg(sidePadding(addFolder))));
 
     QSignalSpy files(actions.addFiles, &QAction::triggered);
     QSignalSpy folder(actions.addFolder, &QAction::triggered);
@@ -536,7 +528,7 @@ void TestAppTableView::emptyStatePrimary()
     QCOMPARE(icon->pixmap().deviceIndependentSize().toSize(), QSize(96, 96));
 }
 
-void TestAppTableView::emptyStateFusionLarger()
+void TestAppTableView::emptyStateFusionSameHeight()
 {
     const QString oldStyle = QApplication::style()->name();
     QApplication::setStyle(QStringLiteral("Fusion"));
@@ -546,8 +538,8 @@ void TestAppTableView::emptyStateFusionLarger()
         EmptyState empty(actions, &parent);
         auto *addFiles = empty.findChild<QPushButton *>(QStringLiteral("emptyAddFiles"));
         auto *addFolder = empty.findChild<QPushButton *>(QStringLiteral("emptyAddFolder"));
-        QVERIFY(addFiles->font().pointSizeF() > addFolder->font().pointSizeF());
-        QVERIFY(addFiles->sizeHint().height() > addFolder->sizeHint().height());
+        QCOMPARE(addFiles->height(), tokens::controlHLarge);
+        QCOMPARE(addFolder->height(), tokens::controlHLarge);
         QCOMPARE(addFiles->palette().color(QPalette::Button),
                  empty.palette().color(QPalette::Accent));
         QCOMPARE(addFolder->palette().color(QPalette::Button),

@@ -8,17 +8,13 @@
 #include "widgets/buttonstyle.h"
 
 #include <QAction>
-#include <QApplication>
 #include <QDragEnterEvent>
 #include <QEvent>
-#include <QFontMetrics>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMimeData>
 #include <QPainter>
 #include <QPushButton>
-#include <QStyle>
-#include <QStyleOptionButton>
 #include <QUrl>
 #include <QVBoxLayout>
 
@@ -27,48 +23,6 @@ namespace ctrm::app {
 namespace {
 
 constexpr int kIconSize = 96;
-
-// The macOS style draws the accent bezel of a default button only at the native height. A
-// taller button becomes a flat square with no accent, so there the height must not change.
-bool hasFixedButtonHeight(const QStyle *style)
-{
-    return style->name().compare(QLatin1StringView("macos"), Qt::CaseInsensitive) == 0;
-}
-
-// The primary button of the empty state (ui-design 5.2, audit M15): one type step bigger, with
-// two times the padding. On a style with a fixed button height, two times the side padding only.
-class LargeButton : public QPushButton
-{
-public:
-    using QPushButton::QPushButton;
-
-    QSize sizeHint() const override { return withPadding(QPushButton::sizeHint()); }
-    QSize minimumSizeHint() const override { return withPadding(QPushButton::minimumSizeHint()); }
-
-private:
-    QSize withPadding(QSize size) const
-    {
-        // The style padding is the part of the hint that is not text. Add it one more time.
-        const QFontMetrics metrics = fontMetrics();
-        const int textWidth = metrics.size(Qt::TextShowMnemonic, text()).width();
-        const int sidePadding = qMax(0, size.width() - textWidth);
-        const int verticalPadding = qMax(0, size.height() - metrics.height());
-        if (!hasFixedButtonHeight(style()))
-            return size + QSize(sidePadding, verticalPadding);
-        return {size.width() + sidePadding, nativeHeight()};
-    }
-
-    // The height of a normal button: the bigger font must not make the native bezel taller.
-    int nativeHeight() const
-    {
-        QStyleOptionButton option;
-        initStyleOption(&option);
-        const QFont base = parentWidget() ? parentWidget()->font() : QApplication::font();
-        option.fontMetrics = QFontMetrics(base);
-        const QSize label = option.fontMetrics.size(Qt::TextShowMnemonic, text());
-        return style()->sizeFromContents(QStyle::CT_PushButton, &option, label, this).height();
-    }
-};
 
 QLabel *centredLabel(const QString &text, QWidget *parent)
 {
@@ -112,7 +66,7 @@ EmptyState::EmptyState(const Actions &actions, QWidget *parent)
     : QWidget(parent)
     , m_icon(new QLabel(this))
     , m_title(centredLabel(tr("Drop files or folders here"), this))
-    , m_addFiles(new LargeButton(tr("Add Files..."), this))
+    , m_addFiles(new QPushButton(tr("Add Files..."), this))
     , m_addFolder(new QPushButton(tr("Add Folder..."), this))
 {
     setObjectName(QStringLiteral("emptyState"));
@@ -128,6 +82,9 @@ EmptyState::EmptyState(const Actions &actions, QWidget *parent)
     m_addFolder->setObjectName(QStringLiteral("emptyAddFolder"));
     m_addFolder->setToolTip(actions.addFolder->toolTip());
     m_addFolder->setAutoDefault(false);
+    // R5-05: one row of buttons, one height: control-h-large (32) for both (design-tokens 4).
+    m_addFiles->setFixedHeight(tokens::controlHLarge);
+    m_addFolder->setFixedHeight(tokens::controlHLarge);
     connect(m_addFiles, &QPushButton::clicked, actions.addFiles, &QAction::trigger);
     connect(m_addFolder, &QPushButton::clicked, actions.addFolder, &QAction::trigger);
 
@@ -169,7 +126,8 @@ void EmptyState::updateLook()
 {
     m_icon->setPixmap(appIcon().pixmap(QSize(kIconSize, kIconSize), devicePixelRatioF()));
     m_title->setFont(typeStyle(TypeToken::Display, font()));
-    m_addFiles->setFont(typeStyle(TypeToken::Heading, font()));
+    // R5-05: body size; the primary keeps its fill and the label-strong weight.
+    m_addFiles->setFont(typeStyle(TypeToken::LabelStrong, font()));
     setPrimary(m_addFiles, true);
     setPrimary(m_addFolder, false);
 }
