@@ -16,6 +16,7 @@
 #include "rules/unsupportedrule.h"
 #include "theme/colors.h"
 #include "theme/icons.h"
+#include "theme/tokens.h"
 #include "theme/typography.h"
 #include "widgets/buttonstyle.h"
 #include "widgets/formutils.h"
@@ -55,9 +56,11 @@ namespace ctrm::app {
 
 namespace {
 
-constexpr int kToolIconSize = 16;  // ui-design 5.1: tertiary icons
-constexpr int kMinClickSize = 24;  // ui-design 5.1: the click area of a tertiary button
-constexpr int kSummarySpacing = 2; // between the two lines of a rule row
+constexpr int kToolIconSize = tokens::iconS; // the error icon in a rule row
+constexpr int kEmptyTextChars = 40;
+constexpr int kRuleHandleWidth = tokens::space2; // the drag area between the list and the editor //
+                                                 // the line length of an empty-state text (4.6)
+constexpr int kSummarySpacing = 2;               // between the two lines of a rule row
 
 // Two lines for each rule: the check box, "<position> <type>" and the error icon; under them,
 // the summary in the caption style, dimmed (ui-design 4.4).
@@ -186,6 +189,37 @@ bool isDeleteKey(const QKeyEvent *event)
 // the rule panel cannot be narrower than an editor (ui-design 4.4).
 // A fade at the bottom edge of the editor viewport while the page is cut there (ui-design 4.4,
 // M06): from transparent to the window colour. It takes no mouse events.
+// The empty-state column: the title, the text and Add Rule. On macOS, a box layout puts a push
+// button lower by the top margin of its style; this layout keeps the visible gap from the text
+// to the button at space-3 (design-tokens 4.6).
+class EmptyStateLayout : public QVBoxLayout
+{
+public:
+    EmptyStateLayout(QWidget *parent, QWidget *text, QWidget *button)
+        : QVBoxLayout(parent)
+        , m_text(text)
+        , m_button(button)
+    {}
+
+    void setGeometry(const QRect &rect) override
+    {
+        QVBoxLayout::setGeometry(rect);
+#ifdef Q_OS_MACOS
+        const int index = indexOf(m_button);
+        if (index < 0 || m_button->isHidden())
+            return;
+        const int wanted = m_text->geometry().bottom() + 1 + tokens::space3;
+        const int visibleTop = itemAt(index)->geometry().top();
+        if (visibleTop > wanted)
+            m_button->move(m_button->x(), m_button->y() - (visibleTop - wanted));
+#endif
+    }
+
+private:
+    QWidget *m_text;
+    QWidget *m_button;
+};
+
 class BottomFade : public QWidget
 {
 public:
@@ -325,6 +359,7 @@ public:
         , m_openHeight(std::move(openHeight))
     {
         setChildrenCollapsible(false);
+        setHandleWidth(kRuleHandleWidth);
         addWidget(listPage);
         addWidget(editor);
         setStretchFactor(0, 0);
@@ -447,6 +482,7 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     , m_actions(actions)
     , m_addRule(new QPushButton)
     , m_emptyPage(new QWidget)
+    , m_emptyTitle(new QLabel)
     , m_emptyText(new QLabel)
     , m_list(new RuleListView)
     , m_editors(new EditorStack)
@@ -478,16 +514,26 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     m_addRule->setMenu(actions.addRuleMenu);
     m_addRule->setToolTip(actions.addRuleMenu->menuAction()->toolTip());
 
-    // The empty rule list (ui-design 5.4).
+    // The empty rule list (ui-design 5.4, design-tokens 4.6): a title, a dim text and Add Rule,
+    // left-aligned and top-aligned under the header (O02).
+    m_emptyTitle->setObjectName(QStringLiteral("emptyTitle"));
+    m_emptyTitle->setText(tr("No rules yet"));
     m_emptyText->setWordWrap(true);
-    m_emptyText->setAlignment(Qt::AlignHCenter);
+    m_emptyText->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    m_emptyText->setTextFormat(Qt::PlainText);
     // S06: no Presets button here; the toolbar has it.
-    m_emptyButtons = new QVBoxLayout;
-    auto *emptyLayout = new QVBoxLayout(m_emptyPage);
-    emptyLayout->addStretch();
+    auto *emptyLayout = new EmptyStateLayout(m_emptyPage, m_emptyText, m_addRule);
+    // Add Rule goes in this layout itself: a nested layout would add the style margins of
+    // the button a second time (macOS).
+    m_emptyButtons = emptyLayout;
+    emptyLayout->setContentsMargins(0, 0, 0, 0);
+    emptyLayout->setSpacing(0);
+    emptyLayout->addWidget(m_emptyTitle);
+    emptyLayout->addSpacing(tokens::space1);
     emptyLayout->addWidget(m_emptyText);
-    emptyLayout->addLayout(m_emptyButtons);
-    emptyLayout->addStretch(2);
+    emptyLayout->addSpacing(tokens::space3);
+    emptyLayout->addStretch(); // Add Rule goes before it
+    updateEmptyLook();
 
     // The rule list and its tool buttons.
     m_list->setModel(&m_model);
@@ -504,6 +550,7 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     m_list->installEventFilter(this);
     auto *buttonRow = new QHBoxLayout;
     buttonRow->setContentsMargins(0, 0, 0, 0);
+    buttonRow->setSpacing(tokens::space1); // C07: pitch hit-min + space-1
     const QList<std::pair<const char *, QAction *>> buttons{
             {"moveUpButton", actions.moveRuleUp},
             {"moveDownButton", actions.moveRuleDown},
@@ -513,9 +560,10 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
         auto *button = new TertiaryButton;
         button->setObjectName(QString::fromLatin1(name));
         button->setAutoRaise(true);
+        button->setIconButton(true);
         button->setToolButtonStyle(Qt::ToolButtonIconOnly);
-        button->setIconSize(QSize(kToolIconSize, kToolIconSize));
-        button->setMinimumSize(kMinClickSize, kMinClickSize);
+        button->setIconSize(QSize(tokens::iconS, tokens::iconS));
+        button->setFixedSize(tokens::hitMin, tokens::hitMin); // C07
         button->setAccessibleName(plainText(action));
         QString tip = action->toolTip();
         if (action == actions.deleteRule) // Delete works in the rule list only (ui-design 12)
@@ -533,7 +581,8 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     buttonRow->addStretch();
     auto *listPage = new QWidget;
     auto *listLayout = new QVBoxLayout(listPage);
-    listLayout->setContentsMargins(0, 0, 0, 0);
+    // With the splitter handle, space-4 from the rule tools to the editor title (O06b).
+    listLayout->setContentsMargins(0, 0, 0, tokens::space4 - kRuleHandleWidth);
     listLayout->addWidget(m_list);
     // The tool buttons keep their height (the macOS style gives a lower minimum), so the list
     // gets the rest of the page in whole rows (R2-02).
@@ -570,12 +619,23 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
         connect(replace, &ReplaceEditor::syntaxHelpRequested, actions.regexHelp, &QAction::trigger);
     m_scroll = new EditorScrollArea;
     m_scroll->setWidget(m_editors);
+    // O06b: no box. The editor is on the panel surface (design-tokens 4.6: a scroll area never
+    // paints a background of its own). setWidget turns the fill of the widget on.
+    m_editors->setAutoFillBackground(false);
+    m_scroll->setBackgroundRole(QPalette::Window);
+    m_scroll->viewport()->setBackgroundRole(QPalette::Window);
+    m_scroll->viewport()->setAutoFillBackground(false);
 
     m_splitter = new RuleSplitter(listPage, m_list, m_scroll,
                                   [this] { return m_chainOptions->openHeight(); });
 
     auto *layout = new QVBoxLayout(this);
+    // The panel inset space-3 on each side; space-3 from the header row to its content (O06b,
+    // design-tokens 4.2). Chain options has its own gap (ui-design 8.10).
+    layout->setContentsMargins(tokens::space3, tokens::space3, tokens::space3, tokens::space3);
+    layout->setSpacing(0);
     layout->addWidget(header);
+    layout->addSpacing(tokens::space3);
     layout->addWidget(m_emptyPage, 1);
     layout->addWidget(m_splitter, 1);
     layout->addWidget(m_chainOptions); // under the editor, outside the scroll area (ui-design 8.10)
@@ -818,6 +878,8 @@ void RulePanel::changeEvent(QEvent *event)
     }
     if (event->type() == QEvent::FontChange || event->type() == QEvent::StyleChange)
         scheduleMinimumWidth();
+    if (event->type() == QEvent::FontChange || event->type() == QEvent::PaletteChange)
+        updateEmptyLook();
 }
 
 void RulePanel::fillAddRuleMenu()
@@ -989,13 +1051,14 @@ void RulePanel::updateEmptyState()
             m_primary ? tr("Add a rule to change the names. The preview shows the result at once.")
                       : tr("Rules come next. Add files first, then add a rule to change their "
                            "names."));
-    // One Add Rule button: in the header, or in the centre of the empty list.
+    // One Add Rule button: in the header, or under the empty-state text (O02).
     QBoxLayout *target = empty ? m_emptyButtons : m_headerLayout;
     if (m_addRule->parentWidget() == nullptr || target->indexOf(m_addRule) < 0) {
         m_headerLayout->removeWidget(m_addRule);
         m_emptyButtons->removeWidget(m_addRule);
         if (empty)
-            m_emptyButtons->insertWidget(0, m_addRule, 0, Qt::AlignHCenter);
+            m_emptyButtons->insertWidget(m_emptyButtons->count() - 1, m_addRule, 0,
+                                         Qt::AlignLeft | Qt::AlignTop);
         else
             m_headerLayout->addWidget(m_addRule);
         m_addRule->show();
@@ -1003,6 +1066,15 @@ void RulePanel::updateEmptyState()
     m_emptyPage->setVisible(empty);
     m_splitter->setVisible(!empty);
     m_chainOptions->setVisible(!empty);
+}
+
+void RulePanel::updateEmptyLook()
+{
+    m_emptyTitle->setFont(typeStyle(TypeToken::LabelStrong, font()));
+    QPalette dim = m_emptyText->palette();
+    dim.setColor(QPalette::WindowText, palette().color(QPalette::PlaceholderText)); // text-dim
+    m_emptyText->setPalette(dim);
+    m_emptyText->setMaximumWidth(kEmptyTextChars * m_emptyText->fontMetrics().averageCharWidth());
 }
 
 void RulePanel::updateAddRuleLook()

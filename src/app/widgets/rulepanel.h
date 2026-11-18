@@ -60,6 +60,7 @@ private:
     void updateActions();
     void updateEmptyState();
     void updateAddRuleLook();
+    void updateEmptyLook();
     void openAddRuleMenu();
     void updateIcons();
     void setListShortcuts(bool on);
@@ -74,6 +75,7 @@ private:
     QBoxLayout *m_headerLayout;
     QBoxLayout *m_emptyButtons;
     QWidget *m_emptyPage;
+    QLabel *m_emptyTitle;
     QLabel *m_emptyText;
     QWidget *m_splitter;
     QListView *m_list;

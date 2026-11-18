@@ -14,7 +14,9 @@
 #include "rules/ruleeditorfactory.h"
 #include "rules/ruleregistry.h"
 #include "rules/unsupportedrule.h"
+#include "theme/tokens.h"
 #include "widgets/rulepanel.h"
+#include "widgets/tertiarybutton.h"
 
 #include <QAction>
 #include <QCheckBox>
@@ -110,13 +112,15 @@ private slots:
     void numberedCountForwarded();
     void inactiveSelectionContrast();
     void listFollowsRows();
-    void addRuleCentredAlone();
+    void emptyStateLeftAndTop();
     void listShortcutsOnlyWithFocus();
     void primaryAddRuleIsPlainButton();
     void editorsFitPanelWidth();
     void editorFadeWhenCut();
     void listKeepsHeightWhenChainOpens();
     void minimumWidthFromEditorsOnly();
+    void editorOnPanelSurface();
+    void ruleToolButtons();
 };
 
 void TestAppRulePanel::factory()
@@ -604,15 +608,42 @@ void TestAppRulePanel::listFollowsRows()
     QCOMPARE(list->sizeHint().height(), 5 * row + 2 * list->frameWidth());
 }
 
-void TestAppRulePanel::addRuleCentredAlone()
+void TestAppRulePanel::emptyStateLeftAndTop()
 {
-    // S06: the empty rule list has Add Rule only, centred; no "or Presets".
+    // O02 (ui-design 5.4, design-tokens 4.6): "No rules yet" (label-strong), the dim text and
+    // Add Rule, left-aligned at the panel inset and top-aligned under the header. One Add Rule.
+    // S06: no "or Presets".
     Fixture f;
     QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    auto *title = f.panel->findChild<QLabel *>(QStringLiteral("emptyTitle"));
+    auto *text = f.panel->findChild<QLabel *>(QStringLiteral("emptyText"));
+    QVERIFY(title && text);
+    QVERIFY(title->isVisible());
+    QCOMPARE(title->text(), QStringLiteral("No rules yet"));
+    QCOMPARE(title->font().weight(), QFont::DemiBold);
+    QCOMPARE(text->palette().color(QPalette::WindowText),
+             f.panel->palette().color(QPalette::PlaceholderText));
+    QVERIFY(text->wordWrap());
+    QVERIFY(text->maximumWidth() <= 40 * text->fontMetrics().averageCharWidth());
+    QLabel *rules = nullptr;
+    for (QLabel *label : f.panel->findChildren<QLabel *>()) {
+        if (label->text() == QStringLiteral("Rules"))
+            rules = label;
+    }
+    QVERIFY(rules);
+    const QRect rulesRect = rules->parentWidget()->geometry(); // the header row
+    const QRect titleRect = ctrm::test::visualRect(title, f.panel);
+    const QRect textRect = ctrm::test::visualRect(text, f.panel);
     QPushButton *add = f.panel->addRuleButton();
-    const int addCentre = add->mapTo(f.panel, add->rect().center()).x();
-    QVERIFY2(qAbs(addCentre - f.panel->rect().center().x()) <= 1,
-             qPrintable(QString::number(addCentre)));
+    const QRect addRect = ctrm::test::visualRect(add, f.panel);
+    QCOMPARE(titleRect.left(), tokens::space3);
+    QCOMPARE(textRect.left(), tokens::space3);
+    QCOMPARE(addRect.left(), tokens::space3);
+    QCOMPARE(titleRect.top() - (rulesRect.bottom() + 1), tokens::space3);
+    QCOMPARE(textRect.top() - (titleRect.bottom() + 1), tokens::space1);
+    QCOMPARE(addRect.top() - (textRect.bottom() + 1), tokens::space3);
+    // The header has no Add Rule in this state.
+    QVERIFY(!rules->parentWidget()->isAncestorOf(add));
     for (QLabel *l : f.panel->findChildren<QLabel *>())
         QVERIFY(l->text() != QStringLiteral("or"));
 }
@@ -665,6 +696,7 @@ void TestAppRulePanel::primaryAddRuleIsPlainButton()
     // O1: the macOS style draws no accent on a pull-down button, so the primary Add Rule is a
     // plain default button that opens the menu below it on click (ui-design 5.1, 5.4).
     Fixture f;
+    f.window.move(600, 100); // room for the menu on both sides of the button
     QVERIFY(QTest::qWaitForWindowExposed(&f.window));
     QPushButton *add = f.panel->addRuleButton();
     f.panel->setPrimaryAddRule(true);
@@ -816,6 +848,51 @@ void TestAppRulePanel::minimumWidthFromEditorsOnly()
     QCOMPARE(f.panel->minimumSizeHint().width(), minimum);
     QCOMPARE(f.panel->findChild<ChainOptionsWidget *>()->sizePolicy().horizontalPolicy(),
              QSizePolicy::Ignored);
+}
+
+void TestAppRulePanel::editorOnPanelSurface()
+{
+    // O06b: the editor area paints no box of its own; the title and the labels are on the panel
+    // inset (space-3); the gap from the rule tools to the editor title is space-4.
+    Fixture f({"numbering", "replace"});
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    f.window.resize(f.window.width(), 420); // the page is cut: the scroll area scrolls
+    f.select(0);
+    QApplication::processEvents();
+    auto *scroll = f.panel->findChild<QScrollArea *>(QStringLiteral("editorScroll"));
+    QVERIFY(scroll);
+    QCOMPARE(scroll->frameShape(), QFrame::NoFrame);
+    QVERIFY(!scroll->viewport()->autoFillBackground());
+    QCOMPARE(scroll->viewport()->backgroundRole(), QPalette::Window);
+    QVERIFY(!scroll->widget()->autoFillBackground());
+    auto *title = f.panel->currentEditor()->findChild<QLabel *>(QStringLiteral("ruleEditorTitle"));
+    QVERIFY(title);
+    QCOMPARE(title->mapTo(f.panel, QPoint()).x(), tokens::space3);
+    QCOMPARE(f.panel->ruleList()->mapTo(f.panel, QPoint()).x(), tokens::space3);
+    QCOMPARE(f.panel->width() - (f.panel->ruleList()->mapTo(f.panel, QPoint()).x() +
+                                 f.panel->ruleList()->width()),
+             tokens::space3);
+    auto *tool = f.panel->findChild<QToolButton *>(QStringLiteral("deleteButton"));
+    const int toolsBottom = ctrm::test::visualRect(tool, f.panel).bottom() + 1;
+    QCOMPARE(title->mapTo(f.panel, QPoint()).y() - toolsBottom, tokens::space4);
+}
+
+void TestAppRulePanel::ruleToolButtons()
+{
+    // C07: icon buttons are hit-min squares with an icon-s icon, space-1 apart; the first is on
+    // the panel inset.
+    Fixture f({"replace", "numbering"});
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    int x = tokens::space3;
+    for (const char *name : {"moveUpButton", "moveDownButton", "duplicateButton", "deleteButton"}) {
+        auto *b = f.panel->findChild<TertiaryButton *>(QString::fromLatin1(name));
+        QVERIFY2(b, name);
+        QVERIFY2(b->isIconButton(), name);
+        QCOMPARE(b->size(), QSize(tokens::hitMin, tokens::hitMin));
+        QCOMPARE(b->iconSize(), QSize(tokens::iconS, tokens::iconS));
+        QCOMPARE(b->mapTo(f.panel, QPoint()).x(), x);
+        x += tokens::hitMin + tokens::space1;
+    }
 }
 
 #include "tst_app_rulepanel.moc"
