@@ -132,6 +132,7 @@ private slots:
     void iconButtonLook();
     void toolBarButtonHover();
     void toolBarMenuButtonIsTextButton();
+    void toolBarMenuButtonMatchesTextButton();
     void toolBarFirstIconAtInset();
     void oneFocusRing();
 };
@@ -431,6 +432,68 @@ void TestAppStyle::toolBarMenuButtonIsTextButton()
     const QImage image = paint(button);
     const auto [top, bottom] = rowsOf(image, s.colors().fillHover, tokens::radiusControl + 1);
     QCOMPARE(bottom - top + 1, tokens::controlH);
+}
+
+void TestAppStyle::toolBarMenuButtonMatchesTextButton()
+{
+    // Presets draws its own label with the toolbar text button layout (design-tokens 4.5):
+    // space-2, icon-s icon, space-1, text, space-1, icon-xs chevron, space-2. It has the same
+    // hover and pressed fills as a toolbar text button, and the chevron is on the text line (M17).
+    Styled s;
+    auto *bar = s.add(new QToolBar);
+    bar->setIconSize(QSize(tokens::iconS, tokens::iconS));
+    QPixmap square(tokens::iconS, tokens::iconS);
+    square.fill(Qt::white);
+    QAction *add = bar->addAction(QIcon(square), QStringLiteral("Add Files"));
+    auto *presets = new MenuToolButton;
+    presets->setText(QStringLiteral("Presets"));
+    presets->setIcon(QIcon(square));
+    bar->addWidget(presets);
+    for (QWidget *child : bar->findChildren<QWidget *>()) {
+        child->setStyle(s.style.get());
+        child->setPalette(darkPalette());
+    }
+    auto *reference = qobject_cast<QToolButton *>(bar->widgetForAction(add));
+    reference->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    for (QToolButton *b : {reference, static_cast<QToolButton *>(presets)})
+        b->resize(b->sizeHint());
+
+    const int text = presets->fontMetrics().size(Qt::TextShowMnemonic, presets->text()).width();
+    QCOMPARE(presets->height(), tokens::controlH);
+    QCOMPARE(presets->width(), tokens::space2 + tokens::iconS + tokens::space1 + text +
+                                       tokens::space1 + tokens::iconXs + tokens::space2);
+
+    // The icon starts at space-2 in both buttons.
+    const auto firstWhite = [](QToolButton *b) {
+        const QImage image = paint(b);
+        for (int x = 0; x < image.width(); ++x) {
+            if (near(image.pixelColor(x, image.height() / 2), Qt::white))
+                return x;
+        }
+        return -1;
+    };
+    QCOMPARE(firstWhite(presets), tokens::space2);
+    QCOMPARE(firstWhite(reference), tokens::space2);
+
+    // M17: the chevron is at space-2 from the right edge, in the vertical centre (the text line).
+    const QRect arrow = presets->arrowRect();
+    QCOMPARE(arrow.size(), QSize(tokens::iconXs, tokens::iconXs));
+    QCOMPARE(presets->width() - 1 - arrow.right(), tokens::space2);
+    QVERIFY(qAbs(arrow.center().y() - presets->rect().center().y()) <= 1);
+
+    // The same fills as the toolbar text button.
+    const CtrmColors c = s.colors();
+    const auto fillAt = [](QToolButton *b) {
+        return paint(b).pixelColor(tokens::radiusControl + 1, b->height() / 2);
+    };
+    for (QToolButton *b : {reference, static_cast<QToolButton *>(presets)}) {
+        b->setAttribute(Qt::WA_UnderMouse, true);
+        QVERIFY2(near(fillAt(b), c.fillHover), qPrintable(describe(fillAt(b), c.fillHover)));
+        b->setDown(true);
+        QVERIFY2(near(fillAt(b), c.fillPressed), qPrintable(describe(fillAt(b), c.fillPressed)));
+        b->setDown(false);
+        b->setAttribute(Qt::WA_UnderMouse, false);
+    }
 }
 
 void TestAppStyle::toolBarFirstIconAtInset()
