@@ -257,12 +257,22 @@ void TestPreferences::formOneFieldEdge()
     PreferencesDialog d(settings, PreferencesDialog::ApplyMode::OnAccept, nullptr);
     d.show();
     QVERIFY(QTest::qWaitForWindowExposed(&d));
+    // The edge is the left side of the layout rect of the control. The macOS style puts a
+    // different margin around each kind of control, so the widget rects do not agree.
     QList<int> edges;
     for (QFormLayout *form : d.findChildren<QFormLayout *>()) {
         for (int row = 0; row < form->rowCount(); ++row) {
             QLayoutItem *item = form->itemAt(row, QFormLayout::FieldRole);
-            if (item && item->widget())
-                edges.append(item->widget()->mapTo(&d, QPoint(0, 0)).x());
+            if (!item || !item->widget())
+                continue;
+            QWidget *control = item->widget();
+            // An inline field: the first control of its row.
+            if (QLayout *inline_ = control->layout(); inline_ && inline_->itemAt(0))
+                control = inline_->itemAt(0)->widget();
+            QVERIFY(control);
+            const QWidgetItem layoutRect(control);
+            edges.append(control->mapTo(&d, QPoint()).x() + layoutRect.geometry().x() -
+                         control->x());
         }
     }
     QCOMPARE(edges.size(), 5);
