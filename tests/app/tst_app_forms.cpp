@@ -641,6 +641,14 @@ void TestAppForms::toggleBoxOnFieldEdge()
         const QRect drawn = QWidgetItem(w).geometry();
         QCOMPARE(w->parentWidget()->mapTo(f.window.get(), drawn.topLeft()).x(), edge + inset);
     }
+    // A spanning check box row stays spanning.
+    auto *spanning = new QCheckBox(QStringLiteral("Whole row"));
+    f.form->addRow(spanning);
+    applyFormRhythm(f.form);
+    int spanRow = -1;
+    QFormLayout::ItemRole spanRole = QFormLayout::FieldRole;
+    f.form->getWidgetPosition(spanning, &spanRow, &spanRole);
+    QCOMPARE(spanRole, QFormLayout::SpanningRole);
     // The wrapping check box: its label keeps the space-1 gap after the drawn box.
     auto *check = new QCheckBox;
     QWidget *row = makeWrappingCheckBox(check, QStringLiteral("Keep the gap"));

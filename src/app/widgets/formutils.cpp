@@ -118,14 +118,17 @@ private:
     }
 };
 
-// Puts a check box or a radio button of the form or grid in a ToggleItem, once.
-void useToggleItem(QFormLayout *form, int row, QFormLayout::ItemRole role)
+// Puts a check box or a radio button of the form in a ToggleItem, once, in its row and role (a
+// spanning row stays spanning).
+void useToggleItem(QFormLayout *form, QWidget *w)
 {
-    QLayoutItem *item = form->itemAt(row, role);
-    QWidget *w = item ? item->widget() : nullptr;
-    if (!w || dynamic_cast<ToggleItem *>(item) || toggleInset(w) == 0)
+    const int index = form->indexOf(w);
+    if (index < 0 || dynamic_cast<ToggleItem *>(form->itemAt(index)) || toggleInset(w) == 0)
         return;
-    delete form->takeAt(form->indexOf(w));
+    int row = 0;
+    QFormLayout::ItemRole role = QFormLayout::FieldRole;
+    form->getItemPosition(index, &row, &role);
+    delete form->takeAt(index);
     form->setItem(row, role, new ToggleItem(w));
 }
 
@@ -597,9 +600,7 @@ void applyRhythmNow(QFormLayout *form)
             continue;
         int height = 0;
         if (field->widget()) {
-            useToggleItem(form, row,
-                          form->itemAt(row, QFormLayout::FieldRole) ? QFormLayout::FieldRole
-                                                                    : QFormLayout::SpanningRole);
+            useToggleItem(form, field->widget());
             field = form->itemAt(row, QFormLayout::FieldRole);
             if (!field)
                 field = form->itemAt(row, QFormLayout::SpanningRole);
