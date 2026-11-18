@@ -92,10 +92,15 @@ class ToggleItem : public QWidgetItem
 {
 public:
     // rowHeight: the height of the layout row; the widget is centred in it. 0: the widget height.
-    explicit ToggleItem(QWidget *w, int rowHeight = 0)
+    // padBelow: the part of rowHeight under the widget area (R6-05): the widget is centred in
+    // the rest.
+    explicit ToggleItem(QWidget *w, int rowHeight = 0, int padBelow = 0)
         : QWidgetItem(w)
         , m_rowHeight(rowHeight)
+        , m_padBelow(padBelow)
     {}
+
+    int padBelow() const { return m_padBelow; }
 
     QSize sizeHint() const override
     {
@@ -149,10 +154,11 @@ public:
     bool hasHeightForWidth() const override { return !isEmpty() && widget()->hasHeightForWidth(); }
     int heightForWidth(int width) const override { return widget()->heightForWidth(width); }
 
-    void setGeometry(const QRect &r) override
+    void setGeometry(const QRect &rect) override
     {
         if (isEmpty())
             return;
+        const QRect r = rect.adjusted(0, 0, 0, -std::min(m_padBelow, rect.height()));
         QWidget *w = widget();
         const QSize hint = sizeHint();
         const Qt::Alignment align = QStyle::visualAlignment(w->layoutDirection(), alignment());
@@ -182,6 +188,7 @@ public:
 
 private:
     int m_rowHeight;
+    int m_padBelow;
 };
 
 } // namespace
@@ -479,10 +486,14 @@ QLayout *makeFieldGroup(const QList<QWidget *> &controls)
         for (int c = 0; c < row.size(); ++c) {
             QWidget *w = row.at(c);
             const int span = row.size() == 1 ? columns + 1 : 1;
+            // A row with an inline field has space-1 under it when a row follows, so two
+            // fields never touch (R6-05, 6.1 rule 15).
+            const bool padded = row.size() > 1 && r + 1 < rows.size();
             if (isToggle(w)) {
                 // One group row pitch of control-h (R5-04, R5-02). The form becomes the parent
                 // with the grid: addItem does not take the widget.
-                layout->addItem(new ToggleItem(w, tokens::controlH), r, c, 1, span);
+                const int pad = padded ? int(tokens::space1) : 0;
+                layout->addItem(new ToggleItem(w, tokens::controlH + pad, pad), r, c, 1, span);
             } else {
                 layout->addWidget(w, r, c, 1, span);
             }
@@ -652,7 +663,8 @@ void fillFieldColumn(QWidget *w)
 int applyGroupRhythm(QGridLayout *grid)
 {
     // One row pitch of control-h: a check box or a radio button is centred in a control-h row
-    // (its ToggleItem), and a row with an inline field is the field height (R5-04, 6.1 rule 15).
+    // (its ToggleItem); a row with an inline field and a row under it is control-h + space-1
+    // (R5-04, R6-05, 6.1 rule 15).
     grid->setVerticalSpacing(0);
     grid->setHorizontalSpacing(tokens::space2);
     int firstRow = 0;
@@ -668,7 +680,10 @@ int applyGroupRhythm(QGridLayout *grid)
         const int height = fixControlHeight(w);
         if (row == 0)
             firstRow = std::max(firstRow, height);
-        grid->setAlignment(w, Qt::AlignVCenter);
+        // In a row with space-1 under it, the field is at the top, on its toggle (R6-05).
+        const auto *toggle = dynamic_cast<const ToggleItem *>(grid->itemAtPosition(row, 0));
+        const bool padded = toggle && toggle->padBelow() > 0 && !isToggle(w);
+        grid->setAlignment(w, padded ? Qt::AlignTop : Qt::AlignVCenter);
     }
     return grid->count() > 0 ? std::max(firstRow, int(tokens::controlH)) : firstRow;
 }

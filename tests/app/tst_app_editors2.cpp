@@ -129,6 +129,7 @@ private slots:
     void chainOptionsHeaderChevron();
     void chainOptionsLabelsWrap();
     void joinLastWordsJoinsLastPair();
+    void extensionFieldsApart();
     void wrappingCheckBoxRightToLeft();
     void wrappingCheckBoxFocusFrame();
     void sameLabelColumnAllPages();
@@ -491,16 +492,21 @@ void TestAppEditors2::formRhythm()
                     QLayoutItem *b = grid->itemAtPosition(r, 0);
                     if (!a || !b || !a->widget() || !b->widget() || b->widget()->isHidden())
                         continue;
-                    // R5-04: one pitch of control-h, also for a row with an inline field.
+                    // R5-04, R6-05: one pitch of control-h; control-h + space-1 under a row
+                    // with an inline field, so two fields never touch.
                     const int pitch = grid->cellRect(r, 0).top() - grid->cellRect(r - 1, 0).top();
-                    QVERIFY2(pitch == controlH,
+                    const bool inlineRow = grid->itemAtPosition(r - 1, 1) &&
+                                           grid->itemAtPosition(r - 1, 1) != a; // not a span
+                    QVERIFY2(pitch == (inlineRow ? controlH + space1 : controlH),
                              qPrintable(
                                      at +
                                      QStringLiteral(" group row %1: pitch %2").arg(r).arg(pitch)));
-                    // The box and its text are centred in the row (R5-02).
+                    // The box and its text are centred in the control-h part of the row
+                    // (R5-02); the space-1 under an inline field is below it.
+                    const QRect cell = grid->cellRect(r - 1, 0);
                     if (qobject_cast<QAbstractButton *>(a->widget()))
                         QCOMPARE(a->widget()->geometry().center().y(),
-                                 grid->cellRect(r - 1, 0).center().y());
+                                 QRect(cell.topLeft(), QSize(cell.width(), controlH)).center().y());
                 }
             }
             if ((qobject_cast<QLineEdit *>(field->widget()) ||
@@ -849,6 +855,28 @@ void TestAppEditors2::wrongRuleTypeDisables()
     Fixture<ExtensionEditor, ExtensionRule> x;
     x.editor->setRule(&f.rule, 2);
     QVERIFY(!x.editor->isEnabled());
+}
+
+// R6-05 (ui-design 6.1 rule 15): the "Set to" and "Add" fields have space-1 between them, and
+// each field is centred on its radio button.
+void TestAppEditors2::extensionFieldsApart()
+{
+    Fixture<ExtensionEditor, ExtensionRule> f;
+    ExtensionEditor *e = f.editor.get();
+    QVERIFY(QTest::qWaitForWindowExposed(e));
+    QApplication::processEvents();
+    const QRect set = ctrm::test::visualRect(child<QLineEdit>(e, "setValue"), e);
+    const QRect add = ctrm::test::visualRect(child<QLineEdit>(e, "addValue"), e);
+    QCOMPARE(set.height(), ctrm::app::tokens::controlH);
+    QCOMPARE(add.top() - set.bottom() - 1, ctrm::app::tokens::space1);
+    for (const auto &[radio, field] : {std::pair{"set", set}, std::pair{"add", add}}) {
+        const QRect box = ctrm::test::visualRect(child<QRadioButton>(e, radio), e);
+        QVERIFY2(qAbs(box.center().y() - field.center().y()) <= 0,
+                 qPrintable(QStringLiteral("%1: %2 vs %3")
+                                    .arg(QLatin1String(radio))
+                                    .arg(box.center().y())
+                                    .arg(field.center().y())));
+    }
 }
 
 // R5-08: only the last two words are joined, with a no-break space.
