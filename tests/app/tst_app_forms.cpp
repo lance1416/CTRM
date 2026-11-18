@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "layoutedge.h"
 #include "rules/ruleeditor.h"
+#include "theme/ctrmstyle.h"
 #include "widgets/formutils.h"
 #include "widgets/itemviewpaint.h"
 #include "widgets/tertiarybutton.h"
@@ -17,7 +18,9 @@
 #include <QPainter>
 #include <QProxyStyle>
 #include <QRadioButton>
+#include <QScopeGuard>
 #include <QSignalSpy>
+#include <QSpinBox>
 #include <QStyle>
 #include <QStyleFactory>
 #include <QStyleOptionButton>
@@ -168,6 +171,8 @@ private slots:
     void inlineSubFieldsAligned();
     void tertiaryButtonFrame();
     void itemCheckAtOrigin();
+    void toggleBoxOnFieldEdge();
+    void cocoaPaintedEdges();
 };
 
 void TestAppForms::baselineMatches_data()
@@ -598,6 +603,77 @@ void TestAppForms::itemCheckAtOrigin()
     }
     QVERIFY(recorder->checks.at(0).on);
     QVERIFY(!recorder->checks.at(1).on);
+}
+
+// The first painted column of w (logical px, relative to window): the first column from the left
+// in which a pixel of the middle rows is not the window background.
+static int paintedLeft(const QImage &image, const QWidget *w, const QWidget *window)
+{
+    const QRect r = ctrm::test::visualRect(w, window);
+    const qreal dpr = image.devicePixelRatio();
+    const QColor bg = window->palette().color(QPalette::Window);
+    for (int x = int((r.left() - 8) * dpr); x < int((r.left() + 12) * dpr); ++x) {
+        for (int y = int((r.center().y() - 4) * dpr); y <= int((r.center().y() + 4) * dpr); ++y) {
+            const QColor c = image.pixelColor(x, y);
+            if (qAbs(c.red() - bg.red()) + qAbs(c.green() - bg.green()) +
+                        qAbs(c.blue() - bg.blue()) >
+                12)
+                return int(x / dpr);
+        }
+    }
+    return -1;
+}
+
+// C04: Cocoa draws the box of a check box or a radio button 2 pt to the left of its layout item
+// rect. The form moves the widget right by that inset, and keeps the layout rect on the field edge.
+void TestAppForms::toggleBoxOnFieldEdge()
+{
+    CaseForm f;
+    applyFormRhythm(f.form);
+    QVERIFY(QTest::qWaitForWindowExposed(f.window.get()));
+    const bool mac =
+            QApplication::style()->name().compare(QLatin1String("macos"), Qt::CaseInsensitive) == 0;
+    const int inset = mac ? 2 : 0;
+    const int edge = ctrm::test::visualLeft(f.text, f.window.get());
+    for (QWidget *w : QList<QWidget *>{f.radios.first(), f.radios.last(), f.check}) {
+        QCOMPARE(ctrm::test::visualLeft(w, f.window.get()), edge);
+        // The rect in which the style draws the control.
+        const QRect drawn = QWidgetItem(w).geometry();
+        QCOMPARE(w->parentWidget()->mapTo(f.window.get(), drawn.topLeft()).x(), edge + inset);
+    }
+    // The wrapping check box: its label keeps the space-1 gap after the drawn box.
+    auto *check = new QCheckBox;
+    QWidget *row = makeWrappingCheckBox(check, QStringLiteral("Keep the gap"));
+    f.form->addRow(QString(), row);
+    applyFormRhythm(f.form);
+    QTRY_VERIFY(row->isVisible() && row->x() > 0);
+    QCOMPARE(row->mapTo(f.window.get(), QWidgetItem(check).geometry().topLeft()).x(), edge + inset);
+    auto *label = row->findChild<QLabel *>();
+    QCOMPARE(label->x(), ctrm::test::visualRect(check, row).right() + 1 + inset + 4);
+}
+
+// C04 on the real Cocoa painter with CtrmStyle (the app style): the drawn left edges of a radio
+// button, a text field, a combo box, a check box and a spin box are on one line. The offscreen
+// platform does not draw native controls: run this test without QT_QPA_PLATFORM=offscreen.
+void TestAppForms::cocoaPaintedEdges()
+{
+    if (QGuiApplication::platformName() != QLatin1String("cocoa"))
+        QSKIP("needs the native Cocoa painter");
+    const QString baseName = QApplication::style()->name();
+    QApplication::setStyle(new CtrmStyle(baseName));
+    const auto restore = qScopeGuard([&] { QApplication::setStyle(baseName); });
+    CaseForm f;
+    auto *spin = new QSpinBox;
+    f.form->addRow(QStringLiteral("Start:"), spin);
+    applyFormRhythm(f.form);
+    QVERIFY(QTest::qWaitForWindowExposed(f.window.get()));
+    f.window->setFocus();
+    QTest::qWait(200);
+    const QImage image = f.window->grab().toImage();
+    QList<int> painted;
+    for (QWidget *w : QList<QWidget *>{f.radios.first(), f.text, f.applyTo, f.check, spin})
+        painted.append(paintedLeft(image, w, f.window.get()));
+    QVERIFY2(allEqual(painted), qPrintable(join(painted)));
 }
 
 QTEST_MAIN(TestAppForms)

@@ -17,6 +17,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMouseEvent>
+#include <QProxyStyle>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QStyle>
@@ -72,6 +73,95 @@ QSize layoutItemMargins(QWidget *w)
         w->setSizePolicy(policy);
     return {policy.horizontalPolicy() == QSizePolicy::Ignored ? 0 : raw.width() - item.width(),
             raw.height() - item.height()};
+}
+
+// Cocoa draws the box of a check box or a radio button 2 pt to the left of its layout item rect,
+// so the box is 2 pt to the left of the field edge (C04, measured on macOS 26 with the base style
+// and CtrmStyle). 0 on other styles.
+int toggleInset(const QWidget *w)
+{
+    if (!qobject_cast<const QCheckBox *>(w) && !qobject_cast<const QRadioButton *>(w))
+        return 0;
+    const QStyle *style = w->style();
+    while (auto *proxy = qobject_cast<const QProxyStyle *>(style))
+        style = proxy->baseStyle();
+    return style->name().compare(QLatin1String("macos"), Qt::CaseInsensitive) == 0 ? 2 : 0;
+}
+
+// The layout item of a check box or a radio button: the layout rect is the visible rect, and the
+// widget moves right by toggleInset, so the drawn box starts on the field edge (C04).
+class ToggleItem : public QWidgetItem
+{
+public:
+    explicit ToggleItem(QWidget *w)
+        : QWidgetItem(w)
+    {}
+    QSize sizeHint() const override { return grow(QWidgetItem::sizeHint()); }
+    QSize minimumSize() const override { return grow(QWidgetItem::minimumSize()); }
+    QSize maximumSize() const override { return grow(QWidgetItem::maximumSize()); }
+    void setGeometry(const QRect &r) override
+    {
+        QWidgetItem::setGeometry(r.adjusted(toggleInset(widget()), 0, 0, 0));
+    }
+    // The visible rect on the field edge: the drawn widget rect, back by the inset.
+    QRect geometry() const override
+    {
+        return QWidgetItem::geometry().translated(-toggleInset(widget()), 0);
+    }
+
+private:
+    QSize grow(QSize size) const
+    {
+        if (size.width() < QLAYOUTSIZE_MAX)
+            size.rwidth() += toggleInset(widget());
+        return size;
+    }
+};
+
+// Puts a check box or a radio button of the form or grid in a ToggleItem, once.
+void useToggleItem(QFormLayout *form, int row, QFormLayout::ItemRole role)
+{
+    QLayoutItem *item = form->itemAt(row, role);
+    QWidget *w = item ? item->widget() : nullptr;
+    if (!w || dynamic_cast<ToggleItem *>(item) || toggleInset(w) == 0)
+        return;
+    delete form->takeAt(form->indexOf(w));
+    form->setItem(row, role, new ToggleItem(w));
+}
+
+// The grid keeps the order of its items (the order of the controls for the code that reads it).
+void useToggleItems(QGridLayout *grid)
+{
+    bool any = false;
+    for (int i = 0; i < grid->count(); ++i) {
+        QLayoutItem *item = grid->itemAt(i);
+        if (item->widget() && !dynamic_cast<ToggleItem *>(item) && toggleInset(item->widget()))
+            any = true;
+    }
+    if (!any)
+        return;
+    struct Cell
+    {
+        QLayoutItem *item;
+        int row, column, rowSpan, columnSpan;
+    };
+    QList<Cell> cells;
+    while (grid->count() > 0) {
+        Cell cell{nullptr, 0, 0, 0, 0};
+        grid->getItemPosition(0, &cell.row, &cell.column, &cell.rowSpan, &cell.columnSpan);
+        cell.item = grid->takeAt(0);
+        QWidget *w = cell.item->widget();
+        if (w && !dynamic_cast<ToggleItem *>(cell.item) && toggleInset(w)) {
+            auto *toggle = new ToggleItem(w);
+            toggle->setAlignment(cell.item->alignment());
+            delete cell.item;
+            cell.item = toggle;
+        }
+        cells.append(cell);
+    }
+    for (const Cell &cell : std::as_const(cells))
+        grid->addItem(cell.item, cell.row, cell.column, cell.rowSpan, cell.columnSpan,
+                      cell.item->alignment());
 }
 
 // The height that a layout sees for w.
@@ -427,7 +517,10 @@ QWidget *makeWrappingCheckBox(QCheckBox *check, const QString &text)
     check->setText(QString());
     check->setAccessibleName(text);
     check->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    layout->addWidget(check, 0, Qt::AlignTop); // a parent first: layoutItemMargins needs it
+    check->setParent(row); // a parent first: layoutItemMargins and toggleInset need it
+    auto *item = new ToggleItem(check);
+    item->setAlignment(Qt::AlignTop);
+    layout->addItem(item);
     check->setFixedHeight(formControlHeight(check) + layoutItemMargins(check).height());
     layout->addWidget(new WrappingCheckLabel(check, text), 1);
     return row;
@@ -474,6 +567,7 @@ int applyGroupRhythm(QGridLayout *grid)
     grid->setVerticalSpacing(tokens::space1);
     grid->setHorizontalSpacing(tokens::space2);
     int firstRow = 0;
+    useToggleItems(grid);
     for (int i = 0; i < grid->count(); ++i) {
         QWidget *w = grid->itemAt(i)->widget();
         if (!w)
@@ -502,6 +596,14 @@ void applyRhythmNow(QFormLayout *form)
         if (!field)
             continue;
         int height = 0;
+        if (field->widget()) {
+            useToggleItem(form, row,
+                          form->itemAt(row, QFormLayout::FieldRole) ? QFormLayout::FieldRole
+                                                                    : QFormLayout::SpanningRole);
+            field = form->itemAt(row, QFormLayout::FieldRole);
+            if (!field)
+                field = form->itemAt(row, QFormLayout::SpanningRole);
+        }
         if (QWidget *w = field->widget()) {
             height = fixControlHeight(w);
             fillFieldColumn(w);

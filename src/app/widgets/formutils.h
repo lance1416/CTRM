@@ -45,6 +45,8 @@ void alignLabelToFirstRow(QLabel *label, QWidget *firstControl);
 // - Text fields, spin boxes, combo boxes and buttons have the visible height control-h; check
 //   boxes and radio buttons 20 px. The visible rect is the layout item rect: the style margins
 //   (the macOS focus ring) are outside it, so the visible edges are on the field edge (C04).
+//   On macOS, check boxes and radio buttons move 2 pt right: Cocoa draws their box 2 pt to the
+//   left of the layout rect.
 // - Labels have the visible height of the first row of their field, text centred: the label
 //   baseline is the baseline of the first control (6.2).
 // - A text field or a combo box alone on its row fills the field column up to field-w-max. A
