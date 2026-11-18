@@ -44,6 +44,7 @@
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QStyledItemDelegate>
+#include <QTimer>
 #include <QToolButton>
 
 #include <algorithm>
@@ -465,6 +466,7 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     auto *hint = new QLabel(tr("top to bottom"));
     makeDimCaption(hint, this);
     auto *header = new QWidget;
+    m_header = header;
     m_headerLayout = new QHBoxLayout(header);
     m_headerLayout->setContentsMargins(0, 0, 0, 0);
     m_headerLayout->addWidget(title, 0, Qt::AlignBaseline);
@@ -669,6 +671,10 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     connect(&m_model, &QAbstractItemModel::rowsRemoved, this, refresh);
     connect(&m_model, &QAbstractItemModel::rowsMoved, this, refresh);
 
+    // Chain options and its wrapping labels never make the panel wider (O08).
+    m_chainOptions->setSizePolicy(QSizePolicy::Ignored,
+                                  m_chainOptions->sizePolicy().verticalPolicy());
+
     updateIcons();
     updateEmptyState();
     updateAddRuleLook();
@@ -676,6 +682,53 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
         selectRow(0);
     showRule(currentRow());
     updateActions();
+    updateMinimumWidth();
+}
+
+QSize RulePanel::minimumSizeHint() const
+{
+    return {m_minWidth, QWidget::minimumSizeHint().height()};
+}
+
+bool RulePanel::event(QEvent *event)
+{
+    // The widths of the pages change with the font, the style and the scale only.
+    if (event->type() == QEvent::Polish || event->type() == QEvent::DevicePixelRatioChange)
+        scheduleMinimumWidth();
+    return QWidget::event(event);
+}
+
+void RulePanel::scheduleMinimumWidth()
+{
+    if (m_minWidthPending)
+        return;
+    m_minWidthPending = true;
+    // After the children have the new font or style.
+    QTimer::singleShot(0, this, [this] {
+        m_minWidthPending = false;
+        m_labelSync->sync();
+        updateMinimumWidth();
+    });
+}
+
+void RulePanel::updateMinimumWidth()
+{
+    constexpr int kMinPanelWidth = 360; // ui-design 4.4
+    // The widest page of all, as the scroll area gives it (with the scroll bar), and the header
+    // with its Add Rule button.
+    for (int i = 0; i < m_editors->count(); ++i)
+        m_editors->widget(i)->ensurePolished();
+    int content = m_scroll->minimumSizeHint().width();
+    int header = m_header->minimumSizeHint().width();
+    if (m_headerLayout->indexOf(m_addRule) < 0)
+        header += m_headerLayout->spacing() + m_addRule->sizeHint().width();
+    content = std::max(content, header);
+    const QMargins margins = layout()->contentsMargins();
+    const int width = std::max(kMinPanelWidth, content + margins.left() + margins.right());
+    if (width != m_minWidth) {
+        m_minWidth = width;
+        updateGeometry();
+    }
 }
 
 QListView *RulePanel::ruleList() const
@@ -763,6 +816,8 @@ void RulePanel::changeEvent(QEvent *event)
         updateIcons();
         updateAddRuleLook();
     }
+    if (event->type() == QEvent::FontChange || event->type() == QEvent::StyleChange)
+        scheduleMinimumWidth();
 }
 
 void RulePanel::fillAddRuleMenu()

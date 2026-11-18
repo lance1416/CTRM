@@ -11,6 +11,7 @@
 #include "models/rulelistmodel.h"
 #include "presets/presetstore.h"
 #include "preview/previewscheduler.h"
+#include "rules/chainoptionswidget.h"
 #include "rules/insertrule.h"
 #include "rules/numberingrule.h"
 #include "rules/replacerule.h"
@@ -137,6 +138,7 @@ private slots:
     void editorGetsHeightAtMinimum();
     void listHeightStableOnSelect();
     void listWholeRows();
+    void rulePanelWidthStable();
     void editorPagesFitAtDefault();
     void splitterDoubleClickRefits();
     void splitterHandlesPlain();
@@ -994,6 +996,40 @@ void TestMainWindow::editorPagesFitAtDefault()
                  qPrintable(types.at(row) + QStringLiteral(": scroll %1")
                                                     .arg(scroll->verticalScrollBar()->maximum())));
     }
+}
+
+void TestMainWindow::rulePanelWidthStable()
+{
+    // O08 (ui-design 4.1, 4.4): the rule panel width does not change with its content: not for
+    // the first rule, another page, or open Chain options.
+    Fixture f;
+    f.window.show();
+    f.window.resize(1000, 700);
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    QApplication::processEvents();
+    RulePanel *panel = f.window.rulePanel();
+    const int width = panel->width();
+    const int minimum = panel->minimumSizeHint().width();
+    QVERIFY2(minimum >= 360, qPrintable(QString::number(minimum)));
+    const auto check = [&](const char *when) {
+        QApplication::processEvents();
+        QVERIFY2(panel->width() == width, qPrintable(QStringLiteral("%1: %2 != %3")
+                                                             .arg(QLatin1String(when))
+                                                             .arg(panel->width())
+                                                             .arg(width)));
+        QVERIFY2(panel->minimumSizeHint().width() == minimum, when);
+    };
+    f.addRuleAction(QStringLiteral("replace"))->trigger();
+    check("first rule");
+    for (const char *type : {"remove", "numbering", "cleanup", "extension"})
+        f.addRuleAction(QString::fromLatin1(type))->trigger();
+    check("more rules");
+    auto *chain = panel->findChild<ChainOptionsWidget *>();
+    QVERIFY(chain);
+    chain->setOpen(true);
+    check("chain options open");
+    chain->setOpen(false);
+    check("chain options closed");
 }
 
 void TestMainWindow::splitterDoubleClickRefits()

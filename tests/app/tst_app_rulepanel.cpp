@@ -116,6 +116,7 @@ private slots:
     void editorsFitPanelWidth();
     void editorFadeWhenCut();
     void listKeepsHeightWhenChainOpens();
+    void minimumWidthFromEditorsOnly();
 };
 
 void TestAppRulePanel::factory()
@@ -788,6 +789,33 @@ void TestAppRulePanel::listKeepsHeightWhenChainOpens()
                                     .arg(f.panel->ruleList()->height())
                                     .arg(before)));
     }
+}
+
+void TestAppRulePanel::minimumWidthFromEditorsOnly()
+{
+    // O08: the minimum width is max(360, the widest editor page). It does not change with the
+    // rules, the current page or Chain options.
+    Fixture f;
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    const int minimum = f.panel->minimumSizeHint().width();
+    auto *scroll = f.panel->findChild<QScrollArea *>(QStringLiteral("editorScroll"));
+    int widest = 0;
+    for (QWidget *page : scroll->widget()->findChildren<RuleEditor *>())
+        widest = std::max(widest, page->minimumSizeHint().width());
+    QVERIFY2(minimum >= std::max(360, widest),
+             qPrintable(QStringLiteral("%1 < %2").arg(minimum).arg(widest)));
+    for (const QString &type : ruleTypes())
+        f.actions.addRuleMenu->findChild<QAction *>(QStringLiteral("addRule_") + type)->trigger();
+    for (int row = 0; row < f.model.rowCount(); ++row) {
+        f.select(row);
+        QApplication::processEvents();
+        QCOMPARE(f.panel->minimumSizeHint().width(), minimum);
+    }
+    f.panel->findChild<ChainOptionsWidget *>()->setOpen(true);
+    QApplication::processEvents();
+    QCOMPARE(f.panel->minimumSizeHint().width(), minimum);
+    QCOMPARE(f.panel->findChild<ChainOptionsWidget *>()->sizePolicy().horizontalPolicy(),
+             QSizePolicy::Ignored);
 }
 
 #include "tst_app_rulepanel.moc"

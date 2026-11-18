@@ -327,11 +327,17 @@ void TestAppShell::toolbarHasNoRename()
 void TestAppShell::stateSavedOnClose()
 {
     TestContext t;
+    QList<int> saved;
     {
         MainWindow w(*t.ctx);
         w.show();
         QVERIFY(QTest::qWaitForWindowExposed(&w));
-        w.mainSplitter()->setSizes({300, 700});
+        // The narrowest rule panel (O08: at least 360 px), not the 1:2 default.
+        const int total = w.mainSplitter()->sizes().at(0) + w.mainSplitter()->sizes().at(1);
+        const int panel = w.mainSplitter()->widget(0)->minimumSizeHint().width();
+        w.mainSplitter()->setSizes({panel, total - panel});
+        saved = w.mainSplitter()->sizes();
+        QVERIFY2(saved.at(1) > 2 * saved.at(0), qPrintable(QString::number(saved.at(0))));
         w.close();
     }
     QVERIFY(!t.ctx->settings().windowGeometry().isEmpty());
@@ -341,9 +347,8 @@ void TestAppShell::stateSavedOnClose()
     MainWindow again(*t.ctx);
     again.show();
     QVERIFY(QTest::qWaitForWindowExposed(&again));
-    const QList<int> sizes = again.mainSplitter()->sizes();
-    const double ratio = double(sizes.at(1)) / sizes.at(0);
-    QVERIFY2(ratio > 2.1, qPrintable(QString::number(ratio))); // 700 / 300, not the 1:2 default
+    // The rule panel keeps its saved width (the window size can differ offscreen).
+    QCOMPARE(again.mainSplitter()->sizes().at(0), saved.at(0));
 }
 
 void TestAppShell::viewTogglesPersist()

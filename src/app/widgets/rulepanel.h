@@ -37,12 +37,16 @@ public:
     void setNumberedCount(int n);         // the numbering editor and summary
     // Cmd+3 (ui-design 12): the focus goes to the first field of the editor.
     void focusEditor();
+    // max(360 px, the widest editor page): computed at the start and on a font, style or scale
+    // change only, never from the current page, the rules or Chain options (O08, ui-design 4.4).
+    QSize minimumSizeHint() const override;
 
 signals:
     void chainOptionsChanged(const ctrm::ChainOptions &o);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
+    bool event(QEvent *event) override;
     void changeEvent(QEvent *event) override;
 
 private:
@@ -59,6 +63,8 @@ private:
     void openAddRuleMenu();
     void updateIcons();
     void setListShortcuts(bool on);
+    void updateMinimumWidth();
+    void scheduleMinimumWidth();
     int currentRow() const;
     void selectRow(int row);
 
@@ -83,6 +89,9 @@ private:
     ChainOptionsWidget *m_chainOptions;
     LabelColumnSync *m_labelSync;
     bool m_primary = false;
+    QWidget *m_header = nullptr;
+    int m_minWidth = 0;
+    bool m_minWidthPending = false;
 };
 
 } // namespace ctrm::app
