@@ -109,11 +109,14 @@ void MessageBar::showMessage(StateIcon icon, const QString &text,
     m_stateIcon = icon;
     m_text->setText(text);
     for (QPushButton *button : buttons) {
-        // C15: a light action, as the macOS banner actions: a borderless button with accent
-        // text, never default.
+        // C15: a light action, as the macOS banner actions: a borderless button with
+        // label-strong text, never default.
         button->setAutoDefault(false);
         button->setDefault(false);
         button->setFlat(true);
+        QFont strong = button->font();
+        strong.setWeight(QFont::DemiBold);
+        button->setFont(strong);
         // Into the bar first: a button with no parent shows as its own window and takes the
         // activation from the main window (M01).
         m_buttonLayout->addWidget(button);
@@ -177,9 +180,12 @@ void MessageBar::updateColors()
     for (QPushButton *button : std::as_const(m_buttons)) {
         if (!button)
             continue;
-        QPalette accent;
-        accent.setColor(QPalette::ButtonText, base.color(QPalette::Accent));
-        button->setPalette(accent);
+        // design-tokens 4.5 "Message bar action": `text`, never `accent` on a tint; disabled
+        // `text-dim`.
+        QPalette action;
+        action.setColor(QPalette::ButtonText, base.color(QPalette::WindowText));
+        action.setColor(QPalette::Disabled, QPalette::ButtonText, colors.stateNeutral);
+        button->setPalette(action);
     }
     m_updating = false;
 }
