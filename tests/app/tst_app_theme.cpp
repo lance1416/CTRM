@@ -6,8 +6,11 @@
 #include "widgets/tertiarybutton.h"
 
 #include <QApplication>
+#include <QDir>
+#include <QFile>
 #include <QImage>
 #include <QPalette>
+#include <QRegularExpression>
 #include <QStyle>
 #include <QStyleFactory>
 #include <QtTest>
@@ -88,6 +91,7 @@ private slots:
     void fillValues();
     void sharedIconsLoad();
     void tertiaryIconButtonProperty();
+    void iconStrokeWidth();
 };
 
 void TestAppTheme::mixFormula()
@@ -386,4 +390,28 @@ void TestAppTheme::tertiaryIconButtonProperty()
 }
 
 QTEST_MAIN(TestAppTheme)
+void TestAppTheme::iconStrokeWidth()
+{
+    // C01: one icon set, each stroke 1.5 px (design-tokens 5).
+    // The first icon loads the icon resources (a static library).
+    QVERIFY(!toolIcon(QStringLiteral("tool-add"), referencePalette(false)).isNull());
+    const QDir dir(QStringLiteral(":/icons"));
+    const QStringList files =
+            dir.entryList({QStringLiteral("tool-*.svg"), QStringLiteral("chevron-*.svg")});
+    QCOMPARE(files.size(), 18); // 16 tool icons and 2 chevrons
+    static const QRegularExpression width(QStringLiteral("stroke-width=\"([^\"]*)\""));
+    for (const QString &name : files) {
+        QFile file(dir.filePath(name));
+        QVERIFY2(file.open(QIODevice::ReadOnly), qPrintable(name));
+        const QString svg = QString::fromUtf8(file.readAll());
+        // A stroke with no width is 1 px: each stroked icon names its width.
+        if (svg.contains(QStringLiteral("stroke=\"")))
+            QVERIFY2(svg.contains(QStringLiteral("stroke-width=")), qPrintable(name));
+        for (auto it = width.globalMatch(svg); it.hasNext();) {
+            const QString value = it.next().captured(1);
+            QVERIFY2(value == QStringLiteral("1.5"), qPrintable(name + QLatin1Char(' ') + value));
+        }
+    }
+}
+
 #include "tst_app_theme.moc"
