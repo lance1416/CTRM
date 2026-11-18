@@ -40,6 +40,7 @@
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QSettings>
 #include <QSplitter>
 #include <QStackedWidget>
@@ -136,6 +137,7 @@ private slots:
     void editorGetsHeightAtMinimum();
     void listHeightStableOnSelect();
     void listWholeRows();
+    void editorPagesFitAtDefault();
     void splitterDoubleClickRefits();
     void splitterHandlesPlain();
     void focusEditorFirstField();
@@ -965,6 +967,33 @@ void TestMainWindow::listWholeRows()
             QVERIFY2(cut <= 0, qPrintable(at)); // more rows only when the page fits
     }
     QVERIFY(keptCut);
+}
+
+void TestMainWindow::editorPagesFitAtDefault()
+{
+    // C16, O06a (ui-design 4.1): at window-default, each editor page fits without a scroll and
+    // the list shows the 5 rules.
+    Fixture f;
+    f.window.show();
+    f.window.resize(tokens::defaultWidth, tokens::defaultHeight);
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    const QStringList types{QStringLiteral("numbering"), QStringLiteral("remove"),
+                            QStringLiteral("replace"), QStringLiteral("insert"),
+                            QStringLiteral("changeCase")};
+    for (const QString &type : types)
+        f.addRuleAction(type)->trigger();
+    QApplication::processEvents();
+    auto *list = f.child<QListView>("ruleList");
+    auto *scroll = f.child<QScrollArea>("editorScroll");
+    QVERIFY(list && scroll);
+    QTRY_COMPARE(list->height(), 5 * list->sizeHintForRow(0) + 2 * list->frameWidth());
+    for (int row = 0; row < types.size(); ++row) {
+        list->setCurrentIndex(list->model()->index(row, 0));
+        QApplication::processEvents();
+        QVERIFY2(scroll->verticalScrollBar()->maximum() == 0,
+                 qPrintable(types.at(row) + QStringLiteral(": scroll %1")
+                                                    .arg(scroll->verticalScrollBar()->maximum())));
+    }
 }
 
 void TestMainWindow::splitterDoubleClickRefits()
