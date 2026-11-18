@@ -735,6 +735,14 @@ void TestAppWindowState::problemLinks()
     QCoreApplication::sendEvent(conflicts, &leave);
     QVERIFY(!underlined(conflicts));
     QCOMPARE(visibleLabelWithText(&bar, QStringLiteral("2 conflicts")), conflicts);
+    // The link has keyboard focus: the mouse does not rebuild its text (that clears the focus).
+    parent.show();
+    conflicts->setFocus(Qt::TabFocusReason);
+    if (conflicts->hasFocus()) {
+        const QString before = conflicts->text();
+        QCoreApplication::sendEvent(conflicts, &enter);
+        QCOMPARE(conflicts->text(), before);
+    }
 
     // Previous and Next problem show only when there are blocking problems (7.6).
     auto *next = bar.findChild<QToolButton *>(QStringLiteral("nextProblemButton"));

@@ -64,6 +64,9 @@ protected:
 private:
     void setLinkText(bool hover)
     {
+        // A new text clears the keyboard focus of the link: keep the text while it has focus.
+        if (hasFocus() && !text().isEmpty())
+            return;
         setText(QStringLiteral("<a href=\"%1\" style=\"text-decoration:%2\">%3</a>")
                         .arg(m_href, hover ? QStringLiteral("underline") : QStringLiteral("none"),
                              m_text));
