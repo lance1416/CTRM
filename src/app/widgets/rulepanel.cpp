@@ -504,6 +504,9 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     m_header = header;
     m_headerLayout = new QHBoxLayout(header);
     m_headerLayout->setContentsMargins(0, 0, 0, 0);
+    // C08: a row of header-h, as the filter row over the table, so that the rule list and the
+    // table start at one y.
+    header->setFixedHeight(tokens::headerH);
     m_headerLayout->addWidget(title, 0, Qt::AlignBaseline);
     m_headerLayout->addWidget(hint, 0, Qt::AlignBaseline);
     m_headerLayout->addStretch();
@@ -525,7 +528,8 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     // Add Rule goes in this layout itself: a nested layout would add the style margins of
     // the button a second time (macOS).
     m_emptyButtons = emptyLayout;
-    emptyLayout->setContentsMargins(0, 0, 0, 0);
+    // The empty-state title is space-3 under the header row (5.4).
+    emptyLayout->setContentsMargins(0, tokens::space3 - tokens::space2, 0, 0);
     emptyLayout->setSpacing(0);
     emptyLayout->addWidget(m_emptyTitle);
     emptyLayout->addSpacing(tokens::space1);
@@ -629,12 +633,12 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
                                   [this] { return m_chainOptions->openHeight(); });
 
     auto *layout = new QVBoxLayout(this);
-    // The panel inset space-3 on each side; space-3 from the header row to its content (O06b,
-    // design-tokens 4.2). Chain options has its own gap (ui-design 8.10).
+    // The panel inset space-3 on each side; space-2 under the header row, as under the filter
+    // row (O06b, C08, design-tokens 4.2). Chain options has its own gap (ui-design 8.10).
     layout->setContentsMargins(tokens::space3, tokens::space3, tokens::space3, tokens::space3);
     layout->setSpacing(0);
     layout->addWidget(header);
-    layout->addSpacing(tokens::space3);
+    layout->addSpacing(tokens::space2);
     layout->addWidget(m_emptyPage, 1);
     layout->addWidget(m_splitter, 1);
     layout->addWidget(m_chainOptions); // under the editor, outside the scroll area (ui-design 8.10)

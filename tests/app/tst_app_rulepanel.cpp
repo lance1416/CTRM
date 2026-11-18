@@ -869,6 +869,9 @@ void TestAppRulePanel::editorOnPanelSurface()
     QVERIFY(title);
     QCOMPARE(title->mapTo(f.panel, QPoint()).x(), tokens::space3);
     QCOMPARE(f.panel->ruleList()->mapTo(f.panel, QPoint()).x(), tokens::space3);
+    // C08: the header row is space-3 + header-h + space-2, as the filter row over the table.
+    QCOMPARE(f.panel->ruleList()->mapTo(f.panel, QPoint()).y(),
+             tokens::space3 + tokens::headerH + tokens::space2);
     QCOMPARE(f.panel->width() - (f.panel->ruleList()->mapTo(f.panel, QPoint()).x() +
                                  f.panel->ruleList()->width()),
              tokens::space3);
