@@ -295,6 +295,25 @@ void CtrmStyle::drawControl(ControlElement element, const QStyleOption *option, 
             return;
         }
     }
+    if ((element == CE_CheckBox || element == CE_RadioButton) && widget) {
+        // R5-02: a form gives a check box or a radio button a row taller than its natural
+        // height. QMacStyle draws the native indicator at the top of the rect and the text in
+        // the centre, so they do not share one centre. Draw the control at its natural height,
+        // centred in the row: the indicator and the text keep their native relation.
+        const auto *toggle = qstyleoption_cast<const QStyleOptionButton *>(option);
+        const int natural = widget->sizeHint().height();
+        if (toggle && natural > 0 && option->rect.height() > natural) {
+            // QMacStyle places the native indicator from the widget, not from the option rect:
+            // move the painter.
+            QStyleOptionButton centred = *toggle;
+            centred.rect.setHeight(natural);
+            painter->save();
+            painter->translate(0, (option->rect.height() - natural) / 2);
+            QProxyStyle::drawControl(element, &centred, painter, widget);
+            painter->restore();
+            return;
+        }
+    }
     const QStyleOptionButton *button = styledPushButton(option);
     if (!button) {
         QProxyStyle::drawControl(element, option, painter, widget);

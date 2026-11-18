@@ -12,13 +12,16 @@
 #include "widgets/tertiarybutton.h"
 
 #include <QApplication>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QFocusFrame>
 #include <QFormLayout>
 #include <QImage>
 #include <QLineEdit>
 #include <QPainter>
+#include <QProxyStyle>
 #include <QPushButton>
+#include <QRadioButton>
 #include <QSpinBox>
 #include <QStyleOption>
 #include <QToolBar>
@@ -157,6 +160,7 @@ private slots:
     void toolBarMenuButtonMatchesTextButton();
     void toolBarFirstIconAtInset();
     void oneFocusRing();
+    void toggleCentredInTallRow();
 };
 
 void TestAppStyle::lineEditFilled()
@@ -630,6 +634,55 @@ void TestAppStyle::oneFocusRing()
             s.style->baseStyle()->name().compare(QStringLiteral("macos"), Qt::CaseInsensitive) == 0;
     const QColor edge = image.pixelColor(1, size.height() / 2);
     QCOMPARE(near(edge, s.colors().accentFill), mac);
+}
+
+namespace {
+
+// A base style that keeps the rect and the painter offset of the last check box or radio button.
+class ToggleSpy : public QProxyStyle
+{
+public:
+    ToggleSpy()
+        : QProxyStyle(QStringLiteral("Fusion"))
+    {}
+    void drawControl(ControlElement element, const QStyleOption *option, QPainter *painter,
+                     const QWidget *widget) const override
+    {
+        if (element == CE_CheckBox || element == CE_RadioButton) {
+            rect = option->rect;
+            dy = qRound(painter->transform().dy());
+        }
+        QProxyStyle::drawControl(element, option, painter, widget);
+    }
+    mutable QRect rect;
+    mutable int dy = 0;
+};
+
+} // namespace
+
+void TestAppStyle::toggleCentredInTallRow()
+{
+    // R5-02: a form row is taller than a check box. QMacStyle draws the native indicator at the
+    // top of the widget and the text in the centre. The app style draws the control at its
+    // natural height in the centre of the row, so the indicator and the text share one centre.
+    Styled s;
+    auto *spy = new ToggleSpy;
+    s.style->setBaseStyle(spy); // the app style takes it
+    for (QAbstractButton *toggle :
+         {static_cast<QAbstractButton *>(new QCheckBox(QStringLiteral("Hidden files"))),
+          static_cast<QAbstractButton *>(new QRadioButton(QStringLiteral("Before")))}) {
+        s.add(toggle);
+        const int natural = toggle->sizeHint().height();
+        toggle->setFixedHeight(natural + 7);
+        paint(toggle);
+        QCOMPARE(spy->rect.height(), natural);
+        QCOMPARE(spy->dy, 7 / 2);
+        // At its natural height nothing moves.
+        toggle->setFixedHeight(natural);
+        paint(toggle);
+        QCOMPARE(spy->rect.height(), natural);
+        QCOMPARE(spy->dy, 0);
+    }
 }
 
 QTEST_MAIN(TestAppStyle)
