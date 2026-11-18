@@ -21,7 +21,6 @@
 #include "theme/typography.h"
 #include "widgets/buttonstyle.h"
 #include "widgets/formutils.h"
-#include "widgets/itemviewpaint.h"
 #include "widgets/plainsplitter.h"
 #include "widgets/tertiarybutton.h"
 
@@ -45,6 +44,8 @@
 #include <QScrollBar>
 #include <QSplitter>
 #include <QStackedWidget>
+#include <QStyleOptionFocusRect>
+#include <QStyleOptionViewItem>
 #include <QStyledItemDelegate>
 #include <QTimer>
 #include <QToolButton>
@@ -62,8 +63,17 @@ constexpr int kEmptyTextChars = 40;              // the line length of an empty-
 constexpr int kRuleHandleWidth = tokens::space2; // the drag area between the list and the editor
 constexpr int kSummarySpacing = 2;               // between the two lines of a rule row
 
-// Two lines for each rule: the check box, "<position> <type>" and the error icon; under them,
-// the summary in the caption style, dimmed (ui-design 4.4).
+constexpr int kListRows = 3;    // the list shows at least 3 rows when it can (ui-design 4.4)
+constexpr int kLowListRows = 2; // a low panel: still 2 rows, so the list shows a chain (R6-06)
+
+QFont summaryFont(const QFont &font)
+{
+    return typeStyle(TypeToken::Caption, font);
+}
+
+// Two lines for each rule (ui-design 4.4, R6-02): the check box centred on the row; the title
+// "<position> <type>" with the error icon; under it, the summary in the caption style, dimmed.
+// The row is row-h-2 high, so the space between two rows is larger than between two lines.
 class RuleItemDelegate : public QStyledItemDelegate
 {
 public:
@@ -71,10 +81,10 @@ public:
 
     QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override
     {
-        QSize size = QStyledItemDelegate::sizeHint(option, index);
-        size.setHeight(size.height() + kSummarySpacing +
-                       QFontMetrics(summaryFont(option)).height());
-        return size;
+        const int lines = QFontMetrics(option.font).height() + kSummarySpacing +
+                          QFontMetrics(summaryFont(option.font)).height();
+        return {QStyledItemDelegate::sizeHint(option, index).width(),
+                std::max(int(tokens::rowH2), lines + 2 * tokens::space1)};
     }
 
     void paint(QPainter *painter, const QStyleOptionViewItem &option,
@@ -86,72 +96,78 @@ public:
         QStyle *style = widget ? widget->style() : QApplication::style();
         const bool on = index.data(Qt::CheckStateRole).value<Qt::CheckState>() == Qt::Checked;
         const bool selected = opt.state & QStyle::State_Selected;
+        const bool hasError = index.data(RuleListModel::HasErrorRole).toBool();
+        const RuleRowLayout row = ruleRowLayout(opt, hasError);
 
-        // The background of the full row, then the first line on it.
+        // The background of the full row.
         style->drawPrimitive(QStyle::PE_PanelItemViewItem, &opt, painter, widget);
-        QStyleOptionViewItem first = opt;
-        const int firstHeight = QStyledItemDelegate::sizeHint(option, index).height();
-        first.rect.setHeight(firstHeight);
-        first.backgroundBrush = Qt::NoBrush;
-        first.palette.setBrush(QPalette::Highlight, Qt::transparent);
-        if (index.data(RuleListModel::HasErrorRole).toBool()) {
-            first.features |= QStyleOptionViewItem::HasDecoration;
-            first.icon = stateIcon(StateIcon::Error, CtrmColors::fromPalette(opt.palette));
-            first.decorationSize = QSize(kToolIconSize, kToolIconSize);
-        }
+
+        QStyleOptionViewItem indicator = opt;
+        indicator.rect = QRect(QPoint(0, 0), row.check.size());
+        indicator.state &= ~(QStyle::State_On | QStyle::State_Off | QStyle::State_NoChange);
+        indicator.state |= on ? QStyle::State_On : QStyle::State_Off;
+        painter->save();
+        painter->translate(row.check.topLeft()); // as paintItemViewItem: QMacStyle needs it
+        style->drawPrimitive(QStyle::PE_IndicatorItemViewItemCheck, &indicator, painter, widget);
+        painter->restore();
+
         // The selection has the accent only in the active window. On the grey selection of
         // an inactive window, the text keeps its normal colours (ui-design 14: contrast).
         const bool accentSelection = selected && (opt.state & QStyle::State_Active);
-        if (selected && !accentSelection)
-            first.palette.setColor(QPalette::HighlightedText, opt.palette.color(QPalette::Text));
+        QColor title =
+                opt.palette.color(accentSelection ? QPalette::HighlightedText : QPalette::Text);
         if (!on && !accentSelection) // a rule that is off is dimmed (ui-design 4.4)
-            first.palette.setColor(selected ? QPalette::HighlightedText : QPalette::Text,
-                                   opt.palette.color(QPalette::PlaceholderText));
-        paintItemViewItem(painter, first);
-
-        const QRect textRect = style->subElementRect(QStyle::SE_ItemViewItemText, &first, widget);
-        QRect summaryRect(textRect.left(), first.rect.bottom() + 1 + kSummarySpacing,
-                          opt.rect.right() - textRect.left(),
-                          opt.rect.bottom() - first.rect.bottom() - kSummarySpacing);
-        const QFont font = summaryFont(option);
+            title = opt.palette.color(QPalette::PlaceholderText);
+        const QColor summary = opt.palette.color(accentSelection ? QPalette::HighlightedText
+                                                                 : QPalette::PlaceholderText);
+        const int align = int(QStyle::visualAlignment(opt.direction, Qt::AlignLeft)) |
+                          Qt::AlignVCenter | Qt::TextSingleLine;
         painter->save();
+        painter->setFont(opt.font);
+        painter->setPen(title);
+        painter->drawText(
+                row.title, align,
+                QFontMetrics(opt.font).elidedText(opt.text, Qt::ElideRight, row.title.width()));
+        const QFont font = summaryFont(opt.font);
         painter->setFont(font);
-        painter->setPen(opt.palette.color(accentSelection ? QPalette::HighlightedText
-                                                          : QPalette::PlaceholderText));
-        const QString summary =
+        painter->setPen(summary);
+        painter->drawText(
+                row.summary, align,
                 QFontMetrics(font).elidedText(index.data(RuleListModel::SummaryRole).toString(),
-                                              Qt::ElideRight, summaryRect.width());
-        painter->drawText(summaryRect, Qt::AlignLeft | Qt::AlignTop | Qt::TextSingleLine, summary);
+                                              Qt::ElideRight, row.summary.width()));
         painter->restore();
-    }
-
-private:
-    static QFont summaryFont(const QStyleOptionViewItem &option)
-    {
-        return typeStyle(TypeToken::Caption, option.font);
+        if (hasError)
+            stateIcon(StateIcon::Error, CtrmColors::fromPalette(opt.palette))
+                    .paint(painter, row.icon);
+        if (opt.state & QStyle::State_HasFocus) {
+            QStyleOptionFocusRect focus;
+            focus.QStyleOption::operator=(opt);
+            focus.rect = opt.rect;
+            focus.backgroundColor =
+                    opt.palette.color(selected ? QPalette::Highlight : QPalette::Base);
+            style->drawPrimitive(QStyle::PE_FrameFocusRect, &focus, painter, widget);
+        }
     }
 };
 
-// The rule list: as high as its rows, at least kMinListRows (ui-design 4.4). The editor
-// below it gets the free space. When the panel is low, it can shrink to 1 row (R1-01).
+// The rule list: as high as its rows, at least kListRows (ui-design 4.4). The editor below it
+// gets the free space. When the panel is low, it can shrink to kLowListRows (R6-06).
 class RuleListView : public QListView
 {
 public:
     using QListView::QListView;
 
     QSize sizeHint() const override { return {QListView::sizeHint().width(), heightFor(rows())}; }
-    // When the panel is low (the minimum window), the list can shrink to 1 row: the current
-    // rule stays visible (M06, R1-01).
+    // When the panel is low (the minimum window), the list can shrink to 2 rows: the current
+    // rule stays visible, and the list still shows a chain (M06, R1-01, R6-06).
     QSize minimumSizeHint() const override
     {
-        return {QListView::minimumSizeHint().width(), heightFor(1)};
+        return {QListView::minimumSizeHint().width(), heightFor(kLowListRows)};
     }
 
 private:
-    static constexpr int kMinListRows = 3;
-
     int rowCount() const { return model() ? model()->rowCount() : 0; }
-    int rows() const { return std::max(kMinListRows, rowCount()); }
+    int rows() const { return std::max(kListRows, rowCount()); }
 
     int heightFor(int rows) const
     {
@@ -444,14 +460,14 @@ private:
         const auto height = [&](int rows) {
             return std::max(listMin, overhead + frames + rows * row);
         };
-        const int rows = std::clamp((space - overhead - frames) / row, 1, maxRows);
-        const int keep = std::min(kKeptRows, maxRows);
+        const int rows = std::clamp((space - overhead - frames) / row,
+                                    std::min(kLowListRows, maxRows), maxRows);
+        const int keep = std::min(kListRows, maxRows);
         if (rows < keep && editorHint - (total - height(keep)) <= kMaxCut)
             return height(keep);
         return height(rows);
     }
 
-    static constexpr int kKeptRows = 3;
     static constexpr int kMaxCut = 40; // about one field row (ui-design 4.4)
 
     int tallestPage() const
@@ -475,6 +491,40 @@ private:
 };
 
 } // namespace
+
+RuleRowLayout ruleRowLayout(const QStyleOptionViewItem &option, bool hasError)
+{
+    const QWidget *widget = option.widget;
+    const QStyle *style = widget ? widget->style() : QApplication::style();
+    // Left to right in the row; mirrored at the end.
+    QStyleOptionViewItem ltr = option;
+    ltr.direction = Qt::LeftToRight;
+    ltr.features |= QStyleOptionViewItem::HasCheckIndicator;
+    const QRect row = option.rect;
+    RuleRowLayout layout;
+    layout.check = style->subElementRect(QStyle::SE_ItemViewItemCheckIndicator, &ltr, widget);
+    layout.check.moveTop(row.top() + (row.height() - layout.check.height()) / 2);
+    const int titleHeight = QFontMetrics(option.font).height();
+    const int lines =
+            titleHeight + kSummarySpacing + QFontMetrics(summaryFont(option.font)).height();
+    const int top = row.top() + std::max(int(tokens::space1), (row.height() - lines) / 2);
+    const int left = layout.check.right() + 1 + tokens::space2;
+    const int right = row.right() - tokens::space2;
+    int titleRight = right;
+    if (hasError) {
+        layout.icon = QRect(right + 1 - kToolIconSize, top + (titleHeight - kToolIconSize) / 2,
+                            kToolIconSize, kToolIconSize);
+        titleRight = layout.icon.left() - tokens::space1 - 1;
+    }
+    layout.title = QRect(left, top, std::max(0, titleRight + 1 - left), titleHeight);
+    layout.summary = QRect(left, layout.title.bottom() + 1 + kSummarySpacing,
+                           std::max(0, right + 1 - left), lines - titleHeight - kSummarySpacing);
+    for (QRect *r : {&layout.check, &layout.title, &layout.summary, &layout.icon}) {
+        if (r->isValid())
+            *r = QStyle::visualRect(option.direction, row, *r);
+    }
+    return layout;
+}
 
 RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *parent)
     : QWidget(parent)

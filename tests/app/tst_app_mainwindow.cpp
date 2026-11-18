@@ -923,11 +923,11 @@ void TestMainWindow::editorGetsHeightAtMinimum()
     auto *scroll = f.child<QScrollArea>("editorScroll");
     auto *list = f.child<QListView>("ruleList");
     QVERIFY(scroll && list);
-    const int oneRow = list->sizeHintForRow(0) + 2 * list->frameWidth();
+    const int twoRows = 2 * list->sizeHintForRow(0) + 2 * list->frameWidth(); // R6-06
     const int page = scroll->widget()->sizeHint().height();
     QVERIFY2(page < 300, qPrintable(QString::number(page))); // the Replace page, not Numbering
     // The editor fits, or the list has no empty row.
-    QTRY_VERIFY2(scroll->viewport()->height() >= page || list->height() == oneRow,
+    QTRY_VERIFY2(scroll->viewport()->height() >= page || list->height() == twoRows,
                  qPrintable(QStringLiteral("list %1, editor %2 of %3")
                                     .arg(list->height())
                                     .arg(scroll->viewport()->height())
@@ -943,8 +943,8 @@ void TestMainWindow::editorGetsHeightAtMinimum()
 void TestMainWindow::listHeightStableOnSelect()
 {
     // R1-01, M06 (ui-design 4.4): the list height uses the tallest editor page. It does not
-    // change when the user selects another rule, it has 1 row at 900x560, and the current rule
-    // stays visible.
+    // change when the user selects another rule, it has 2 rows at 900x560 (R6-06), and the current
+    // rule stays visible.
     Fixture f;
     f.window.show();
     f.window.resize(900, 560);
@@ -953,15 +953,23 @@ void TestMainWindow::listHeightStableOnSelect()
         f.addRuleAction(QString::fromLatin1(type))->trigger();
     QApplication::processEvents();
     auto *list = f.child<QListView>("ruleList");
-    const int oneRow = list->sizeHintForRow(0) + 2 * list->frameWidth();
-    QTRY_COMPARE(list->height(), oneRow);
+    const int twoRows = 2 * list->sizeHintForRow(0) + 2 * list->frameWidth(); // R6-06
+    QTRY_COMPARE(list->height(), twoRows);
     for (int row : {3, 0, 2, 1, 3}) {
         list->setCurrentIndex(list->model()->index(row, 0));
         QApplication::processEvents();
-        QCOMPARE(list->height(), oneRow);
+        QCOMPARE(list->height(), twoRows);
         QVERIFY2(list->viewport()->rect().contains(list->visualRect(list->currentIndex())),
                  qPrintable(QString::number(row)));
     }
+    // R6-06: with 5 rules and Chain options open, the list still shows 2 rows.
+    f.addRuleAction(QStringLiteral("changeCase"))->trigger();
+    auto *chain = f.window.rulePanel()->findChild<ChainOptionsWidget *>();
+    QVERIFY(chain);
+    chain->setOpen(true);
+    QTRY_COMPARE(list->height(), twoRows);
+    QVERIFY(list->viewport()->rect().contains(list->visualRect(list->currentIndex())));
+    chain->setOpen(false);
     // A high window: 3 rows or more again, the same for each rule.
     f.window.resize(900, 1100);
     QTRY_VERIFY(list->height() >= 3 * list->sizeHintForRow(0));
@@ -1003,7 +1011,7 @@ void TestMainWindow::listWholeRows()
         const QString at = QStringLiteral("height %1: list %2").arg(h).arg(list->height());
         QVERIFY2((list->height() - frames) % row == 0, qPrintable(at));
         const int rows = (list->height() - frames) / row;
-        QVERIFY2(rows >= 1 && rows <= 5, qPrintable(at));
+        QVERIFY2(rows >= 2 && rows <= 5, qPrintable(at)); // R6-06: at least 2 rows
         const int cut = tallest + 2 * scroll->frameWidth() - scroll->height();
         if (rows < 3) // 3 rows would cut the tallest page by more than 40 px
             QVERIFY2(cut + (3 - rows) * row > 40, qPrintable(at));

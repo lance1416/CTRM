@@ -4,6 +4,7 @@
 #include "rules/rulechain.h"
 
 #include <QHash>
+#include <QRect>
 #include <QWidget>
 
 class QBoxLayout;
@@ -12,6 +13,7 @@ class QListView;
 class QModelIndex;
 class QScrollArea;
 class QStackedWidget;
+class QStyleOptionViewItem;
 class QPushButton;
 class QToolButton;
 
@@ -22,6 +24,18 @@ class ChainOptionsWidget;
 class LabelColumnSync;
 class RuleEditor;
 class RuleListModel;
+
+// The parts of a rule list row (ui-design 4.4, audit R6-02), in the coordinates of option.rect:
+// the check box centred on the row; the title and under it the summary, at one x, space-2 after
+// the check box; with hasError, the error icon at the end of the title line.
+struct RuleRowLayout
+{
+    QRect check;
+    QRect title;
+    QRect summary;
+    QRect icon;
+};
+RuleRowLayout ruleRowLayout(const QStyleOptionViewItem &option, bool hasError = false);
 
 // The rule panel (ui-design 4.4): the header with Add Rule, the rule list and its tool buttons,
 // the editor of the selected rule, and the chain options. It connects the rule actions.

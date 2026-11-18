@@ -20,6 +20,7 @@
 #include "widgets/tertiarybutton.h"
 
 #include <QAction>
+#include <QApplication>
 #include <QCheckBox>
 #include <QFormLayout>
 #include <QLabel>
@@ -36,6 +37,7 @@
 #include <QSpinBox>
 #include <QSplitter>
 #include <QStackedWidget>
+#include <QStyleOptionViewItem>
 #include <QToolButton>
 #include <QtTest>
 
@@ -122,6 +124,9 @@ private slots:
     void minimumWidthFromEditorsOnly();
     void editorOnPanelSurface();
     void ruleToolButtons();
+    void ruleRowLayout();
+    void ruleRowBoxClickAndError();
+    void ruleRowDisabledDimmed();
 };
 
 void TestAppRulePanel::factory()
@@ -595,8 +600,9 @@ void TestAppRulePanel::listFollowsRows()
     QListView *list = f.panel->ruleList();
     const int row = list->sizeHintForRow(0);
     QVERIFY(row > 0);
-    // The minimum is 1 row: a low panel gives the other rows to the editor (M06, R1-01).
-    QCOMPARE(list->minimumSizeHint().height(), row + 2 * list->frameWidth());
+    // The minimum is 2 rows: a low panel gives the other rows to the editor, and the list still
+    // shows a chain (M06, R6-06).
+    QCOMPARE(list->minimumSizeHint().height(), 2 * row + 2 * list->frameWidth());
     QCOMPARE(list->sizeHint().height(), 3 * row + 2 * list->frameWidth());
     // A high panel: the tallest editor page fits also with 200 px less (R1-01).
     f.window.resize(f.window.width(), 1200);
@@ -691,6 +697,101 @@ void TestAppRulePanel::listShortcutsOnlyWithFocus()
     QCOMPARE(other->text(), QStringLiteral(" "));
     QCOMPARE(f.model.rowCount(), 1);
     QVERIFY(f.model.chain().at(0)->enabled);
+}
+
+void TestAppRulePanel::ruleRowLayout()
+{
+    // R6-02 (ui-design 4.4): a rule row is row-h-2 high with space-1 at the top and the bottom.
+    // The title and the summary start at one x, space-2 after the check box; the check box is
+    // centred on the row; the two lines are 2 px apart or less, so each row reads as one group.
+    using namespace ctrm::app::tokens;
+    Fixture f({QStringLiteral("replace"), QStringLiteral("insert")});
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    QListView *list = f.panel->ruleList();
+    QCOMPARE(list->sizeHintForRow(0), rowH2);
+    if (qEnvironmentVariableIsSet("CTRM_GRAB")) {
+        f.model.setData(f.model.index(1), Qt::Unchecked, Qt::CheckStateRole);
+        QTest::qWait(200);
+        list->grab().save(qEnvironmentVariable("CTRM_GRAB") + QStringLiteral("-rules.png"));
+    }
+    for (Qt::LayoutDirection direction : {Qt::LeftToRight, Qt::RightToLeft}) {
+        QStyleOptionViewItem option;
+        option.initFrom(list->viewport());
+        option.widget = list;
+        option.font = list->font();
+        option.direction = direction;
+        option.rect = list->visualRect(f.model.index(1));
+        const RuleRowLayout row = ctrm::app::ruleRowLayout(option);
+        const QString at =
+                direction == Qt::LeftToRight ? QStringLiteral("ltr") : QStringLiteral("rtl");
+        QCOMPARE(option.rect.height(), rowH2);
+        QVERIFY2(qAbs(row.check.center().y() - option.rect.center().y()) <= 0, qPrintable(at));
+        if (direction == Qt::LeftToRight) {
+            QCOMPARE(row.title.left(), row.check.right() + 1 + space2);
+            QCOMPARE(row.summary.left(), row.title.left());
+        } else {
+            QCOMPARE(row.title.right(), row.check.left() - 1 - space2);
+            QCOMPARE(row.summary.right(), row.title.right());
+        }
+        QVERIFY2(row.title.top() >= option.rect.top() + space1, qPrintable(at));
+        QVERIFY2(row.summary.bottom() <= option.rect.bottom() - space1 + 1, qPrintable(at));
+        const int gap = row.summary.top() - row.title.bottom() - 1;
+        QVERIFY2(gap >= 0 && gap <= 2, qPrintable(at + QStringLiteral(": gap %1").arg(gap)));
+    }
+}
+
+void TestAppRulePanel::ruleRowBoxClickAndError()
+{
+    // R6-02: a click on the painted check box turns the rule off; the error icon is at the end of
+    // the title line and does not cover the title.
+    Fixture f({QStringLiteral("replace"), QStringLiteral("insert")});
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    QListView *list = f.panel->ruleList();
+    for (Qt::LayoutDirection direction : {Qt::LeftToRight, Qt::RightToLeft}) {
+        list->setLayoutDirection(direction);
+        QApplication::processEvents();
+        QStyleOptionViewItem option;
+        option.initFrom(list->viewport());
+        option.widget = list;
+        option.font = list->font();
+        option.direction = direction;
+        option.rect = list->visualRect(f.model.index(1));
+        const RuleRowLayout row = ctrm::app::ruleRowLayout(option);
+        const Qt::CheckState before =
+                f.model.index(1).data(Qt::CheckStateRole).value<Qt::CheckState>();
+        QTest::mouseClick(list->viewport(), Qt::LeftButton, {}, row.check.center());
+        QVERIFY(f.model.index(1).data(Qt::CheckStateRole).value<Qt::CheckState>() != before);
+        const RuleRowLayout error = ctrm::app::ruleRowLayout(option, true);
+        QVERIFY(error.icon.isValid());
+        QVERIFY(option.rect.contains(error.icon));
+        QVERIFY(!error.icon.intersects(error.title));
+        QVERIFY(qAbs(error.icon.center().y() - error.title.center().y()) <= 1);
+    }
+}
+
+void TestAppRulePanel::ruleRowDisabledDimmed()
+{
+    // While a rename runs, the rule panel is disabled: the row text is drawn in the disabled
+    // colours, not only the check box.
+    Fixture f({QStringLiteral("replace"), QStringLiteral("insert")});
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    QListView *list = f.panel->ruleList();
+    QPalette palette = list->palette();
+    palette.setColor(QPalette::Disabled, QPalette::Text, Qt::red);
+    palette.setColor(QPalette::Disabled, QPalette::PlaceholderText, Qt::red);
+    list->setPalette(palette);
+    f.panel->setEnabled(false);
+    QApplication::processEvents();
+    const QImage image = list->viewport()->grab().toImage();
+    const QRect row = list->visualRect(f.model.index(1));
+    const qreal dpr = image.devicePixelRatio();
+    int red = 0;
+    for (int y = int(row.top() * dpr); y <= int(row.bottom() * dpr); ++y)
+        for (int x = int(row.left() * dpr); x <= int(row.right() * dpr) && x < image.width(); ++x) {
+            const QColor c = image.pixelColor(x, y);
+            red += c.red() > 150 && c.green() < 80 && c.blue() < 80;
+        }
+    QVERIFY2(red > 20, qPrintable(QString::number(red)));
 }
 
 QTEST_MAIN(TestAppRulePanel)
