@@ -738,9 +738,9 @@ void TestAppWindowState::messageBar()
     QVERIFY(text);
     QCOMPARE(text->textFormat(), Qt::PlainText);
     QVERIFY(!undo->isDefault());
-    // C15: a light action: a borderless button with accent text.
+    // C15: a light action: a borderless button with `text` (see tst_app_messagebar).
     QVERIFY(undo->isFlat());
-    QCOMPARE(undo->palette().color(QPalette::ButtonText), bar.palette().color(QPalette::Accent));
+    QCOMPARE(undo->palette().color(QPalette::ButtonText), bar.palette().color(QPalette::Text));
 
     // A button that is in the new message too stays.
     bar.showMessage(StateIcon::Done, QStringLiteral("Again"), {undo});
