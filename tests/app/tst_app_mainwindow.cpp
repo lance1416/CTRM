@@ -775,6 +775,11 @@ void TestMainWindow::toolbarIcons()
         keys.insert(b, b->icon().cacheKey());
     }
     QVERIFY(f.child<QToolButton>("toolBarPresets")->menu());
+    // C07: the icon-only buttons are hit-min squares.
+    for (QToolButton *b : std::as_const(buttons)) {
+        if (b->toolButtonStyle() == Qt::ToolButtonIconOnly)
+            QCOMPARE(b->size(), QSize(tokens::hitMin, tokens::hitMin));
+    }
     QPalette p = f.window.palette();
     p.setColor(QPalette::WindowText, QColor(0x12, 0x34, 0x56));
     f.window.setPalette(p);

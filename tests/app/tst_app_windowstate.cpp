@@ -687,6 +687,19 @@ void TestAppWindowState::problemLinks()
     auto *next = bar.findChild<QToolButton *>(QStringLiteral("nextProblemButton"));
     QVERIFY(next && next->isVisibleTo(&bar));
     QCOMPARE(next->defaultAction(), actions.nextProblem);
+    // C07: icon buttons of hit-min with a designer icon of icon-s, also after the action
+    // changes (the button copies the empty action icon then).
+    auto *previous = bar.findChild<QToolButton *>(QStringLiteral("previousProblemButton"));
+    for (QToolButton *button : {previous, next}) {
+        QCOMPARE(button->size(), QSize(tokens::hitMin, tokens::hitMin));
+        QCOMPARE(button->iconSize(), QSize(tokens::iconS, tokens::iconS));
+        QCOMPARE(button->arrowType(), Qt::NoArrow);
+        QVERIFY(button->property("iconButton").toBool());
+        QVERIFY(!button->icon().isNull());
+    }
+    actions.nextProblem->setEnabled(!actions.nextProblem->isEnabled());
+    QVERIFY(!next->icon().isNull());
+    QVERIFY(actions.nextProblem->icon().isNull());
     const PreviewSummary onlyWarnings = summary(12, 0, 0, 1);
     bar.setState(computeWindowState(input(13, 1, onlyWarnings)), onlyWarnings);
     QVERIFY(!next->isVisibleTo(&bar));

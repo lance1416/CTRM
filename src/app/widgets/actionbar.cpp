@@ -32,15 +32,29 @@ namespace {
 constexpr int kProgressDelayMs = 1000;
 constexpr int kAnnounceDelayMs = 500;
 
-QToolButton *problemButton(QAction *action, Qt::ArrowType arrow, const QString &objectName,
+// The designer icon of a problem button, in the palette of the button (C07, design-tokens 5).
+void applyProblemIcon(QToolButton *button)
+{
+    button->setIcon(toolIcon(button->property("ctrmIcon").toString(), button->palette()));
+}
+
+QToolButton *problemButton(QAction *action, const QString &iconName, const QString &objectName,
                            QWidget *parent)
 {
     auto *button = new TertiaryButton(parent);
     button->setObjectName(objectName);
     button->setDefaultAction(action);
-    button->setArrowType(arrow);
+    button->setIconButton(true);
     button->setAutoRaise(true);
     button->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    // C07: hit-min with an icon-s icon, as all icon buttons.
+    button->setFixedSize(tokens::hitMin, tokens::hitMin);
+    button->setIconSize(QSize(tokens::iconS, tokens::iconS));
+    button->setProperty("ctrmIcon", iconName);
+    applyProblemIcon(button);
+    // The button copies the (empty) action icon each time the action changes; the action has no
+    // icon, so that it shows none in the menu.
+    QObject::connect(action, &QAction::changed, button, [button] { applyProblemIcon(button); });
     button->setAccessibleName(QString(action->text()).remove(QLatin1Char('&')));
     button->setAccessibleDescription(action->toolTip());
     return button;
@@ -64,9 +78,9 @@ ActionBar::ActionBar(const Actions &actions, QWidget *parent)
     , m_progressPage(new QWidget(m_pages))
     , m_summaryWidget(new QWidget(m_normalPage))
     , m_summaryLayout(new QHBoxLayout(m_summaryWidget))
-    , m_previousProblem(problemButton(actions.previousProblem, Qt::LeftArrow,
+    , m_previousProblem(problemButton(actions.previousProblem, QStringLiteral("tool-left"),
                                       QStringLiteral("previousProblemButton"), m_normalPage))
-    , m_nextProblem(problemButton(actions.nextProblem, Qt::RightArrow,
+    , m_nextProblem(problemButton(actions.nextProblem, QStringLiteral("tool-right"),
                                   QStringLiteral("nextProblemButton"), m_normalPage))
     , m_reasonIcon(new QLabel(m_normalPage))
     , m_reason(new QLabel(m_normalPage))
@@ -444,6 +458,8 @@ void ActionBar::changeEvent(QEvent *event)
     case QEvent::StyleChange:
     case QEvent::FontChange:
         updateLinkColor();
+        applyProblemIcon(m_previousProblem);
+        applyProblemIcon(m_nextProblem);
         updateFixedLook();
         updateReasonIcon();
         updateSummary(m_summary);

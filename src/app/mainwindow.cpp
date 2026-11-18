@@ -420,7 +420,7 @@ void MainWindow::buildToolBar()
     m_toolBar->setObjectName(QStringLiteral("mainToolBar"));
     m_toolBar->setMovable(false);
     m_toolBar->setFloatable(false);
-    m_toolBar->setIconSize(QSize(16, 16)); // design-tokens: line icons at 16 px
+    m_toolBar->setIconSize(QSize(tokens::iconS, tokens::iconS)); // design-tokens 5.2
     m_toolBar->setContextMenuPolicy(Qt::PreventContextMenu);
     m_toolBar->toggleViewAction()->setVisible(false);
     addToolBar(Qt::TopToolBarArea, m_toolBar);
@@ -457,6 +457,7 @@ void MainWindow::buildToolBar()
         auto *button = qobject_cast<QToolButton *>(m_toolBar->widgetForAction(action));
         button->setToolButtonStyle(Qt::ToolButtonIconOnly);
         button->setAutoRaise(true);
+        button->setFixedSize(tokens::hitMin, tokens::hitMin); // C07
         QString name = action->text();
         name.remove(QLatin1Char('&'));
         if (name.endsWith(QLatin1StringView("...")))
