@@ -618,7 +618,6 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
         m_labelSync->addForm(editor->form());
         connect(editor, &RuleEditor::ruleEdited, this, [this, editor] { onEditorEdited(editor); });
     }
-    m_labelSync->addForm(m_chainOptions->form());
     m_labelSync->sync();
     if (auto *replace =
                 qobject_cast<ReplaceEditor *>(m_editorByType.value(QStringLiteral("replace"))))

@@ -23,8 +23,8 @@ ExtensionEditor::ExtensionEditor(QWidget *parent)
     , m_addValue(new QLineEdit)
     , m_onlyIfMatches(new QLineEdit)
     , m_onlyForHint(new QLabel(tr("Empty = all items")))
-    , m_folderNote(new QLabel(
-              tr("Folders are changed too (Treat folder names as name + extension is on).")))
+    , m_folderNote(new QLabel(joinLastWords(
+              tr("Folders are changed too (Treat folder names as name + extension is on)."))))
 {
     m_setValue->setObjectName(QStringLiteral("setValue"));
     m_addValue->setObjectName(QStringLiteral("addValue"));

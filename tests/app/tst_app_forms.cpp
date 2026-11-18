@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "layoutedge.h"
+#include "rules/chainoptionswidget.h"
 #include "rules/ruleeditor.h"
 #include "theme/ctrmstyle.h"
+#include "theme/tokens.h"
 #include "widgets/formutils.h"
 #include "widgets/itemviewpaint.h"
 #include "widgets/tertiarybutton.h"
@@ -25,6 +27,7 @@
 #include <QStyleFactory>
 #include <QStyleOptionButton>
 #include <QToolButton>
+#include <QVBoxLayout>
 #include <QtTest>
 
 #include <memory>
@@ -624,22 +627,42 @@ static int paintedLeft(const QImage &image, const QWidget *w, const QWidget *win
     return -1;
 }
 
-// C04: Cocoa draws the box of a check box or a radio button 2 pt to the left of its layout item
-// rect. The form moves the widget right by that inset, and keeps the layout rect on the field edge.
+// The vertical ink centre (logical px, relative to `to`) of the painted pixels in the columns
+// [x0, x1) and the rows [y0, y1) of image (logical px). NaN when there is no ink.
+static double inkCentre(const QImage &image, const QWidget *to, int x0, int x1, int y0, int y1)
+{
+    const qreal dpr = image.devicePixelRatio();
+    const QColor bg = to->palette().color(QPalette::Window);
+    int top = INT_MAX;
+    int bottom = -1;
+    for (int y = int(y0 * dpr); y < int(y1 * dpr) && y < image.height(); ++y) {
+        for (int x = int(x0 * dpr); x < int(x1 * dpr) && x < image.width(); ++x) {
+            const QColor c = image.pixelColor(x, y);
+            if (qAbs(c.red() - bg.red()) + qAbs(c.green() - bg.green()) +
+                        qAbs(c.blue() - bg.blue()) >
+                30) {
+                top = std::min(top, y);
+                bottom = std::max(bottom, y);
+            }
+        }
+    }
+    return bottom < 0 ? qQNaN() : (top + bottom + 1) / 2.0 / dpr;
+}
+
+// C04, R5-02: Cocoa draws the box of a check box or a radio button at the left edge of the widget
+// and centres the box and the text in the widget height. The form gives these widgets the layout
+// rect with no style margins and their own 20 px height, so the widget is the visible rect.
 void TestAppForms::toggleBoxOnFieldEdge()
 {
     CaseForm f;
     applyFormRhythm(f.form);
     QVERIFY(QTest::qWaitForWindowExposed(f.window.get()));
-    const bool mac =
-            QApplication::style()->name().compare(QLatin1String("macos"), Qt::CaseInsensitive) == 0;
-    const int inset = mac ? 2 : 0;
     const int edge = ctrm::test::visualLeft(f.text, f.window.get());
     for (QWidget *w : QList<QWidget *>{f.radios.first(), f.radios.last(), f.check}) {
-        QCOMPARE(ctrm::test::visualLeft(w, f.window.get()), edge);
-        // The rect in which the style draws the control.
-        const QRect drawn = QWidgetItem(w).geometry();
-        QCOMPARE(w->parentWidget()->mapTo(f.window.get(), drawn.topLeft()).x(), edge + inset);
+        const QRect visible = ctrm::test::visualRect(w, f.window.get());
+        QCOMPARE(visible.left(), edge);
+        QCOMPARE(QRect(w->mapTo(f.window.get(), QPoint()), w->size()), visible);
+        QCOMPARE(w->height(), tokens::controlH - tokens::space1);
     }
     // A spanning check box row stays spanning.
     auto *spanning = new QCheckBox(QStringLiteral("Whole row"));
@@ -649,15 +672,6 @@ void TestAppForms::toggleBoxOnFieldEdge()
     QFormLayout::ItemRole spanRole = QFormLayout::FieldRole;
     f.form->getWidgetPosition(spanning, &spanRow, &spanRole);
     QCOMPARE(spanRole, QFormLayout::SpanningRole);
-    // The wrapping check box: its label keeps the space-1 gap after the drawn box.
-    auto *check = new QCheckBox;
-    QWidget *row = makeWrappingCheckBox(check, QStringLiteral("Keep the gap"));
-    f.form->addRow(QString(), row);
-    applyFormRhythm(f.form);
-    QTRY_VERIFY(row->isVisible() && row->x() > 0);
-    QCOMPARE(row->mapTo(f.window.get(), QWidgetItem(check).geometry().topLeft()).x(), edge + inset);
-    auto *label = row->findChild<QLabel *>();
-    QCOMPARE(label->x(), ctrm::test::visualRect(check, row).right() + 1 + inset + 4);
 }
 
 // C04 on the real Cocoa painter with CtrmStyle (the app style): the drawn left edges of a radio
@@ -682,6 +696,62 @@ void TestAppForms::cocoaPaintedEdges()
     for (QWidget *w : QList<QWidget *>{f.radios.first(), f.text, f.applyTo, f.check, spin})
         painted.append(paintedLeft(image, w, f.window.get()));
     QVERIFY2(allEqual(painted), qPrintable(join(painted)));
+    if (qEnvironmentVariableIsSet("CTRM_GRAB"))
+        image.save(qEnvironmentVariable("CTRM_GRAB") + QStringLiteral("-form.png"));
+    // R5-02, R5-03: the text sits on the box as Qt draws it natively. The reference is the
+    // offset between the text ink and the box ink of a plain button with the same text in a
+    // plain layout.
+    QWidget plain;
+    auto *plainLayout = new QVBoxLayout(&plain);
+    const auto addPlain = [&](QAbstractButton *b) {
+        plainLayout->addWidget(b);
+        return b;
+    };
+    QWidget host;
+    auto *layout = new QVBoxLayout(&host);
+    layout->setContentsMargins(12, 12, 12, 12);
+    auto *chain = new ChainOptionsWidget(&host);
+    layout->addWidget(chain);
+    layout->addStretch();
+    chain->setOptions(ctrm::ChainOptions{});
+    chain->setOpen(true);
+    host.resize(320, 260);
+    auto *portable = chain->findChild<QCheckBox *>(QStringLiteral("portableNames"));
+    const QList<std::pair<QAbstractButton *, QWidget *>> pairs{
+            {f.radios.first(), addPlain(new QRadioButton(f.radios.first()->text()))},
+            {f.check, addPlain(new QCheckBox(f.check->text()))},
+            {portable, addPlain(new QCheckBox(portable->text()))}};
+    plain.resize(800, 120);
+    plain.show();
+    host.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&plain));
+    QVERIFY(QTest::qWaitForWindowExposed(&host));
+    QTest::qWait(200);
+    const QImage plainImage = plain.grab().toImage();
+    const QImage chainImage = host.grab().toImage();
+    QVERIFY(portable->height() > 30); // wraps at 296 px
+    QCOMPARE(paintedLeft(chainImage, portable, &host), 12);
+    // The text ink centre less the box ink centre, in the first 20 px row of the button.
+    const auto offset = [&](const QImage &img, QWidget *to, QWidget *w) {
+        const int left = paintedLeft(img, w, to);
+        const int top = w->mapTo(to, QPoint(0, 0)).y();
+        auto *b = static_cast<QAbstractButton *>(w);
+        const int textX = left + 22 + b->fontMetrics().horizontalAdvance(b->text().left(1));
+        return inkCentre(img, to, textX, textX + 30, top, top + 20) -
+               inkCentre(img, to, left, left + 14, top, top + 20);
+    };
+    for (const auto &[w, ref] : pairs) {
+        QWidget *to = w == portable ? &host : f.window.get();
+        const QImage &img = w == portable ? chainImage : image;
+        const double actual = offset(img, to, w);
+        const double native = offset(plainImage, &plain, ref);
+        QVERIFY2(qAbs(actual - native) <= 0.5, qPrintable(QStringLiteral("%1: offset %2, native %3")
+                                                                  .arg(w->text())
+                                                                  .arg(actual)
+                                                                  .arg(native)));
+    }
+    if (qEnvironmentVariableIsSet("CTRM_GRAB"))
+        chainImage.save(qEnvironmentVariable("CTRM_GRAB") + QStringLiteral("-chain.png"));
 }
 
 QTEST_MAIN(TestAppForms)

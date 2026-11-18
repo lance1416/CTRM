@@ -21,6 +21,9 @@
 #include <QPushButton>
 #include <QRadioButton>
 #include <QStyle>
+#include <QStyleOptionButton>
+#include <QStyleOptionFocusRect>
+#include <QStylePainter>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -75,96 +78,133 @@ QSize layoutItemMargins(QWidget *w)
             raw.height() - item.height()};
 }
 
-// Cocoa draws the box of a check box or a radio button 2 pt to the left of its layout item rect,
-// so the box is 2 pt to the left of the field edge (C04, measured on macOS 26 with the base style
-// and CtrmStyle). 0 on other styles.
-int toggleInset(const QWidget *w)
+bool isToggle(const QWidget *w)
 {
-    if (!qobject_cast<const QCheckBox *>(w) && !qobject_cast<const QRadioButton *>(w))
-        return 0;
-    const QStyle *style = w->style();
-    while (auto *proxy = qobject_cast<const QProxyStyle *>(style))
-        style = proxy->baseStyle();
-    return style->name().compare(QLatin1String("macos"), Qt::CaseInsensitive) == 0 ? 2 : 0;
+    return qobject_cast<const QCheckBox *>(w) || qobject_cast<const QRadioButton *>(w);
 }
 
-// The layout item of a check box or a radio button: the layout rect is the visible rect, and the
-// widget moves right by toggleInset, so the drawn box starts on the field edge (C04).
+// The layout item of a check box or a radio button. QWidgetItem adds the layout margins of the
+// style around these widgets (macOS: 2 px left, approx. 3 px top and bottom), but Cocoa draws
+// the box at the left edge of the widget and centres the box and the text in the widget height.
+// So the widget gets the layout rect itself, with its own height, centred in the rect: the box
+// is on the field edge (C04) and the box and the text have one centre (R5-02).
 class ToggleItem : public QWidgetItem
 {
 public:
-    explicit ToggleItem(QWidget *w)
+    // rowHeight: the height of the layout row; the widget is centred in it. 0: the widget height.
+    explicit ToggleItem(QWidget *w, int rowHeight = 0)
         : QWidgetItem(w)
+        , m_rowHeight(rowHeight)
     {}
-    QSize sizeHint() const override { return grow(QWidgetItem::sizeHint()); }
-    QSize minimumSize() const override { return grow(QWidgetItem::minimumSize()); }
-    QSize maximumSize() const override { return grow(QWidgetItem::maximumSize()); }
+
+    QSize sizeHint() const override
+    {
+        if (isEmpty())
+            return {0, 0}; // as QWidgetItem
+        const QWidget *w = widget();
+        QSize hint = w->sizeHint()
+                             .expandedTo(w->minimumSizeHint())
+                             .boundedTo(w->maximumSize())
+                             .expandedTo(w->minimumSize());
+        hint.setHeight(std::max(hint.height(), m_rowHeight));
+        return hint;
+    }
+    QSize minimumSize() const override
+    {
+        if (isEmpty())
+            return {0, 0}; // as QWidgetItem
+        const QWidget *w = widget();
+        const QSizePolicy policy = w->sizePolicy();
+        QSize min = w->minimumSizeHint();
+        if (!(policy.horizontalPolicy() & QSizePolicy::ShrinkFlag))
+            min.setWidth(sizeHint().width());
+        if (policy.horizontalPolicy() == QSizePolicy::Ignored)
+            min.setWidth(0);
+        if (!(policy.verticalPolicy() & QSizePolicy::ShrinkFlag))
+            min.setHeight(sizeHint().height());
+        min = min.expandedTo(w->minimumSize()).boundedTo(w->maximumSize());
+        min.setHeight(std::max(min.height(), m_rowHeight));
+        return min;
+    }
+    QSize maximumSize() const override
+    {
+        if (isEmpty())
+            return {0, 0}; // as QWidgetItem
+        const QWidget *w = widget();
+        const QSizePolicy policy = w->sizePolicy();
+        QSize max = w->maximumSize();
+        if (!(policy.horizontalPolicy() & QSizePolicy::GrowFlag) &&
+            !(alignment() & Qt::AlignHorizontal_Mask))
+            max.setWidth(std::min(max.width(), sizeHint().width()));
+        if (!(policy.verticalPolicy() & QSizePolicy::GrowFlag) &&
+            !(alignment() & Qt::AlignVertical_Mask))
+            max.setHeight(std::min(max.height(), sizeHint().height()));
+        if (alignment() & Qt::AlignHorizontal_Mask)
+            max.setWidth(QLAYOUTSIZE_MAX);
+        if (alignment() & Qt::AlignVertical_Mask)
+            max.setHeight(QLAYOUTSIZE_MAX);
+        max.setHeight(std::max(max.height(), m_rowHeight));
+        return max;
+    }
+    bool hasHeightForWidth() const override { return !isEmpty() && widget()->hasHeightForWidth(); }
+    int heightForWidth(int width) const override { return widget()->heightForWidth(width); }
+
     void setGeometry(const QRect &r) override
     {
-        QWidgetItem::setGeometry(r.adjusted(toggleInset(widget()), 0, 0, 0));
+        if (isEmpty())
+            return;
+        QWidget *w = widget();
+        const QSize hint = sizeHint();
+        const Qt::Alignment align = QStyle::visualAlignment(w->layoutDirection(), alignment());
+        int width = std::min(r.width(), w->maximumWidth());
+        if (align & Qt::AlignHorizontal_Mask)
+            width = std::min(width, hint.width());
+        width = std::max(width, std::min(r.width(), w->minimumWidth()));
+        int height = w->hasHeightForWidth() ? w->heightForWidth(width) : hint.height();
+        if (!(align & Qt::AlignVertical_Mask) &&
+            (w->sizePolicy().verticalPolicy() & QSizePolicy::GrowFlag))
+            height = r.height();
+        height = std::clamp(height, w->minimumHeight(),
+                            std::max(w->minimumHeight(), std::min(r.height(), w->maximumHeight())));
+        int x = r.x();
+        if (align & Qt::AlignRight)
+            x = r.right() + 1 - width;
+        else if (align & Qt::AlignHCenter)
+            x = r.x() + (r.width() - width) / 2;
+        int y = r.y() + (r.height() - height) / 2; // centred, as a form row (6.1 rule 15)
+        if (align & Qt::AlignTop)
+            y = r.y();
+        else if (align & Qt::AlignBottom)
+            y = r.bottom() + 1 - height;
+        w->setGeometry(x, y, width, height);
     }
-    // The visible rect on the field edge: the drawn widget rect, back by the inset.
-    QRect geometry() const override
-    {
-        return QWidgetItem::geometry().translated(-toggleInset(widget()), 0);
-    }
+    QRect geometry() const override { return widget()->geometry(); } // also hidden: QWidgetItem
 
 private:
-    QSize grow(QSize size) const
-    {
-        if (size.width() < QLAYOUTSIZE_MAX)
-            size.rwidth() += toggleInset(widget());
-        return size;
-    }
+    int m_rowHeight;
 };
+
+} // namespace
+
+QLayoutItem *makeToggleItem(QWidget *w)
+{
+    return new ToggleItem(w);
+}
+
+namespace {
 
 // Puts a check box or a radio button of the form in a ToggleItem, once, in its row and role (a
 // spanning row stays spanning).
 void useToggleItem(QFormLayout *form, QWidget *w)
 {
     const int index = form->indexOf(w);
-    if (index < 0 || dynamic_cast<ToggleItem *>(form->itemAt(index)) || toggleInset(w) == 0)
+    if (index < 0 || !isToggle(w) || dynamic_cast<ToggleItem *>(form->itemAt(index)))
         return;
     int row = 0;
     QFormLayout::ItemRole role = QFormLayout::FieldRole;
     form->getItemPosition(index, &row, &role);
     delete form->takeAt(index);
     form->setItem(row, role, new ToggleItem(w));
-}
-
-// The grid keeps the order of its items (the order of the controls for the code that reads it).
-void useToggleItems(QGridLayout *grid)
-{
-    bool any = false;
-    for (int i = 0; i < grid->count(); ++i) {
-        QLayoutItem *item = grid->itemAt(i);
-        if (item->widget() && !dynamic_cast<ToggleItem *>(item) && toggleInset(item->widget()))
-            any = true;
-    }
-    if (!any)
-        return;
-    struct Cell
-    {
-        QLayoutItem *item;
-        int row, column, rowSpan, columnSpan;
-    };
-    QList<Cell> cells;
-    while (grid->count() > 0) {
-        Cell cell{nullptr, 0, 0, 0, 0};
-        grid->getItemPosition(0, &cell.row, &cell.column, &cell.rowSpan, &cell.columnSpan);
-        cell.item = grid->takeAt(0);
-        QWidget *w = cell.item->widget();
-        if (w && !dynamic_cast<ToggleItem *>(cell.item) && toggleInset(w)) {
-            auto *toggle = new ToggleItem(w);
-            toggle->setAlignment(cell.item->alignment());
-            delete cell.item;
-            cell.item = toggle;
-        }
-        cells.append(cell);
-    }
-    for (const Cell &cell : std::as_const(cells))
-        grid->addItem(cell.item, cell.row, cell.column, cell.rowSpan, cell.columnSpan,
-                      cell.item->alignment());
 }
 
 // The height that a layout sees for w.
@@ -199,7 +239,15 @@ public:
         // QFormLayout can make a label taller than its size hint. A fixed height keeps the
         // text center on the center of the first control.
         m_label->setSizePolicy(m_label->sizePolicy().horizontalPolicy(), QSizePolicy::Fixed);
-        m_label->setMinimumHeight(visibleHeight(m_control));
+        // A check box or a radio button of a group is centred in a control-h row (R5-04).
+        const int height = isToggle(m_control)
+                                   ? std::max(int(tokens::controlH),
+                                              m_control->sizeHint()
+                                                      .boundedTo(m_control->maximumSize())
+                                                      .expandedTo(m_control->minimumSize())
+                                                      .height())
+                                   : visibleHeight(m_control);
+        m_label->setMinimumHeight(height);
         m_label->setAlignment((m_label->alignment() & Qt::AlignHorizontal_Mask) | Qt::AlignVCenter);
     }
 
@@ -316,14 +364,9 @@ public:
         QGridLayout::setGeometry(r.adjusted(0, 0, 0, outerHeight()));
 #ifdef Q_OS_MACOS
         // QGridLayout starts the first row under rect by the layout margin of the style. The
-        // controls move up, so their visible top is the top of rect (as the size hint). A
+        // controls move up, so the first row starts at the top of rect (as the size hint). A
         // QWidgetItem keeps its widget in the parent, so move the widgets directly.
-        int visibleTop = INT_MAX;
-        for (int i = 0; i < count(); ++i) {
-            QLayoutItem *item = itemAt(i);
-            if (item->widget() && !item->widget()->isHidden())
-                visibleTop = std::min(visibleTop, item->geometry().top());
-        }
+        const int visibleTop = rowCount() > 0 ? cellRect(0, 0).top() : INT_MAX;
         if (visibleTop != INT_MAX && visibleTop > rect.top()) {
             for (int i = 0; i < count(); ++i) {
                 if (QWidget *w = itemAt(i)->widget())
@@ -433,12 +476,17 @@ QLayout *makeFieldGroup(const QList<QWidget *> &controls)
     layout->setContentsMargins(0, 0, 0, 0);
     for (int r = 0; r < rows.size(); ++r) {
         const QList<QWidget *> &row = rows.at(r);
-        if (row.size() == 1) {
-            layout->addWidget(row.first(), r, 0, 1, columns + 1);
-            continue;
+        for (int c = 0; c < row.size(); ++c) {
+            QWidget *w = row.at(c);
+            const int span = row.size() == 1 ? columns + 1 : 1;
+            if (isToggle(w)) {
+                // One group row pitch of control-h (R5-04, R5-02). The form becomes the parent
+                // with the grid: addItem does not take the widget.
+                layout->addItem(new ToggleItem(w, tokens::controlH), r, c, 1, span);
+            } else {
+                layout->addWidget(w, r, c, 1, span);
+            }
         }
-        for (int c = 0; c < row.size(); ++c)
-            layout->addWidget(row.at(c), r, c);
     }
     layout->setColumnStretch(columns, 1);
     for (QWidget *control : controls) {
@@ -461,72 +509,101 @@ QWidget *makeInlineField(QWidget *first, const QList<QWidget *> &more)
     return field;
 }
 
-namespace {
-
-// The label of a wrapping check box: a click changes the check box, and the first text line
-// stays centred on the box when the font or the style changes.
-class WrappingCheckLabel : public QLabel
+WrappingCheckBox::WrappingCheckBox(const QString &text, QWidget *parent)
+    : QCheckBox(text, parent)
 {
-public:
-    WrappingCheckLabel(QCheckBox *check, const QString &text)
-        : QLabel(text)
-        , m_check(check)
-    {
-        setWordWrap(true);
-        setTextFormat(Qt::PlainText);
-        setAlignment(Qt::AlignLeft | Qt::AlignTop);
-        setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-        updateMargin();
-    }
+    QSizePolicy policy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    policy.setHeightForWidth(true);
+    setSizePolicy(policy);
+}
 
-    QSize minimumSizeHint() const override { return {0, QLabel::minimumSizeHint().height()}; }
-
-protected:
-    void mouseReleaseEvent(QMouseEvent *event) override
-    {
-        QLabel::mouseReleaseEvent(event);
-        if (event->button() == Qt::LeftButton && rect().contains(event->position().toPoint()) &&
-            m_check->isEnabled()) {
-            m_check->click();
-            m_check->setFocus(Qt::MouseFocusReason);
-        }
-    }
-
-    void changeEvent(QEvent *event) override
-    {
-        QLabel::changeEvent(event);
-        if (event->type() == QEvent::FontChange || event->type() == QEvent::StyleChange)
-            updateMargin();
-    }
-
-private:
-    void updateMargin()
-    {
-        const int box = formControlHeight(m_check);
-        setContentsMargins(0, std::max(0, (box - fontMetrics().height()) / 2), 0, 0);
-    }
-
-    QCheckBox *m_check;
-};
-
-} // namespace
-
-QWidget *makeWrappingCheckBox(QCheckBox *check, const QString &text)
+QStyleOptionButton WrappingCheckBox::boxOption(int width) const
 {
-    auto *row = new QWidget;
-    auto *layout = new QHBoxLayout(row);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(tokens::space1);
-    check->setText(QString());
-    check->setAccessibleName(text);
-    check->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    check->setParent(row); // a parent first: layoutItemMargins and toggleInset need it
-    auto *item = new ToggleItem(check);
-    item->setAlignment(Qt::AlignTop);
-    layout->addItem(item);
-    check->setFixedHeight(formControlHeight(check) + layoutItemMargins(check).height());
-    layout->addWidget(new WrappingCheckLabel(check, text), 1);
-    return row;
+    QStyleOptionButton opt;
+    initStyleOption(&opt);
+    opt.rect = QRect(0, 0, width, formControlHeight(this)); // the native one-line height
+    return opt;
+}
+
+QRect WrappingCheckBox::textRect(int width) const
+{
+    const QStyleOptionButton opt = boxOption(width);
+    const QRect contents = style()->subElementRect(QStyle::SE_CheckBoxContents, &opt, this);
+    // The first line is centred in the box row, as the native one-line label (R5-02).
+    const int top = contents.top() + (contents.height() - fontMetrics().height()) / 2;
+    if (isRightToLeft())
+        return {0, top, contents.right() + 1, QWIDGETSIZE_MAX / 2};
+    return {contents.left(), top, std::max(1, width - contents.left()), QWIDGETSIZE_MAX / 2};
+}
+
+int WrappingCheckBox::heightForWidth(int width) const
+{
+    const QRect r = textRect(width);
+    const QRect text =
+            fontMetrics().boundingRect(QRect(0, 0, r.width(), r.height()),
+                                       Qt::TextWordWrap | Qt::TextShowMnemonic, this->text());
+    return std::max(formControlHeight(this), r.top() + text.height());
+}
+
+bool WrappingCheckBox::hasHeightForWidth() const
+{
+    return true;
+}
+
+QSize WrappingCheckBox::sizeHint() const
+{
+    const int width = QCheckBox::sizeHint().width();
+    return {width, heightForWidth(width)};
+}
+
+QSize WrappingCheckBox::minimumSizeHint() const
+{
+    // The box and a few characters: a long text never makes its column wider (ui-design 4.1,
+    // 8.10). The box width is the part of a wide rect that is not text, in both directions.
+    const QStyleOptionButton opt = boxOption(QWIDGETSIZE_MAX / 2);
+    const int box = opt.rect.width() -
+                    style()->subElementRect(QStyle::SE_CheckBoxContents, &opt, this).width();
+    const int width = box + 8 * fontMetrics().averageCharWidth();
+    return {width, formControlHeight(this)};
+}
+
+void WrappingCheckBox::paintEvent(QPaintEvent *)
+{
+    QStylePainter painter(this);
+    QStyleOptionButton opt = boxOption(width());
+    opt.text.clear();
+    painter.drawControl(QStyle::CE_CheckBox, opt);
+    const int align = int(QStyle::visualAlignment(layoutDirection(), Qt::AlignLeft)) |
+                      Qt::AlignTop | Qt::TextWordWrap | Qt::TextShowMnemonic;
+    const QRect text = textRect(width());
+    painter.drawItemText(text, align, palette(), isEnabled(), this->text(), QPalette::WindowText);
+    if (opt.state & QStyle::State_HasFocus) {
+        // The style framed only the box (the label was empty): frame the text, as a style that
+        // frames the label of a one-line check box does. QMacStyle draws no frame here.
+        QStyleOptionFocusRect focus;
+        focus.initFrom(this);
+        focus.rect = fontMetrics()
+                             .boundingRect(text, align, this->text())
+                             .adjusted(-1, 0, 1, 0)
+                             .intersected(rect());
+        painter.drawPrimitive(QStyle::PE_FrameFocusRect, focus);
+    }
+}
+
+bool WrappingCheckBox::hitButton(const QPoint &pos) const
+{
+    return rect().contains(pos);
+}
+
+QString joinLastWords(const QString &text)
+{
+    const qsizetype last = text.trimmed().lastIndexOf(QLatin1Char(' '));
+    if (last < 0)
+        return text;
+    const qsizetype at = text.indexOf(text.trimmed()) + last;
+    QString joined = text;
+    joined[at] = QChar(QChar::Nbsp);
+    return joined;
 }
 
 int formControlHeight(const QWidget *w)
@@ -545,7 +622,9 @@ namespace {
 int fixControlHeight(QWidget *w)
 {
     const int height = formControlHeight(w);
-    if (height > 0)
+    if (isToggle(w))
+        w->setFixedHeight(height); // in a ToggleItem: no layout margins (R5-02)
+    else if (height > 0)
         w->setFixedHeight(height + layoutItemMargins(w).height());
     return height;
 }
@@ -554,6 +633,11 @@ int fixControlHeight(QWidget *w)
 // with a fixed width (a few characters) keeps it.
 void fillFieldColumn(QWidget *w)
 {
+    // A hint wraps at the panel edge, not at the width of its size hint (R5-08).
+    if (auto *label = qobject_cast<QLabel *>(w); label && label->wordWrap()) {
+        label->setSizePolicy(QSizePolicy::Expanding, label->sizePolicy().verticalPolicy());
+        return;
+    }
     if (!qobject_cast<QLineEdit *>(w) && !qobject_cast<QComboBox *>(w))
         return;
     if (w->minimumWidth() > 0 && w->minimumWidth() == w->maximumWidth())
@@ -567,10 +651,11 @@ void fillFieldColumn(QWidget *w)
 // visible height of the first grid row.
 int applyGroupRhythm(QGridLayout *grid)
 {
-    grid->setVerticalSpacing(tokens::space1);
+    // One row pitch of control-h: a check box or a radio button is centred in a control-h row
+    // (its ToggleItem), and a row with an inline field is the field height (R5-04, 6.1 rule 15).
+    grid->setVerticalSpacing(0);
     grid->setHorizontalSpacing(tokens::space2);
     int firstRow = 0;
-    useToggleItems(grid);
     for (int i = 0; i < grid->count(); ++i) {
         QWidget *w = grid->itemAt(i)->widget();
         if (!w)
@@ -585,7 +670,7 @@ int applyGroupRhythm(QGridLayout *grid)
             firstRow = std::max(firstRow, height);
         grid->setAlignment(w, Qt::AlignVCenter);
     }
-    return firstRow;
+    return grid->count() > 0 ? std::max(firstRow, int(tokens::controlH)) : firstRow;
 }
 
 void applyRhythmNow(QFormLayout *form)

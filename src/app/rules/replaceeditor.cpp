@@ -153,13 +153,13 @@ void ReplaceEditor::updateModeRows()
         m_hint->clear();
         break;
     case Mode::Wildcard:
-        m_hint->setText(tr("* = any text, ? = one character").toHtmlEscaped());
+        m_hint->setText(joinLastWords(tr("* = any text, ? = one character")).toHtmlEscaped());
         break;
     case Mode::Regex:
-        m_hint->setText(
-                tr("Use $1, $2 ... for groups, $0 for the full match, $$ for a $ sign.")
-                        .toHtmlEscaped() +
-                QStringLiteral(" <a href=\"help\">%1</a>").arg(tr("Syntax help").toHtmlEscaped()));
+        m_hint->setText(tr("Use $1, $2 ... for groups, $0 for the full match, $$ for a $ sign.")
+                                .toHtmlEscaped() +
+                        QStringLiteral(" <a href=\"help\">%1</a>")
+                                .arg(joinLastWords(tr("Syntax help")).toHtmlEscaped()));
         break;
     }
     form()->setRowVisible(m_hint, mode != Mode::Literal);

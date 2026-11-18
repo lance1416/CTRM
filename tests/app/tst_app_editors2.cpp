@@ -28,6 +28,7 @@
 #include <QRadioButton>
 #include <QSignalSpy>
 #include <QSpinBox>
+#include <QStyleFactory>
 #include <QStyleOptionButton>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -127,6 +128,9 @@ private slots:
     void chainOptionsChangedCount();
     void chainOptionsHeaderChevron();
     void chainOptionsLabelsWrap();
+    void joinLastWordsJoinsLastPair();
+    void wrappingCheckBoxRightToLeft();
+    void wrappingCheckBoxFocusFrame();
     void sameLabelColumnAllPages();
     void mnemonicsReachAControl();
     void setRuleEmitsNothing();
@@ -312,8 +316,12 @@ void TestAppEditors2::numberingOrderNoteVisible()
 {
     Fixture<NumberingEditor, NumberingRule> f;
     auto *note = child<QLabel>(f.editor.get(), "orderNote");
-    QCOMPARE(note->text(),
-             QStringLiteral("Order: the table order. Sort or drag rows to change it."));
+    // R5-08: the hint wraps at the right edge of the field column, not at its size hint.
+    QVERIFY(QTest::qWaitForWindowExposed(f.editor.get()));
+    QWidget *form = note->parentWidget();
+    QTRY_COMPARE(note->geometry().right(), form->layout()->contentsRect().right());
+    QCOMPARE(note->text(), joinLastWords(QStringLiteral(
+                                   "Order: the table order. Sort or drag rows to change it.")));
     QVERIFY(rowVisible(f.editor->form(), note));
     QCOMPARE(note->palette().color(QPalette::WindowText),
              f.editor->palette().color(QPalette::PlaceholderText));
@@ -404,9 +412,9 @@ QLayoutItem *firstControlItem(QLayoutItem *field)
 void TestAppEditors2::formRhythm()
 {
     // C03, C04, C09 (ui-design 6.1 rules 2, 8, 15): control rows are control-h high with
-    // space-2 between rows (32 px pitch); check box and radio rows in a group have a 24 px
-    // pitch; all visible edges are on the field edge; a text field or combo box alone on its
-    // row fills the field column up to field-w-max; the label text is centred on its first row.
+    // space-2 between rows (32 px pitch); all rows in a group have a 24 px pitch (R5-04); all
+    // visible edges are on the field edge; a text field or combo box alone on its row fills the
+    // field column up to field-w-max; the label text is centred on its first row.
     using namespace ctrm::app::tokens;
     for (const QString &type : ctrm::ruleTypes()) {
         std::unique_ptr<RuleEditor> editor(createRuleEditor(type, nullptr));
@@ -424,14 +432,22 @@ void TestAppEditors2::formRhythm()
                 continue;
             const QString at = QStringLiteral("%1 row %2").arg(type).arg(row);
             // The visible rect: for a group, the union of its controls (the grid itself can
-            // start above them, for the layout margins of the style).
+            // start above them, for the layout margins of the style). A check box or radio button
+            // counts with its row: it is centred in a control-h row (R5-02, R5-04).
             QRect rect = field->geometry();
             if (QLayout *group = field->layout()) {
                 rect = QRect();
                 for (int i = 0; i < group->count(); ++i) {
                     QLayoutItem *item = group->itemAt(i);
-                    if (item->widget() && !item->widget()->isHidden())
-                        rect |= item->geometry();
+                    QWidget *w = item->widget();
+                    if (!w || w->isHidden())
+                        continue;
+                    QRect g = item->geometry();
+                    if (qobject_cast<QCheckBox *>(w) || qobject_cast<QRadioButton *>(w)) {
+                        const int extra = controlH - g.height();
+                        g.adjust(0, -extra / 2, 0, extra - extra / 2);
+                    }
+                    rect |= g;
                 }
             }
             if (previousBottom >= 0)
@@ -475,11 +491,16 @@ void TestAppEditors2::formRhythm()
                     QLayoutItem *b = grid->itemAtPosition(r, 0);
                     if (!a || !b || !a->widget() || !b->widget() || b->widget()->isHidden())
                         continue;
-                    const bool plain = qobject_cast<QAbstractButton *>(a->widget()) &&
-                                       grid->itemAtPosition(r - 1, 1) == nullptr;
-                    if (plain) // a check box or radio row with no sub-field
-                        QVERIFY2(b->geometry().top() - a->geometry().top() == controlH,
-                                 qPrintable(at + QStringLiteral(" group row %1").arg(r)));
+                    // R5-04: one pitch of control-h, also for a row with an inline field.
+                    const int pitch = grid->cellRect(r, 0).top() - grid->cellRect(r - 1, 0).top();
+                    QVERIFY2(pitch == controlH,
+                             qPrintable(
+                                     at +
+                                     QStringLiteral(" group row %1: pitch %2").arg(r).arg(pitch)));
+                    // The box and its text are centred in the row (R5-02).
+                    if (qobject_cast<QAbstractButton *>(a->widget()))
+                        QCOMPARE(a->widget()->geometry().center().y(),
+                                 grid->cellRect(r - 1, 0).center().y());
                 }
             }
             if ((qobject_cast<QLineEdit *>(field->widget()) ||
@@ -598,8 +619,8 @@ void TestAppEditors2::extensionFolderNote()
     f.editor->setFolderExtensions(true);
     QVERIFY(rowVisible(f.editor->form(), note));
     QCOMPARE(note->text(),
-             QStringLiteral(
-                     "Folders are changed too (Treat folder names as name + extension is on)."));
+             joinLastWords(QStringLiteral(
+                     "Folders are changed too (Treat folder names as name + extension is on).")));
     f.editor->setFolderExtensions(false);
     QVERIFY(!rowVisible(f.editor->form(), note));
 }
@@ -614,13 +635,11 @@ void TestAppEditors2::chainOptionsDefaults()
     QVERIFY(portable->isChecked());
     QVERIFY(!duplicates->isChecked());
     QVERIFY(!folders->isChecked());
-    // The text is in a wrapping label next to the check box (O08, C06); the check box has it as
-    // its accessible name.
-    QCOMPARE(portable->accessibleName(),
+    // Native check boxes with their own text (R5-03): it is also the accessible name.
+    QCOMPARE(portable->text(),
              QStringLiteral("Use portable names (check Windows rules on all systems)"));
-    QCOMPARE(duplicates->accessibleName(),
-             QStringLiteral("Add a number to duplicate names: x (2).txt"));
-    QCOMPARE(folders->accessibleName(), QStringLiteral("Treat folder names as name + extension"));
+    QCOMPARE(duplicates->text(), QStringLiteral("Add a number to duplicate names: x (2).txt"));
+    QCOMPARE(folders->text(), QStringLiteral("Treat folder names as name + extension"));
     auto *header = child<QToolButton>(&w, "chainOptionsHeader");
     QCOMPARE(header->text(), QStringLiteral("Chain options"));
     QCOMPARE(w.options(), ChainOptions{});
@@ -690,39 +709,45 @@ void TestAppEditors2::chainOptionsHeaderChevron()
 
 void TestAppEditors2::chainOptionsLabelsWrap()
 {
-    // O08, C06 (ui-design 8.10): the check box labels wrap in a narrow column and do not make the
-    // column wider. A click on a label changes its check box.
-    ChainOptionsWidget w(nullptr);
-    w.setOptions(ChainOptions{});
-    w.setOpen(true);
-    auto *portable = child<QCheckBox>(&w, "portableNames");
-    QLabel *text = nullptr;
-    for (QLabel *label : w.findChildren<QLabel *>()) {
-        if (label->text() == portable->accessibleName())
-            text = label;
-    }
-    QVERIFY(text);
-    QVERIFY(text->wordWrap());
-    const int oneLine = text->fontMetrics().horizontalAdvance(text->text());
-    QVERIFY2(w.minimumSizeHint().width() < oneLine,
-             qPrintable(QStringLiteral("%1 >= %2").arg(w.minimumSizeHint().width()).arg(oneLine)));
-    w.resize(oneLine / 2 + 60, 400);
-    w.show();
-    QVERIFY(QTest::qWaitForWindowExposed(&w));
-    QVERIFY(text->geometry().right() < w.width());
-    QVERIFY(text->height() >= 2 * text->fontMetrics().lineSpacing());
-    QVERIFY(text->mapTo(&w, QPoint(0, text->height())).y() <= w.height());
-
-    // The boxes have the group height (20 px visible), as in the rule editors (C03).
+    // R5-03, O08, C06 (ui-design 8.10): a plain check box list. The boxes are on the left edge,
+    // under the header, space-1 apart. The texts wrap at the right edge and do not make the
+    // column wider. A click on a text line changes its check box.
+    QWidget host;
+    auto *layout = new QVBoxLayout(&host);
+    layout->setContentsMargins(0, 0, 0, 0);
+    auto *w = new ChainOptionsWidget(&host);
+    layout->addWidget(w);
+    layout->addStretch();
+    w->setOptions(ChainOptions{});
+    w->setOpen(true);
+    auto *portable = child<QCheckBox>(w, "portableNames");
+    const int oneLine = portable->fontMetrics().horizontalAdvance(portable->text());
+    QVERIFY2(w->minimumSizeHint().width() < oneLine,
+             qPrintable(QStringLiteral("%1 >= %2").arg(w->minimumSizeHint().width()).arg(oneLine)));
+    host.resize(oneLine / 2 + 60, 400);
+    host.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&host));
+    auto *header = child<QToolButton>(w, "chainOptionsHeader");
+    int previousBottom = ctrm::test::visualRect(header, w).bottom();
+    int gap = tokens::space2;
     for (const char *name : {"portableNames", "autoResolveDuplicates", "folderExtensions"}) {
-        auto *check = child<QCheckBox>(&w, name);
-        QCOMPARE(ctrm::test::visualRect(check, &w).height(), tokens::controlH - tokens::space1);
+        auto *check = child<QCheckBox>(w, name);
+        const QRect r = ctrm::test::visualRect(check, w);
+        QCOMPARE(r.left(), 0);
+        QCOMPARE(r.right(), w->width() - 1);
+        QCOMPARE(r.top() - previousBottom - 1, gap);
+        QVERIFY(r.height() >= tokens::controlH - tokens::space1);
+        previousBottom = r.bottom();
+        gap = tokens::space1;
     }
+    QVERIFY(portable->height() >= 2 * portable->fontMetrics().lineSpacing());
+    QVERIFY(portable->mapTo(w, QPoint(0, portable->height())).y() <= w->height());
 
     QVERIFY(portable->isChecked());
-    QTest::mouseClick(text, Qt::LeftButton, {}, QPoint(4, 4));
+    QTest::mouseClick(portable, Qt::LeftButton, {},
+                      QPoint(portable->width() / 2, portable->height() - 4)); // the second line
     QVERIFY(!portable->isChecked());
-    QCOMPARE(w.options().portableNames, false);
+    QCOMPARE(w->options().portableNames, false);
 }
 
 void TestAppEditors2::sameLabelColumnAllPages()
@@ -732,11 +757,9 @@ void TestAppEditors2::sameLabelColumnAllPages()
                                 new RemoveEditor(&host),     new CleanUpEditor(&host),
                                 new ChangeCaseEditor(&host), new NumberingEditor(&host),
                                 new ExtensionEditor(&host)};
-    auto *chainOptions = new ChainOptionsWidget(&host);
     LabelColumnSync sync;
     for (RuleEditor *e : editors)
         sync.addForm(e->form());
-    sync.addForm(chainOptions->form());
     sync.sync();
     host.resize(520, 700);
     host.show();
@@ -748,11 +771,6 @@ void TestAppEditors2::sameLabelColumnAllPages()
         QApplication::processEvents();
         edges.insert(fieldEdge(e->form()));
     }
-    chainOptions->setOpen(true);
-    chainOptions->resize(500, 200);
-    chainOptions->show();
-    QApplication::processEvents();
-    edges.insert(fieldEdge(chainOptions->form()));
     QCOMPARE(edges.size(), 1);
     QVERIFY(*edges.begin() > 0);
 }
@@ -831,6 +849,58 @@ void TestAppEditors2::wrongRuleTypeDisables()
     Fixture<ExtensionEditor, ExtensionRule> x;
     x.editor->setRule(&f.rule, 2);
     QVERIFY(!x.editor->isEnabled());
+}
+
+// R5-08: only the last two words are joined, with a no-break space.
+void TestAppEditors2::joinLastWordsJoinsLastPair()
+{
+    const QChar nbsp(QChar::Nbsp);
+    QCOMPARE(joinLastWords(QStringLiteral("a b c")), QStringLiteral("a b") + nbsp + u'c');
+    QCOMPARE(joinLastWords(QStringLiteral(" a b ")),
+             QStringLiteral(" a") + nbsp + QStringLiteral("b "));
+    QCOMPARE(joinLastWords(QStringLiteral("one")), QStringLiteral("one"));
+    QCOMPARE(joinLastWords(QString()), QString());
+}
+
+// In a right-to-left layout the minimum width keeps room for the box, as in left-to-right.
+void TestAppEditors2::wrappingCheckBoxRightToLeft()
+{
+    WrappingCheckBox ltr(QStringLiteral("Use portable names"));
+    WrappingCheckBox rtl(QStringLiteral("Use portable names"));
+    rtl.setLayoutDirection(Qt::RightToLeft);
+    QCOMPARE(rtl.minimumSizeHint(), ltr.minimumSizeHint());
+    QCOMPARE(rtl.heightForWidth(120), ltr.heightForWidth(120));
+}
+
+// A style that frames the focused label (Fusion) frames the wrapped text too, not only the box.
+void TestAppEditors2::wrappingCheckBoxFocusFrame()
+{
+    std::unique_ptr<QStyle> fusion(QStyleFactory::create(QStringLiteral("Fusion")));
+    QWidget host;
+    auto *layout = new QVBoxLayout(&host);
+    auto *box = new WrappingCheckBox(QStringLiteral("Use portable names on all systems"));
+    auto *other = new QLineEdit;
+    layout->addWidget(box);
+    layout->addWidget(other);
+    box->setStyle(fusion.get());
+    host.resize(160, 120);
+    host.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&host));
+    other->setFocus();
+    QTRY_VERIFY(other->hasFocus());
+    const QImage plain = box->grab().toImage();
+    box->setFocusPolicy(Qt::StrongFocus); // the macOS style gives check boxes no Tab focus
+    QTest::keyClick(other, Qt::Key_Backtab, Qt::ShiftModifier);
+    QTRY_VERIFY(box->hasFocus());
+    const QImage focused = box->grab().toImage();
+    QCOMPARE(focused.size(), plain.size());
+    // Compare the area right of the text start: the box is not in it.
+    constexpr int textLeft = 24; // right of the box
+    bool differs = false;
+    for (int y = 0; y < plain.height() && !differs; ++y)
+        for (int x = int(textLeft * plain.devicePixelRatio()); x < plain.width() && !differs; ++x)
+            differs = plain.pixel(x, y) != focused.pixel(x, y);
+    QVERIFY(differs);
 }
 
 QTEST_MAIN(TestAppEditors2)

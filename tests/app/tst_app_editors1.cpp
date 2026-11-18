@@ -9,6 +9,7 @@
 #include "rules/replaceeditor.h"
 #include "rules/replacerule.h"
 #include "theme/typography.h"
+#include "widgets/formutils.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -436,11 +437,13 @@ void TestAppEditors1::cleanupNoteFollowsPortable()
 {
     Fixture<CleanUpEditor, CleanUpRule> f;
     auto *note = child<QLabel>(f.editor.get(), "portableNote");
-    QCOMPARE(note->text(), QStringLiteral("Uses the Windows rules (portable names is on)."));
+    QCOMPARE(note->text(),
+             joinLastWords(QStringLiteral("Uses the Windows rules (portable names is on).")));
     f.editor->setPortableNames(false);
-    QCOMPARE(note->text(), QStringLiteral("Uses the rules of this system."));
+    QCOMPARE(note->text(), joinLastWords(QStringLiteral("Uses the rules of this system.")));
     f.editor->setPortableNames(true);
-    QCOMPARE(note->text(), QStringLiteral("Uses the Windows rules (portable names is on)."));
+    QCOMPARE(note->text(),
+             joinLastWords(QStringLiteral("Uses the Windows rules (portable names is on).")));
     // The note is dimmed and in the caption style.
     QCOMPARE(note->palette().color(QPalette::WindowText),
              f.editor->palette().color(QPalette::PlaceholderText));

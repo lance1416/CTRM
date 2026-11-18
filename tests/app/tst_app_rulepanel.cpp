@@ -15,6 +15,7 @@
 #include "rules/ruleregistry.h"
 #include "rules/unsupportedrule.h"
 #include "theme/tokens.h"
+#include "widgets/formutils.h"
 #include "widgets/rulepanel.h"
 #include "widgets/tertiarybutton.h"
 
@@ -359,12 +360,14 @@ void TestAppRulePanel::editorsShareLabelColumn()
         QVERIFY(editor);
         edges.insert(fieldEdge(editor->form()));
     }
+    QCOMPARE(edges.size(), 1);
+    QVERIFY(*edges.begin() > 0);
+    // R5-03: the Chain options boxes are on the panel content edge, not in the field column.
     auto *chain = f.panel->findChild<ChainOptionsWidget *>();
     chain->setOpen(true);
     QApplication::processEvents();
-    edges.insert(fieldEdge(chain->form()));
-    QCOMPARE(edges.size(), 1);
-    QVERIFY(*edges.begin() > 0);
+    auto *portable = chain->findChild<QCheckBox *>(QStringLiteral("portableNames"));
+    QCOMPARE(ctrm::test::visualLeft(portable, f.panel), tokens::space3);
 }
 
 void TestAppRulePanel::tertiaryButtonsAccessible()
@@ -513,7 +516,7 @@ void TestAppRulePanel::chainOptionsForwarded()
     QCOMPARE(f.model.chain().options, (ChainOptions{false, false, true}));
     f.select(0);
     QCOMPARE(f.panel->currentEditor()->findChild<QLabel *>(QStringLiteral("portableNote"))->text(),
-             QStringLiteral("Uses the rules of this system."));
+             joinLastWords(QStringLiteral("Uses the rules of this system.")));
     f.select(1);
     QVERIFY(f.panel->currentEditor()
                     ->findChild<QLabel *>(QStringLiteral("folderNote"))

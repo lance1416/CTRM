@@ -9,8 +9,6 @@
 
 #include <QCheckBox>
 #include <QEvent>
-#include <QFormLayout>
-#include <QLabel>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -24,10 +22,11 @@ ChainOptionsWidget::ChainOptionsWidget(QWidget *parent)
     , m_top(new QWidget)
     , m_separator(new QWidget)
     , m_body(new QWidget)
-    , m_form(makeForm(m_body))
-    , m_portableNames(new QCheckBox)
-    , m_autoResolveDuplicates(new QCheckBox)
-    , m_folderExtensions(new QCheckBox)
+    , m_portableNames(
+              new WrappingCheckBox(tr("Use portable names (check Windows rules on all systems)")))
+    , m_autoResolveDuplicates(
+              new WrappingCheckBox(tr("Add a number to duplicate names: x (2).txt")))
+    , m_folderExtensions(new WrappingCheckBox(tr("Treat folder names as name + extension")))
 {
     m_header->setObjectName(QStringLiteral("chainOptionsHeader"));
     m_portableNames->setObjectName(QStringLiteral("portableNames"));
@@ -42,21 +41,16 @@ ChainOptionsWidget::ChainOptionsWidget(QWidget *parent)
     // The body font, not the small tool button font of macOS (M19).
     m_header->setFont(typeStyle(TypeToken::Body, font()));
 
-    // The labels wrap: they never make the column wider (O08, C06). One group: space-1 between
-    // the rows.
-    auto *group = new QWidget;
-    auto *groupLayout = new QVBoxLayout(group);
-    groupLayout->setContentsMargins(0, 0, 0, 0);
-    groupLayout->setSpacing(tokens::space1);
-    const QList<std::pair<QCheckBox *, QString>> checks{
-            {m_portableNames, tr("Use portable names (check Windows rules on all systems)")},
-            {m_autoResolveDuplicates, tr("Add a number to duplicate names: x (2).txt")},
-            {m_folderExtensions, tr("Treat folder names as name + extension")}};
-    for (const auto &[check, text] : checks)
-        groupLayout->addWidget(makeWrappingCheckBox(check, text));
-    // An empty label keeps a label column, so LabelColumnSync can align the check boxes with the
-    // field column of the rule editors (ui-design 8.10).
-    m_form->addRow(new QLabel, group);
+    // A plain check box list under the header, as in System Settings: the boxes on the left edge
+    // of the panel content (space-3), space-1 between the rows, and the texts wrap at the panel
+    // edge (R5-03, O08, C06).
+    auto *body = new QVBoxLayout(m_body);
+    body->setContentsMargins(0, tokens::space2, 0, 0); // under the header
+    body->setSpacing(tokens::space1);
+    for (QCheckBox *check : {m_portableNames, m_autoResolveDuplicates, m_folderExtensions}) {
+        check->setParent(m_body);
+        body->addItem(makeToggleItem(check));
+    }
     for (QCheckBox *check : {m_portableNames, m_autoResolveDuplicates, m_folderExtensions}) {
         connect(check, &QCheckBox::toggled, this, [this] {
             updateHeader();
@@ -64,8 +58,6 @@ ChainOptionsWidget::ChainOptionsWidget(QWidget *parent)
                 emit optionsChanged(options());
         });
     }
-
-    applyFormRhythm(m_form); // the rhythm of the rule editors (C03)
 
     // The gap to the editor is space-4 with a 1 px separator line in the middle (ui-design 8.10).
     m_separator->setObjectName(QStringLiteral("chainOptionsSeparator"));
@@ -81,7 +73,6 @@ ChainOptionsWidget::ChainOptionsWidget(QWidget *parent)
     top->addWidget(m_separator);
     top->addSpacing(tokens::space4 - tokens::space2 - 1);
     top->addWidget(m_header, 0, Qt::AlignLeft);
-    m_form->setContentsMargins(0, tokens::space2, 0, 0); // under the header
 
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -141,11 +132,6 @@ void ChainOptionsWidget::updateIcon()
     m_header->setIcon(toolIcon(m_header->isChecked() ? QStringLiteral("chevron-xs-down")
                                                      : QStringLiteral("chevron-xs-right"),
                                dim));
-}
-
-QFormLayout *ChainOptionsWidget::form() const
-{
-    return m_form;
 }
 
 void ChainOptionsWidget::updateHeader()

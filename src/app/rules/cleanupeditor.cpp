@@ -112,8 +112,8 @@ void CleanUpEditor::setRule(ctrm::Rule *rule, int position)
 
 void CleanUpEditor::setPortableNames(bool on)
 {
-    m_portableNote->setText(on ? tr("Uses the Windows rules (portable names is on).")
-                               : tr("Uses the rules of this system."));
+    m_portableNote->setText(joinLastWords(on ? tr("Uses the Windows rules (portable names is on).")
+                                             : tr("Uses the rules of this system.")));
 }
 
 } // namespace ctrm::app

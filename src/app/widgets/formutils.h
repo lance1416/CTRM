@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include <QCheckBox>
 #include <QList>
 #include <QObject>
 #include <QPointer>
 
-class QCheckBox;
 class QComboBox;
 class QFormLayout;
 class QLabel;
 class QLayout;
+class QLayoutItem;
+class QStyleOptionButton;
 class QToolButton;
 class QWidget;
 
@@ -29,11 +31,37 @@ QLayout *makeFieldGroup(const QList<QWidget *> &controls);
 // A control with its sub-fields on one line: QHBoxLayout, margins 0.
 QWidget *makeInlineField(QWidget *first, const QList<QWidget *> &more);
 
-// A check box with a label that wraps: an empty QCheckBox and a word-wrapped QLabel with text,
-// on one line (QHBoxLayout, margins 0). The first text line is centred on the box. A click on the
-// label changes the check box; the check box has text as its accessible name. A long label then
-// never makes its column wider (ui-design 4.1, 8.10).
-QWidget *makeWrappingCheckBox(QCheckBox *check, const QString &text);
+// A check box with a text that wraps at its width: the box at the native place, the text at the
+// native gap after it, the first line centred on the box, as a one-line check box (R5-03). A
+// long text never makes its column wider (ui-design 4.1, 8.10). Add it with makeToggleItem.
+class WrappingCheckBox : public QCheckBox
+{
+public:
+    explicit WrappingCheckBox(const QString &text, QWidget *parent = nullptr);
+    QSize sizeHint() const override;
+    QSize minimumSizeHint() const override;
+    bool hasHeightForWidth() const override;
+    int heightForWidth(int width) const override;
+
+protected:
+    void paintEvent(QPaintEvent *event) override;
+    bool hitButton(const QPoint &pos) const override;
+
+private:
+    QStyleOptionButton boxOption(int width) const;
+    QRect textRect(int width) const;
+};
+
+// The layout item for a check box or a radio button. The widget is the layout rect, with no
+// layout margins of the style, and keeps its own height, centred in the rect (AlignTop: at the
+// top). Cocoa draws the box at the left edge of the widget and centres the box and the text in
+// it, so the box is on the field edge (C04) and the box and the text share one centre (R5-02).
+// applyFormRhythm uses it for the check boxes and radio buttons of a form.
+QLayoutItem *makeToggleItem(QWidget *w);
+
+// text with a no-break space between its last two words: a wrapped hint never ends with one word
+// alone on its last line (R5-08). Plain text only: a space in a rich text tag would break it.
+QString joinLastWords(const QString &text);
 
 // Makes the label baseline the same as the text baseline of firstControl (ui-design 6.2).
 // It applies again when the font or the style of the label or the control changes.
@@ -41,12 +69,13 @@ void alignLabelToFirstRow(QLabel *label, QWidget *firstControl);
 
 // The vertical rhythm, spacing and field widths of a form (ui-design 6.1 rules 2, 8, 14 and 15;
 // design-tokens 4). Call it after the rows are added. It applies again on a font or style change.
-// - Spacing: space-2 between rows and from label to field; space-1 between group rows.
+// - Spacing: space-2 between rows and from label to field. The rows of a field group have one
+//   pitch of control-h, with no spacing (R5-04).
 // - Text fields, spin boxes, combo boxes and buttons have the visible height control-h; check
-//   boxes and radio buttons 20 px. The visible rect is the layout item rect: the style margins
-//   (the macOS focus ring) are outside it, so the visible edges are on the field edge (C04).
-//   On macOS, check boxes and radio buttons move 2 pt right: Cocoa draws their box 2 pt to the
-//   left of the layout rect.
+//   boxes and radio buttons 20 px, centred in their group row, in a makeToggleItem item. The
+//   visible rect is the layout item rect: the style margins (the macOS focus ring) are outside
+//   it, so the visible edges are on the field edge (C04).
+// - A word-wrapped label fills the field column: a hint wraps at the panel edge (R5-08).
 // - Labels have the visible height of the first row of their field, text centred: the label
 //   baseline is the baseline of the first control (6.2).
 // - A text field or a combo box alone on its row fills the field column up to field-w-max. A
