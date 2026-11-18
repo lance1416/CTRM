@@ -339,7 +339,7 @@ void ActionBar::updateSummary(const ctrm::PreviewSummary &summary)
 
     const CtrmColors colors = CtrmColors::fromPalette(palette());
     const QFont font = tabularFigures(this->font());
-    const int iconSize = style()->pixelMetric(QStyle::PM_SmallIconSize, nullptr, this);
+    const int iconSize = tokens::iconS;
     auto addLabel = [&](QLabel *label) {
         label->setFont(font);
         m_summaryLayout->addWidget(label);
@@ -434,7 +434,7 @@ void ActionBar::announce(const QString &text)
 
 void ActionBar::updateReasonIcon()
 {
-    const int size = style()->pixelMetric(QStyle::PM_SmallIconSize, nullptr, this);
+    const int size = tokens::iconS;
     QIcon icon;
     if (m_info.state == WindowState::Blocked) {
         icon = stateIcon(m_summary.errors > 0 ? StateIcon::Error : StateIcon::Conflict,

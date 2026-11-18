@@ -6,6 +6,7 @@
 #include "text/messages.h"
 #include "text/plural.h"
 #include "theme/colors.h"
+#include "theme/tokens.h"
 #include "widgets/emptystate.h"
 #include "widgets/itemdelegate.h"
 
@@ -140,9 +141,8 @@ ItemTableView::ItemTableView(ItemTableModel &model, ItemFilterProxy &proxy, QWid
     headerFont.setWeight(QFont::DemiBold);
     header->setFont(headerFont);
     header->setContextMenuPolicy(Qt::CustomContextMenu);
-    const int iconColumn = style()->pixelMetric(QStyle::PM_SmallIconSize, nullptr, this) +
-                           2 * style()->pixelMetric(QStyle::PM_FocusFrameHMargin, nullptr, this) +
-                           8;
+    // An icon-s icon with space-3 of room (28 px), as before at 1x.
+    const int iconColumn = tokens::iconS + tokens::space3;
     header->resizeSection(ItemTableModel::Include, iconColumn);
     header->resizeSection(ItemTableModel::State, iconColumn);
     header->resizeSection(ItemTableModel::OldName, kNameWidth);

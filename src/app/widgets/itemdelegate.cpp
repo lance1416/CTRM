@@ -3,6 +3,7 @@
 
 #include "models/itemtablemodel.h"
 #include "text/messages.h"
+#include "theme/tokens.h"
 #include "widgets/itemviewpaint.h"
 
 #include <QApplication>
@@ -122,10 +123,7 @@ void ItemDelegate::initStyleOption(QStyleOptionViewItem *option, const QModelInd
         }
         option->decorationAlignment = Qt::AlignCenter;
         option->displayAlignment = Qt::AlignCenter;
-        const QWidget *widget = option->widget;
-        const QStyle *style = widget ? widget->style() : QApplication::style();
-        const int size = style->pixelMetric(QStyle::PM_SmallIconSize, nullptr, widget);
-        option->decorationSize = QSize(size, size);
+        option->decorationSize = QSize(tokens::iconS, tokens::iconS); // design-tokens 5.2
     }
 
     // Names elide in the middle (the view's mode). A message has its key word first, so it
