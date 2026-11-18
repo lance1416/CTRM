@@ -174,6 +174,7 @@ private slots:
     void tableShortcutsOnlyWithFocus();
     void toolbarPresetsArrowOnTextLine();
     void toolbarIcons();
+    void toolbarSeparatorSolid();
     void tertiaryButtonsHaveNoFrame();
     void ruleMenuButtonsArePushButtons();
     void namesShownAtMinimumWidth();
@@ -792,6 +793,49 @@ void TestMainWindow::toolbarIcons()
     // The menu bar title keeps its text: the Presets menu action has no icon.
     for (QAction *menu : f.window.menuBar()->actions())
         QVERIFY(menu->icon().isNull());
+}
+
+void TestMainWindow::toolbarSeparatorSolid()
+{
+    // R5-10: one solid 1 px line in the separator colour, 16 px high, between Refresh and Undo.
+    // No native (dotted) separator.
+    Fixture f;
+    f.window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    auto *bar = f.child<QToolBar>("mainToolBar");
+    for (QAction *action : bar->actions())
+        QVERIFY(!action->isSeparator());
+    auto *separator = f.child<QFrame>("toolBarSeparator");
+    QVERIFY(separator);
+    QCOMPARE(separator->height(), tokens::iconS);
+    const QWidget *refresh = nullptr;
+    const QWidget *undo = nullptr;
+    for (QAction *action : bar->actions()) {
+        if (action->objectName() == QLatin1StringView("refresh"))
+            refresh = bar->widgetForAction(action);
+        if (action->objectName() == QLatin1StringView("undoRename"))
+            undo = bar->widgetForAction(action);
+    }
+    QVERIFY(refresh && undo);
+    QVERIFY(refresh->geometry().right() < separator->x());
+    QVERIFY(separator->geometry().right() < undo->x());
+
+    const QColor background(0, 0, 0);
+    QImage image(separator->size(), QImage::Format_ARGB32_Premultiplied);
+    image.fill(background);
+    separator->render(&image, {}, {}, QWidget::DrawChildren);
+    const QRgb line = separator->palette().color(QPalette::Mid).rgb();
+    int lineColumns = 0;
+    for (int x = 0; x < image.width(); ++x) {
+        int rows = 0;
+        for (int y = 0; y < image.height(); ++y)
+            rows += image.pixel(x, y) == line ? 1 : 0;
+        if (rows == 0)
+            continue;
+        QCOMPARE(rows, image.height()); // solid, not dotted
+        ++lineColumns;
+    }
+    QCOMPARE(lineColumns, 1);
 }
 
 void TestMainWindow::tertiaryButtonsHaveNoFrame()

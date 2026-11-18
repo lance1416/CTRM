@@ -23,6 +23,7 @@
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QEvent>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -449,7 +450,14 @@ void MainWindow::buildToolBar()
                                  nullptr,          a.undoRename, a.history};
     for (QAction *action : right) {
         if (!action) {
-            m_toolBar->addSeparator();
+            // R5-10: a solid 1 px separator line, 16 px high, not the dotted native one.
+            auto *separator = new QFrame(m_toolBar);
+            separator->setObjectName(QStringLiteral("toolBarSeparator"));
+            separator->setFrameShape(QFrame::VLine);
+            separator->setFrameShadow(QFrame::Plain);
+            separator->setForegroundRole(QPalette::Mid); // design-tokens 2: separator
+            separator->setFixedSize(2 * tokens::space1 + 1, tokens::iconS);
+            m_toolBar->addWidget(separator);
             continue;
         }
         m_toolBar->addAction(action);
