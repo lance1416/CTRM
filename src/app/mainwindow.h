@@ -95,7 +95,6 @@ private:
     void refresh();
     void clearList();
     void removeFromList();
-    void focusStep(int step);
     void focusRules();
     void focusTable();
     void focusEditor();

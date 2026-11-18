@@ -505,8 +505,8 @@ void MainWindow::buildCentralWidget()
 
 void MainWindow::buildPanels()
 {
-    // Made in the tab order of ui-design 14: flow strip, rule list, rule editor, chain options,
-    // filter, table, action bar.
+    // Made in the tab order of ui-design 14: rule list, rule editor, chain options, filter,
+    // table, action bar. The flow strip is passive and has no focus stop (O03b).
     m_flowStrip = new FlowStrip(m_flowStripSlot);
     m_flowStripSlot->layout()->addWidget(m_flowStrip);
     // Mockup .flow (M22): a separator under the strip.
@@ -717,7 +717,6 @@ void MainWindow::connectActions()
     connect(a.focusRules, &QAction::triggered, this, &MainWindow::focusRules);
     connect(a.focusTable, &QAction::triggered, this, &MainWindow::focusTable);
     connect(a.focusEditor, &QAction::triggered, this, &MainWindow::focusEditor);
-    connect(m_flowStrip, &FlowStrip::stepClicked, this, &MainWindow::focusStep);
     connect(m_table->selectionModel(), &QItemSelectionModel::selectionChanged, this,
             &MainWindow::updateListActions);
 
@@ -942,33 +941,6 @@ void MainWindow::refresh()
         m_messageBar->clear();
     setResultShown(false);
     requestPreview();
-}
-
-void MainWindow::focusStep(int step)
-{
-    // ui-design 5.3 (S01).
-    switch (step) {
-    case 0:
-        focusTable();
-        break;
-    case 1:
-        focusRules();
-        break;
-    case 2:
-        if (m_state.state == WindowState::Blocked) {
-            // The first problem row.
-            if (m_proxy.rowCount() == 0 || m_tableOrNoMatch->currentWidget() != m_table)
-                clearFilter();
-            m_table->setCurrentIndex({});
-            m_table->selectNextProblem(true);
-            focusTable();
-        } else {
-            focus(m_actionBar->renameButton());
-        }
-        break;
-    default:
-        break;
-    }
 }
 
 void MainWindow::focusRules()

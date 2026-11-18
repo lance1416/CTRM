@@ -3,15 +3,15 @@
 
 #include "theme/colors.h"
 #include "theme/icons.h"
+#include "theme/tokens.h"
 #include "theme/typography.h"
-#include "widgets/tertiarybutton.h"
 
+#include <QAccessible>
+#include <QAccessibleWidget>
 #include <QEvent>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPainter>
-#include <QStyle>
-#include <QToolButton>
 
 namespace ctrm::app {
 
@@ -23,36 +23,61 @@ const char *const kStepNames[] = {
         QT_TRANSLATE_NOOP("ctrm::app::FlowStrip", "Rename"),
 };
 
-// The step number in a circle. Current: filled with the accent colour. Later: a dimmed number.
-QIcon numberIcon(int number, bool current, const QPalette &p, const QFont &font, int size)
+// The step number in a circle at the given device pixel ratio. Current: filled with the accent
+// colour. Later: an outline and a dim number.
+QPixmap numberPixmap(int number, bool current, const QPalette &p, const QFont &font, int size,
+                     qreal dpr)
 {
-    QIcon icon;
-    for (const qreal dpr : {1.0, 1.5, 2.0}) {
-        QPixmap pixmap(QSize(size, size) * dpr);
-        pixmap.setDevicePixelRatio(dpr);
-        pixmap.fill(Qt::transparent);
-        QPainter painter(&pixmap);
-        painter.setRenderHint(QPainter::Antialiasing);
-        const QRectF circle = QRectF(0, 0, size, size).adjusted(0.5, 0.5, -0.5, -0.5);
-        if (current) {
-            painter.setPen(Qt::NoPen);
-            painter.setBrush(p.color(QPalette::Accent));
-            painter.drawEllipse(circle);
-            painter.setPen(p.color(QPalette::HighlightedText));
-        } else {
-            painter.setPen(QPen(p.color(QPalette::PlaceholderText), 1.0));
-            painter.setBrush(Qt::NoBrush);
-            painter.drawEllipse(circle);
-        }
-        QFont f = font;
-        f.setPixelSize(qMax(6, size * 2 / 3));
-        f.setWeight(QFont::DemiBold);
-        painter.setFont(f);
-        painter.drawText(QRectF(0, 0, size, size), Qt::AlignCenter, QString::number(number));
-        painter.end();
-        icon.addPixmap(pixmap);
+    QPixmap pixmap(QSize(size, size) * dpr);
+    pixmap.setDevicePixelRatio(dpr);
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    const QRectF circle = QRectF(0, 0, size, size).adjusted(0.5, 0.5, -0.5, -0.5);
+    if (current) {
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(p.color(QPalette::Accent));
+        painter.drawEllipse(circle);
+        painter.setPen(p.color(QPalette::HighlightedText));
+    } else {
+        painter.setPen(QPen(p.color(QPalette::PlaceholderText), 1.0));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawEllipse(circle);
     }
-    return icon;
+    QFont f = font;
+    f.setPixelSize(qMax(6, size * 2 / 3));
+    f.setWeight(QFont::DemiBold);
+    painter.setFont(f);
+    painter.drawText(QRectF(0, 0, size, size), Qt::AlignCenter, QString::number(number));
+    return pixmap;
+}
+
+// One element without children: the step labels are not separate stops for a screen reader.
+class FlowStripAccessible : public QAccessibleWidget
+{
+public:
+    explicit FlowStripAccessible(QWidget *widget)
+        : QAccessibleWidget(widget, QAccessible::Grouping)
+    {}
+    int childCount() const override { return 0; }
+    QAccessibleInterface *child(int) const override { return nullptr; }
+    int indexOfChild(const QAccessibleInterface *) const override { return -1; }
+    QAccessibleInterface *childAt(int, int) const override { return nullptr; }
+};
+
+QAccessibleInterface *flowStripFactory(const QString &className, QObject *object)
+{
+    if (className == QLatin1StringView("ctrm::app::FlowStrip") && object && object->isWidgetType())
+        return new FlowStripAccessible(static_cast<QWidget *>(object));
+    return nullptr;
+}
+
+QLabel *passiveLabel(QWidget *parent)
+{
+    auto *label = new QLabel(parent);
+    label->setFocusPolicy(Qt::NoFocus);
+    label->setTextInteractionFlags(Qt::NoTextInteraction);
+    return label;
 }
 
 } // namespace
@@ -60,40 +85,62 @@ QIcon numberIcon(int number, bool current, const QPalette &p, const QFont &font,
 FlowStrip::FlowStrip(QWidget *parent)
     : QWidget(parent)
 {
+    static const bool factoryInstalled = [] {
+        QAccessible::installFactory(flowStripFactory);
+        return true;
+    }();
+    Q_UNUSED(factoryInstalled);
+
     setObjectName(QStringLiteral("flowStrip"));
-    setFocusPolicy(Qt::TabFocus);
+    setFocusPolicy(Qt::NoFocus);
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    setAccessibleName(tr("Steps"));
 
     auto *layout = new QHBoxLayout(this);
-    // Mockup .flow (M22): a thin row, padding 5 px x 12 px.
-    layout->setContentsMargins(12, 5, 12, 5);
+    // 5.3, design-tokens 4.2: inset space-3 x space-1; icon to text space-1; space-2 on each
+    // side of a chevron.
+    layout->setContentsMargins(tokens::space3, tokens::space1, tokens::space3, tokens::space1);
     layout->setSpacing(0);
     for (int i = 0; i < kSteps; ++i) {
+        const auto index = static_cast<size_t>(i);
         if (i > 0) {
-            auto *separator = new QLabel(QStringLiteral("›"), this);
-            separator->setForegroundRole(QPalette::PlaceholderText);
-            separator->setAccessibleName(QString());
+            QLabel *separator = passiveLabel(this);
+            separator->setObjectName(QStringLiteral("flowSeparator"));
+            separator->setFixedWidth(tokens::iconXs);
+            separator->setAlignment(Qt::AlignCenter);
+            layout->addSpacing(tokens::space2);
             layout->addWidget(separator);
+            layout->addSpacing(tokens::space2);
+            m_separators[index - 1] = separator;
         }
-        auto *button = new TertiaryButton(this);
-        button->setObjectName(QStringLiteral("flowStep%1").arg(i + 1));
-        button->setAutoRaise(true);
-        button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-        button->setFocusPolicy(Qt::TabFocus);
-        connect(button, &QToolButton::clicked, this, [this, i] { emit stepClicked(i); });
-        layout->addWidget(button);
-        m_buttons[static_cast<size_t>(i)] = button;
+        QLabel *icon = passiveLabel(this);
+        icon->setObjectName(QStringLiteral("flowStep%1Icon").arg(i + 1));
+        icon->setFixedWidth(tokens::iconS);
+        icon->setAlignment(Qt::AlignCenter);
+        QLabel *text = passiveLabel(this);
+        text->setObjectName(QStringLiteral("flowStep%1").arg(i + 1));
+        layout->addWidget(icon);
+        layout->addSpacing(tokens::space1);
+        layout->addWidget(text);
+        m_icons[index] = icon;
+        m_texts[index] = text;
     }
     layout->addStretch(1);
-    setFocusProxy(m_buttons[0]);
     updateSteps();
 }
 
 void FlowStrip::setState(const WindowStateInfo &info)
 {
+    const QString before = stepDescription();
     m_done = info.stepDone;
     m_current = info.currentStep;
     updateSteps();
+    if (stepDescription() != before) {
+        QAccessibleEvent description(this, QAccessible::DescriptionChanged);
+        QAccessible::updateAccessibility(&description);
+        QAccessibleEvent name(this, QAccessible::NameChanged);
+        QAccessible::updateAccessibility(&name);
+    }
 }
 
 void FlowStrip::changeEvent(QEvent *event)
@@ -104,6 +151,7 @@ void FlowStrip::changeEvent(QEvent *event)
     case QEvent::FontChange:
     case QEvent::StyleChange:
     case QEvent::ApplicationPaletteChange:
+    case QEvent::DevicePixelRatioChange:
         updateSteps();
         break;
     default:
@@ -111,46 +159,58 @@ void FlowStrip::changeEvent(QEvent *event)
     }
 }
 
+QString FlowStrip::stepDescription() const
+{
+    // The current step; when all steps are done, the last step.
+    const int step = m_current >= 0 && m_current < kSteps ? m_current : kSteps - 1;
+    const bool done = m_done[static_cast<size_t>(step)];
+    return tr("Step %1 of %2, %3, %4")
+            .arg(QString::number(step + 1), QString::number(kSteps), tr(kStepNames[step]),
+                 done ? tr("done") : tr("current"));
+}
+
 void FlowStrip::updateSteps()
 {
-    // Setting the font and palette of the buttons must not start this again.
+    // Setting the font and palette of the labels must not start this again.
     if (m_updating)
         return;
     m_updating = true;
     const QPalette p = palette();
     const CtrmColors colors = CtrmColors::fromPalette(p);
-    const int iconSize = style()->pixelMetric(QStyle::PM_SmallIconSize, nullptr, this);
+    const qreal dpr = devicePixelRatioF();
+    const QColor dim = p.color(QPalette::PlaceholderText);
+    const QSize iconSize(tokens::iconS, tokens::iconS);
+
+    QPalette dimPalette = p;
+    dimPalette.setColor(QPalette::WindowText, dim);
+    const QPixmap chevron = toolIcon(QStringLiteral("chevron-xs-right"), dimPalette)
+                                    .pixmap(QSize(tokens::iconXs, tokens::iconXs), dpr);
+    for (QLabel *separator : m_separators)
+        separator->setPixmap(chevron);
+
     for (int i = 0; i < kSteps; ++i) {
-        QToolButton *button = m_buttons[static_cast<size_t>(i)];
-        const bool done = m_done[static_cast<size_t>(i)];
+        const auto index = static_cast<size_t>(i);
+        QLabel *text = m_texts[index];
+        const bool done = m_done[index];
         const bool current = !done && i == m_current;
-        const QString name = tr(kStepNames[i]);
-        button->setText(name);
-        button->setIconSize(QSize(iconSize, iconSize));
+        text->setText(tr(kStepNames[i]));
 
         // Only the roles set here; the rest come from the strip.
-        QPalette buttonPalette;
-        QFont font = typeStyle(current ? TypeToken::LabelStrong : TypeToken::Body, this->font());
-        QString look;
-        if (done) {
-            button->setIcon(stateIcon(StateIcon::Done, colors));
-            look = tr("done");
-        } else if (current) {
-            button->setIcon(numberIcon(i + 1, true, p, font, iconSize));
-            look = tr("current");
-        } else {
-            button->setIcon(numberIcon(i + 1, false, p, font, iconSize));
-            const QColor dim = p.color(QPalette::PlaceholderText);
-            buttonPalette.setColor(QPalette::ButtonText, dim);
-            buttonPalette.setColor(QPalette::WindowText, dim);
-            look = tr("later");
-        }
-        button->setPalette(buttonPalette);
-        button->setFont(font);
-        button->setAccessibleName(
-                tr("Step %1 of %2, %3, %4")
-                        .arg(QString::number(i + 1), QString::number(kSteps), name, look));
+        QPalette textPalette;
+        const QFont font =
+                typeStyle(current ? TypeToken::LabelStrong : TypeToken::Body, this->font());
+        QPixmap icon;
+        if (done)
+            icon = stateIcon(StateIcon::FlowDone, colors).pixmap(iconSize, dpr);
+        else
+            icon = numberPixmap(i + 1, current, p, font, tokens::iconS, dpr);
+        if (!done && !current)
+            textPalette.setColor(QPalette::WindowText, dim);
+        m_icons[index]->setPixmap(icon);
+        text->setPalette(textPalette);
+        text->setFont(font);
     }
+    setAccessibleDescription(stepDescription());
     m_updating = false;
 }
 

@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "actions.h"
+#include "theme/tokens.h"
 #include "ui/windowstate.h"
 #include "widgets/actionbar.h"
 #include "widgets/flowstrip.h"
 #include "widgets/messagebar.h"
 
+#include <QAbstractButton>
+#include <QAccessible>
 #include <QAction>
 #include <QApplication>
 #include <QLabel>
+#include <QLineEdit>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QScopeGuard>
@@ -92,7 +96,8 @@ private slots:
     void summaryText();
     void flowSteps();
     void flowStripLooks();
-    void flowStripClick();
+    void flowStripSpacing();
+    void flowStripPassive();
     void oneDefaultButton();
     void actionBarHeightStays();
     void blockedBarNotCut_data();
@@ -102,7 +107,6 @@ private slots:
     void resultSummary();
     void fusionAccent();
     void disabledHasReason();
-    void flowStripNoMouseFocus();
     void progressAfterOneSecond();
     void problemLinks();
     void summaryAnnouncedAfterDelay();
@@ -266,36 +270,115 @@ void TestAppWindowState::flowSteps()
 
 void TestAppWindowState::flowStripLooks()
 {
+    // O03b, O01, C13 (ui-design 5.3): labels only; one accessible element "Steps" with the
+    // current step as its description.
     FlowStrip strip(nullptr);
     strip.setState(computeWindowState(input(6, 1, summary(0))));
-    const auto buttons = strip.findChildren<QToolButton *>();
-    QCOMPARE(buttons.size(), 3);
-    QCOMPARE(buttons[0]->text(), QStringLiteral("Add files"));
-    QCOMPARE(buttons[1]->text(), QStringLiteral("Add rules"));
-    QCOMPARE(buttons[2]->text(), QStringLiteral("Rename"));
-    QCOMPARE(buttons[0]->accessibleName(), QStringLiteral("Step 1 of 3, Add files, done"));
-    QCOMPARE(buttons[1]->accessibleName(), QStringLiteral("Step 2 of 3, Add rules, current"));
-    QCOMPARE(buttons[2]->accessibleName(), QStringLiteral("Step 3 of 3, Rename, later"));
+    QVERIFY(strip.findChildren<QAbstractButton *>().isEmpty());
+    const auto text = [&](int step) {
+        return strip.findChild<QLabel *>(QStringLiteral("flowStep%1").arg(step));
+    };
+    QCOMPARE(text(1)->text(), QStringLiteral("Add files"));
+    QCOMPARE(text(2)->text(), QStringLiteral("Add rules"));
+    QCOMPARE(text(3)->text(), QStringLiteral("Rename"));
+    QCOMPARE(strip.accessibleName(), QStringLiteral("Steps"));
+    QCOMPARE(strip.accessibleDescription(), QStringLiteral("Step 2 of 3, Add rules, current"));
+    QAccessibleInterface *a = QAccessible::queryAccessibleInterface(&strip);
+    QVERIFY(a);
+    QCOMPARE(a->role(), QAccessible::Grouping);
+    QCOMPARE(a->text(QAccessible::Name), QStringLiteral("Steps"));
+    QCOMPARE(a->text(QAccessible::Description), QStringLiteral("Step 2 of 3, Add rules, current"));
+    QCOMPARE(a->childCount(), 0);
 
-    QVERIFY(buttons[1]->font().weight() > buttons[0]->font().weight());
-    QCOMPARE(buttons[2]->palette().color(QPalette::ButtonText),
+    QVERIFY(text(2)->font().weight() > text(1)->font().weight());
+    QCOMPARE(text(3)->palette().color(QPalette::WindowText),
              strip.palette().color(QPalette::PlaceholderText));
-    for (QToolButton *b : buttons) {
-        QVERIFY(b->autoRaise());
-        QCOMPARE(b->toolButtonStyle(), Qt::ToolButtonTextBesideIcon);
-        QVERIFY(!b->icon().isNull());
+    for (int step = 1; step <= 3; ++step) {
+        auto *icon = strip.findChild<QLabel *>(QStringLiteral("flowStep%1Icon").arg(step));
+        QVERIFY(icon);
+        QVERIFY(!icon->pixmap().isNull());
+        QCOMPARE(icon->pixmap().deviceIndependentSize().toSize(),
+                 QSize(tokens::iconS, tokens::iconS));
     }
+    const auto separators = strip.findChildren<QLabel *>(QStringLiteral("flowSeparator"));
+    QCOMPARE(separators.size(), 2);
+    for (QLabel *separator : separators)
+        QCOMPARE(separator->pixmap().deviceIndependentSize().toSize(),
+                 QSize(tokens::iconXs, tokens::iconXs));
     QCOMPARE(strip.sizePolicy().verticalPolicy(), QSizePolicy::Fixed);
+
+    // All steps done: the description names the last step.
+    WindowStateInput in = input(6, 1, summary(0));
+    in.resultShown = true;
+    strip.setState(computeWindowState(in));
+    QCOMPARE(strip.accessibleDescription(), QStringLiteral("Step 3 of 3, Rename, done"));
 }
 
-void TestAppWindowState::flowStripClick()
+void TestAppWindowState::flowStripSpacing()
 {
-    FlowStrip strip(nullptr);
-    QSignalSpy spy(&strip, &FlowStrip::stepClicked);
-    const auto buttons = strip.findChildren<QToolButton *>();
-    buttons[2]->click();
-    QCOMPARE(spy.size(), 1);
-    QCOMPARE(spy.at(0).at(0).toInt(), 2);
+    // O01 (5.3, design-tokens 4.2): inset space-3 and space-1; icon to text space-1; space-2 on
+    // each side of each chevron.
+    QWidget parent;
+    auto *strip = new FlowStrip(&parent);
+    strip->setState(computeWindowState(input(6, 1, summary(6))));
+    strip->setGeometry(0, 0, 900, strip->sizeHint().height());
+    parent.resize(1000, 100);
+    parent.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&parent));
+    const auto geometry = [&](const QString &name) {
+        return strip->findChild<QLabel *>(name)->geometry();
+    };
+    QCOMPARE(geometry(QStringLiteral("flowStep1Icon")).left(), tokens::space3);
+    QCOMPARE(geometry(QStringLiteral("flowStep1Icon")).top(), tokens::space1);
+    QCOMPARE(strip->height(), tokens::space1 * 2 + geometry(QStringLiteral("flowStep1")).height());
+    const auto separators = strip->findChildren<QLabel *>(QStringLiteral("flowSeparator"));
+    for (int step = 1; step <= 3; ++step) {
+        const QRect icon = geometry(QStringLiteral("flowStep%1Icon").arg(step));
+        const QRect text = geometry(QStringLiteral("flowStep%1").arg(step));
+        QCOMPARE(text.left() - icon.right() - 1, tokens::space1);
+        if (step < 3) {
+            const QRect chevron = separators.at(step - 1)->geometry();
+            const QRect next = geometry(QStringLiteral("flowStep%1Icon").arg(step + 1));
+            QCOMPARE(chevron.left() - text.right() - 1, tokens::space2);
+            QCOMPARE(next.left() - chevron.right() - 1, tokens::space2);
+        }
+    }
+}
+
+void TestAppWindowState::flowStripPassive()
+{
+    // O03b: no click, no hover, arrow cursor, no focus stop. A step change sends a name-change
+    // event.
+    QWidget parent;
+    auto *field = new QLineEdit(&parent);
+    auto *strip = new FlowStrip(&parent);
+    strip->move(0, 40);
+    parent.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&parent));
+    QCOMPARE(strip->focusPolicy(), Qt::NoFocus);
+    for (QWidget *child : strip->findChildren<QWidget *>()) {
+        QCOMPARE(child->focusPolicy(), Qt::NoFocus);
+        QCOMPARE(child->cursor().shape(), Qt::ArrowCursor);
+    }
+    QCOMPARE(strip->cursor().shape(), Qt::ArrowCursor);
+    QVERIFY(!strip->testAttribute(Qt::WA_Hover));
+
+    field->setFocus();
+    QTest::mouseClick(strip->findChild<QLabel *>(QStringLiteral("flowStep2")), Qt::LeftButton);
+    QCOMPARE(QApplication::focusWidget() == field || QApplication::focusWidget() == nullptr, true);
+
+    static QList<QAccessible::Event> events;
+    events.clear();
+    QAccessible::installUpdateHandler([](QAccessibleEvent *event) {
+        if (event->object() && event->object()->objectName() == u"flowStrip")
+            events.append(event->type());
+    });
+    const auto restore = qScopeGuard([] { QAccessible::installUpdateHandler(nullptr); });
+    strip->setState(computeWindowState(input(6, 1, summary(0))));
+    QVERIFY(events.contains(QAccessible::NameChanged));
+    events.clear();
+    strip->setState(computeWindowState(input(6, 1, summary(0)))); // the same step
+    QVERIFY(!events.contains(QAccessible::NameChanged));
 }
 
 void TestAppWindowState::resultSummary()
@@ -537,14 +620,6 @@ void TestAppWindowState::disabledHasReason()
         QCOMPARE(bar.renameButton()->accessibleDescription(), info.reason);
         QVERIFY2(visibleLabelWithText(&bar, info.reason), name);
     }
-}
-
-void TestAppWindowState::flowStripNoMouseFocus()
-{
-    FlowStrip strip(nullptr);
-    QCOMPARE(strip.focusPolicy(), Qt::TabFocus);
-    for (QToolButton *b : strip.findChildren<QToolButton *>())
-        QCOMPARE(b->focusPolicy(), Qt::TabFocus);
 }
 
 void TestAppWindowState::progressAfterOneSecond()

@@ -15,6 +15,7 @@
 #include "rules/numberingrule.h"
 #include "rules/replacerule.h"
 #include "temptree.h"
+#include "theme/tokens.h"
 #include "ui/windowstate.h"
 #include "widgets/actionbar.h"
 #include "widgets/emptystate.h"
@@ -453,8 +454,7 @@ void TestMainWindow::conflictTipShown()
 
 void TestMainWindow::flowStepsWhenBlocked()
 {
-    // S01, ui-design 5.3: blocked rows with new names make step 2 done; a click on step 3
-    // selects the first problem row.
+    // S01, ui-design 5.3: blocked rows with new names make step 2 done, so step 3 is current.
     Fixture f;
     f.window.show();
     QVERIFY(QTest::qWaitForWindowActive(&f.window));
@@ -462,17 +462,8 @@ void TestMainWindow::flowStepsWhenBlocked()
     f.window.ruleModel().insertRule(0, regexRemoveDigits());
     QCOMPARE(f.window.currentPreview().summary.willChange, 0);
     QCOMPARE(f.window.currentPreview().summary.conflicts, 2);
-    QCOMPARE(f.child<QToolButton>("flowStep2")->accessibleName(),
-             QStringLiteral("Step 2 of 3, Add rules, done"));
-    QCOMPARE(f.child<QToolButton>("flowStep3")->accessibleName(),
+    QCOMPARE(f.child<FlowStrip>("flowStrip")->accessibleDescription(),
              QStringLiteral("Step 3 of 3, Rename, current"));
-
-    f.child<QToolButton>("flowStep3")->click();
-    auto *table = f.child<ItemTableView>("itemTable");
-    QVERIFY(table);
-    QTRY_COMPARE(QApplication::focusWidget(), table);
-    QVERIFY(table->currentIndex().isValid());
-    QCOMPARE(table->currentIndex().row(), 0);
 }
 
 void TestMainWindow::conflictTipNarrow()
@@ -580,15 +571,15 @@ void TestMainWindow::noEmptyStatusBar()
 
 void TestMainWindow::flowStripIsThin()
 {
-    // M22, mockup .flow: one row of steps, padding 5 px, a separator under it.
+    // M22, O01: one row of steps, inset space-1 above and below, a separator under it.
     Fixture f;
     f.window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&f.window));
     QWidget *slot = f.window.flowStripSlot();
-    auto *step = f.child<QToolButton>("flowStep1");
+    auto *step = f.child<QLabel>("flowStep1");
     QVERIFY(f.child<QFrame>("flowStripSeparator"));
     QVERIFY(slot->isAncestorOf(f.child<QFrame>("flowStripSeparator")));
-    QVERIFY2(slot->height() <= step->height() + 2 * 5 + 1,
+    QVERIFY2(slot->height() <= step->height() + 2 * tokens::space1 + 1,
              qPrintable(QStringLiteral("%1 %2").arg(slot->height()).arg(step->height())));
 }
 
@@ -678,10 +669,10 @@ void TestMainWindow::tabOrder()
             f.window.rulePanel()->currentEditor()->findChild<QLineEdit *>(QStringLiteral("text"));
     QVERIFY(text);
 
-    // ui-design 14: toolbar, flow strip, rule list, rule editor, chain options, filter, table,
-    // action bar.
-    const QList<QWidget *> expected{f.child<FlowStrip>("flowStrip"),
-                                    f.window.rulePanel()->ruleList(),
+    // ui-design 14, O03b: toolbar, rule list, rule editor, chain options, filter, table, action
+    // bar. The flow strip is not a stop.
+    QCOMPARE(f.child<FlowStrip>("flowStrip")->focusPolicy(), Qt::NoFocus);
+    const QList<QWidget *> expected{f.window.rulePanel()->ruleList(),
                                     text,
                                     f.child<QToolButton>("chainOptionsHeader"),
                                     f.child<QLineEdit>("filterField"),
@@ -796,9 +787,9 @@ void TestMainWindow::tertiaryButtonsHaveNoFrame()
 {
     // D4: the tertiary buttons outside the toolbar draw no frame until hover.
     Fixture f;
-    for (const char *name : {"moveUpButton", "moveDownButton", "duplicateButton", "deleteButton",
-                             "previousProblemButton", "nextProblemButton", "messageBarClose",
-                             "chainOptionsHeader", "flowStep1", "flowStep3"}) {
+    for (const char *name :
+         {"moveUpButton", "moveDownButton", "duplicateButton", "deleteButton",
+          "previousProblemButton", "nextProblemButton", "messageBarClose", "chainOptionsHeader"}) {
         auto *b = f.window.findChild<QToolButton *>(QString::fromLatin1(name));
         QVERIFY2(b, name);
         QVERIFY2(qobject_cast<TertiaryButton *>(b), name);
