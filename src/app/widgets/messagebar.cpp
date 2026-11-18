@@ -183,7 +183,7 @@ void MessageBar::updateColors()
         // design-tokens 4.5 "Message bar action": `text`, never `accent` on a tint; disabled
         // `text-dim`.
         QPalette action;
-        action.setColor(QPalette::ButtonText, base.color(QPalette::WindowText));
+        action.setColor(QPalette::ButtonText, base.color(QPalette::Text));
         action.setColor(QPalette::Disabled, QPalette::ButtonText, colors.stateNeutral);
         button->setPalette(action);
     }
