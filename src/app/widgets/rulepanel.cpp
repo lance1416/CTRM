@@ -56,10 +56,9 @@ namespace ctrm::app {
 
 namespace {
 
-constexpr int kToolIconSize = tokens::iconS; // the error icon in a rule row
-constexpr int kEmptyTextChars = 40;
-constexpr int kRuleHandleWidth = tokens::space2; // the drag area between the list and the editor //
-                                                 // the line length of an empty-state text (4.6)
+constexpr int kToolIconSize = tokens::iconS;     // the error icon in a rule row
+constexpr int kEmptyTextChars = 40;              // the line length of an empty-state text (4.6)
+constexpr int kRuleHandleWidth = tokens::space2; // the drag area between the list and the editor
 constexpr int kSummarySpacing = 2;               // between the two lines of a rule row
 
 // Two lines for each rule: the check box, "<position> <type>" and the error icon; under them,
@@ -185,10 +184,6 @@ bool isDeleteKey(const QKeyEvent *event)
     return false;
 }
 
-// The editor area scrolls only up and down. Its minimum width is that of the widest editor, so
-// the rule panel cannot be narrower than an editor (ui-design 4.4).
-// A fade at the bottom edge of the editor viewport while the page is cut there (ui-design 4.4,
-// M06): from transparent to the window colour. It takes no mouse events.
 // The empty-state column: the title, the text and Add Rule. On macOS, a box layout puts a push
 // button lower by the top margin of its style; this layout keeps the visible gap from the text
 // to the button at space-3 (design-tokens 4.6).
@@ -220,6 +215,8 @@ private:
     QWidget *m_button;
 };
 
+// A fade at the bottom edge of the editor viewport while the page is cut there (ui-design 4.4,
+// M06): from transparent to the window colour. It takes no mouse events.
 class BottomFade : public QWidget
 {
 public:
@@ -248,6 +245,8 @@ protected:
     }
 };
 
+// The editor area scrolls only up and down. Its minimum width is that of the widest editor, so
+// the rule panel cannot be narrower than an editor (ui-design 4.4).
 class EditorScrollArea : public QScrollArea
 {
 public:

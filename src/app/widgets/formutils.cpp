@@ -50,9 +50,12 @@ bool isFontOrStyleChange(const QEvent *event)
 }
 
 // The style margins of the layout item of w (the macOS focus ring space): the widget size less
-// the size that a layout sees. Also for a hidden widget.
+// the size that a layout sees. Also for a hidden widget. w must have a parent: QWidgetItem
+// sees a window as empty, so a window has no margins here.
 QSize layoutItemMargins(QWidget *w)
 {
+    if (w->isWindow())
+        return {};
     const QSizePolicy policy = w->sizePolicy();
     if (w->isHidden() && !policy.retainSizeWhenHidden()) {
         QSizePolicy keep = policy; // QWidgetItem gives 0 for a hidden widget
@@ -424,8 +427,8 @@ QWidget *makeWrappingCheckBox(QCheckBox *check, const QString &text)
     check->setText(QString());
     check->setAccessibleName(text);
     check->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    layout->addWidget(check, 0, Qt::AlignTop); // a parent first: layoutItemMargins needs it
     check->setFixedHeight(formControlHeight(check) + layoutItemMargins(check).height());
-    layout->addWidget(check, 0, Qt::AlignTop);
     layout->addWidget(new WrappingCheckLabel(check, text), 1);
     return row;
 }

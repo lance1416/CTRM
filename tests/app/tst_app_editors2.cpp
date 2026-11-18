@@ -713,6 +713,12 @@ void TestAppEditors2::chainOptionsLabelsWrap()
     QVERIFY(text->height() >= 2 * text->fontMetrics().lineSpacing());
     QVERIFY(text->mapTo(&w, QPoint(0, text->height())).y() <= w.height());
 
+    // The boxes have the group height (20 px visible), as in the rule editors (C03).
+    for (const char *name : {"portableNames", "autoResolveDuplicates", "folderExtensions"}) {
+        auto *check = child<QCheckBox>(&w, name);
+        QCOMPARE(ctrm::test::visualRect(check, &w).height(), tokens::controlH - tokens::space1);
+    }
+
     QVERIFY(portable->isChecked());
     QTest::mouseClick(text, Qt::LeftButton, {}, QPoint(4, 4));
     QVERIFY(!portable->isChecked());
