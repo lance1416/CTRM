@@ -8,6 +8,7 @@
 #include "presets/preset.h"
 #include "rules/rulesummary.h"
 #include "text/messages.h"
+#include "theme/tokens.h"
 #include "theme/typography.h"
 #include "widgets/buttonstyle.h"
 
@@ -58,6 +59,7 @@ HistoryWindow::HistoryWindow(HistoryStore &store, QWidget *parent)
     , m_operations(new QStandardItemModel(0, 3, this))
     , m_operationTable(new QTableView(this))
     , m_detail(new QLabel(this))
+    , m_detailNote(new QLabel(this))
     , m_detailError(makeCaption("historyDetailError", this))
     , m_detailKeep(makeCaption("historyDetailKeep", this))
     , m_loadRules(makeButton(tr("Load Rules"), "loadRules", this))
@@ -109,6 +111,10 @@ HistoryWindow::HistoryWindow(HistoryStore &store, QWidget *parent)
     m_detail->setWordWrap(true);
     m_detail->setTextFormat(Qt::PlainText);
     m_detail->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    m_detailNote->setObjectName(QStringLiteral("historyDetailNote"));
+    m_detailNote->setWordWrap(true);
+    m_detailNote->setTextFormat(Qt::PlainText);
+    m_detailNote->setTextInteractionFlags(Qt::TextSelectableByMouse);
     m_loadRules->setFlat(true); // tertiary
     // M13: the macOS style places a normal button by its bezel, but a flat button by its widget
     // rect, so Load Rules was 2 px higher. All buttons of the row use the widget rect.
@@ -116,19 +122,26 @@ HistoryWindow::HistoryWindow(HistoryStore &store, QWidget *parent)
          {m_loadRules, m_clear, m_showFile, m_markComplete, m_rollBack, m_retryRollBack, m_undo})
         b->setAttribute(Qt::WA_LayoutUsesWidgetRect);
 
+    // R6-09: the detail lines are a section: space-3 above them (with the splitter handle),
+    // space-1 between them, space-2 under them.
+    auto *splitter = new QSplitter(Qt::Vertical, this);
     auto *detailPane = new QWidget(this);
     auto *detailLayout = new QVBoxLayout(detailPane);
     m_detailLayout = detailLayout;
-    detailLayout->setContentsMargins(0, 0, 0, 0);
-    detailLayout->addWidget(m_detail);
-    detailLayout->addWidget(m_detailError);
-    detailLayout->addWidget(m_detailKeep);
+    detailLayout->setContentsMargins(0, qMax(0, tokens::space3 - splitter->handleWidth()), 0, 0);
+    detailLayout->setSpacing(tokens::space2);
+    auto *lines = new QVBoxLayout;
+    lines->setSpacing(tokens::space1);
+    lines->addWidget(m_detail);
+    lines->addWidget(m_detailNote);
+    lines->addWidget(m_detailError);
+    lines->addWidget(m_detailKeep);
+    detailLayout->addLayout(lines);
     detailLayout->addWidget(m_operationTable, 1);
     // Takes the free height when the operations table is hidden (damaged batch): the lines
     // stay together at the top.
     detailLayout->addStretch(0);
 
-    auto *splitter = new QSplitter(Qt::Vertical, this);
     splitter->addWidget(m_batches);
     splitter->addWidget(detailPane);
     splitter->setStretchFactor(0, 1);
@@ -220,6 +233,8 @@ void HistoryWindow::selectionChanged()
 void HistoryWindow::showDetail(const BatchSummary *s)
 {
     m_operations->removeRows(0, m_operations->rowCount());
+    m_detailNote->clear();
+    m_detailNote->hide();
     m_detailError->clear();
     m_detailError->hide();
     m_detailKeep->hide();
@@ -310,7 +325,9 @@ void HistoryWindow::showDetail(const BatchSummary *s)
             lines.append(line);
         }
     }
-    m_detail->setText(lines.join(u'\n'));
+    m_detail->setText(lines.takeFirst());
+    m_detailNote->setText(lines.join(u'\n'));
+    m_detailNote->setVisible(!lines.isEmpty());
     if (!rec)
         return;
 

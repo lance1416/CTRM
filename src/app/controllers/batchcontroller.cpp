@@ -8,6 +8,8 @@
 #include "mainwindow.h"
 #include "models/itemtablemodel.h"
 #include "text/plural.h"
+#include "theme/icons.h"
+#include "theme/tokens.h"
 #include "widgets/actionbar.h"
 #include "widgets/itemtableview.h"
 #include "widgets/messagebar.h"
@@ -15,6 +17,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
+#include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QStatusBar>
@@ -22,6 +25,8 @@
 namespace ctrm::app {
 
 namespace {
+
+constexpr int kAlertIconSize = 64; // the icon of a macOS alert
 
 // The reason text after "Skipped: " (ui-design 9.4) and the question count of a status.
 QString skipReason(Status status)
@@ -72,20 +77,9 @@ QString skipText(const SkipQuestion &q)
 
 bool defaultConfirmSkip(QWidget *parent, const SkipQuestion &q)
 {
-    QMessageBox box(parent);
-    box.setWindowModality(Qt::WindowModal);
-    box.setIcon(QMessageBox::Question);
-    const QString items =
-            numerus(BatchController::tr("%n item(s)", nullptr, q.skipCount), q.skipCount);
-    box.setText(BatchController::tr("Skip %1 and rename %2?").arg(items).arg(q.renameCount));
-    box.setInformativeText(skipText(q));
-    box.addButton(QMessageBox::Cancel);
-    QPushButton *skip =
-            box.addButton(BatchController::tr("Skip and Rename"), QMessageBox::AcceptRole);
-    box.setDefaultButton(skip);
-    box.setEscapeButton(QMessageBox::Cancel);
-    box.exec();
-    return box.clickedButton() == skip;
+    const std::unique_ptr<QMessageBox> box = makeSkipConfirmBox(parent, q);
+    box->exec();
+    return box->clickedButton() && box->buttonRole(box->clickedButton()) == QMessageBox::AcceptRole;
 }
 
 int countOf(const QList<ReportRow> &rows, ReportRow::Result result)
@@ -95,6 +89,28 @@ int countOf(const QList<ReportRow> &rows, ReportRow::Result result)
 }
 
 } // namespace
+
+std::unique_ptr<QMessageBox> makeSkipConfirmBox(QWidget *parent, const SkipQuestion &q)
+{
+    auto box = std::make_unique<QMessageBox>(parent);
+    box->setWindowModality(Qt::WindowModal);
+    // The app icon, as macOS alerts show it; not the generic question mark (R6-08).
+    box->setIconPixmap(
+            appIcon().pixmap(QSize(kAlertIconSize, kAlertIconSize),
+                             parent ? parent->devicePixelRatioF() : qApp->devicePixelRatio()));
+    const QString items =
+            numerus(BatchController::tr("%n item(s)", nullptr, q.skipCount), q.skipCount);
+    box->setText(BatchController::tr("Skip %1 and rename %2?").arg(items).arg(q.renameCount));
+    box->setInformativeText(skipText(q));
+    if (auto *info = box->findChild<QLabel *>(QStringLiteral("qt_msgbox_informativelabel")))
+        info->setMinimumWidth(tokens::fieldWMax); // each sentence wraps at most once (R6-08)
+    box->addButton(QMessageBox::Cancel);
+    QPushButton *skip =
+            box->addButton(BatchController::tr("Skip and Rename"), QMessageBox::AcceptRole);
+    box->setDefaultButton(skip);
+    box->setEscapeButton(QMessageBox::Cancel);
+    return box;
+}
 
 BatchController::BatchController(MainWindow &w, AppContext &ctx, QObject *parent)
     : QObject(parent)

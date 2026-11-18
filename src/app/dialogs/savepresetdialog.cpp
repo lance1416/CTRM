@@ -3,6 +3,7 @@
 
 #include "dialogs/dialoglayout.h"
 #include "widgets/buttonstyle.h"
+#include "widgets/formutils.h"
 
 #include <QDialogButtonBox>
 #include <QFormLayout>
@@ -34,6 +35,12 @@ SavePresetDialog::SavePresetDialog(const QStringList &userNames, const QStringLi
 
     m_form->addRow(tr("Preset name:"), m_edit);
     m_form->addRow(QString(), m_note); // the dimmed line under the field
+    // The macOS style keeps fields at their size hint: the note must fill the field column.
+    m_form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+    applyFormRhythm(m_form);
+    // The name field is field-w-max wide, so a normal name shows in full, and the note wraps at the
+    // field width (ui-design 11.3, audit R6-07). The rhythm keeps a fixed width.
+    m_edit->setFixedWidth(m_edit->maximumWidth());
 
     auto *box = new QDialogButtonBox(this);
     QPushButton *cancel = box->addButton(QDialogButtonBox::Cancel);

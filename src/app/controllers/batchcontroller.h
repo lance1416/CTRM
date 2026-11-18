@@ -9,6 +9,7 @@
 #include <QDateTime>
 #include <QHash>
 #include <QList>
+#include <QMessageBox>
 #include <QObject>
 #include <QPointer>
 #include <QString>
@@ -34,6 +35,11 @@ struct SkipQuestion
     int other = 0; // missing items and rule errors
     int cascadeCount = 0;
 };
+
+// The question before "Skip blocked items" as a message box (ui-design 9.4): the app icon, and
+// the text at least field-w-max wide, so that each sentence wraps at most once (audit R6-08). The
+// Skip and Rename button has the AcceptRole.
+std::unique_ptr<QMessageBox> makeSkipConfirmBox(QWidget *parent, const SkipQuestion &q);
 
 enum class FailureChoice { RollBack, Keep };
 

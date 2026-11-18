@@ -17,6 +17,7 @@
 #include "rules/replacerule.h"
 #include "temptree.h"
 #include "text/messages.h"
+#include "theme/tokens.h"
 #include "widgets/itemtableview.h"
 #include "widgets/rulepanel.h"
 
@@ -180,6 +181,7 @@ private slots:
     void undoBatchButtonByState();
     void damagedRow();
     void undoOfLabel();
+    void detailSpacing();
     void undoOlderBatch();
     void secondsWhenSameMinute();
     void reportLayout();
@@ -566,11 +568,41 @@ void TestHistory::undoOfLabel()
     w.refresh();
     w.selectBatch(undo.batchId);
     QVERIFY(!shown(&w, "undoBatch"));
-    // M13: an undo batch also has its "Batch:" line.
+    // M13: an undo batch also has its "Batch:" line. The note is the next line (R6-09).
     QCOMPARE(w.findChild<QLabel *>(QStringLiteral("historyDetail"))->text(),
-             QStringLiteral("Batch: %1 - Undo of %2\nThis batch is an undo. It cannot be undone.")
+             QStringLiteral("Batch: %1 - Undo of %2")
                      .arg(HistoryModel::whenText(undo, all), originalWhen));
+    QCOMPARE(w.findChild<QLabel *>(QStringLiteral("historyDetailNote"))->text(),
+             QStringLiteral("This batch is an undo. It cannot be undone."));
     QCOMPARE(f.summary(original).state, BatchState::Undone);
+}
+
+// R6-09: the detail lines are a section between the two tables: space-3 above, space-2 under,
+// space-1 between the lines.
+void TestHistory::detailSpacing()
+{
+    Fixture f;
+    f.renameOld({"old_a.txt"});
+    QVERIFY(f.run([&] { f.history.quickUndo(); }));
+    HistoryWindow w(f.ctx.history(), nullptr);
+    w.refresh();
+    w.selectBatch(f.ctx.history().list().first().batchId);
+    w.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&w));
+    const auto rect = [&w](const char *name) {
+        auto *widget = w.findChild<QWidget *>(QLatin1StringView(name));
+        return widget && widget->isVisible()
+                       ? QRect(widget->mapTo(&w, QPoint(0, 0)), widget->size())
+                       : QRect();
+    };
+    const QRect batches = rect("historyBatches");
+    const QRect detail = rect("historyDetail");
+    const QRect note = rect("historyDetailNote");
+    const QRect operations = rect("historyOperations");
+    QVERIFY(batches.isValid() && detail.isValid() && note.isValid() && operations.isValid());
+    QCOMPARE(detail.top() - batches.bottom() - 1, tokens::space3);
+    QCOMPARE(note.top() - detail.bottom() - 1, tokens::space1);
+    QCOMPARE(operations.top() - note.bottom() - 1, tokens::space2);
 }
 
 void TestHistory::undoOlderBatch()

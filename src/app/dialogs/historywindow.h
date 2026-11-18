@@ -47,7 +47,8 @@ private:
     QStandardItemModel *m_operations;
     QTableView *m_operationTable;
     QVBoxLayout *m_detailLayout = nullptr;
-    QLabel *m_detail;
+    QLabel *m_detail;     // the "Batch:" line
+    QLabel *m_detailNote; // the lines under it
     QLabel *m_detailError;
     QLabel *m_detailKeep;
     QPushButton *m_loadRules;

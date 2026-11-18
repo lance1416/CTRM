@@ -19,11 +19,15 @@
 #include "settings.h"
 #include "theme/tokens.h"
 
+#include <QApplication>
 #include <QDialog>
 #include <QFormLayout>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLayout>
+#include <QLineEdit>
+#include <QMessageBox>
+#include <QPushButton>
 #include <QSettings>
 #include <QSpinBox>
 #include <QTableView>
@@ -78,6 +82,8 @@ private slots:
     void tableRowHeight();
     void preferencesSections();
     void aboutRowGaps();
+    void savePresetWidth();
+    void skipConfirmBox();
 };
 
 void TestAppDialogs::insets_data()
@@ -211,6 +217,51 @@ void TestAppDialogs::aboutRowGaps()
                                                                .arg(label->height())
                                                                .arg(needed)));
     }
+}
+
+// R6-07: the name field is field-w-max wide, and the note wraps at the field width.
+void TestAppDialogs::savePresetWidth()
+{
+    SavePresetDialog d({QStringLiteral("Photo Trip")}, {}, QStringLiteral("My Rules"), nullptr);
+    d.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&d));
+    auto *form = d.findChild<QFormLayout *>();
+    auto *edit = d.findChild<QLineEdit *>(QStringLiteral("presetNameEdit"));
+    auto *note = d.findChild<QLabel *>(QStringLiteral("presetNameNote"));
+    QVERIFY(form && edit && note);
+    int row = -1;
+    QFormLayout::ItemRole role;
+    form->getWidgetPosition(edit, &row, &role);
+    QCOMPARE(form->itemAt(row, QFormLayout::FieldRole)->geometry().width(), tokens::fieldWMax);
+    QVERIFY2(d.width() >= 400, qPrintable(QString::number(d.width())));
+
+    edit->setText(QStringLiteral("Photo Trip")); // the note shows
+    QApplication::processEvents();
+    d.layout()->activate();
+    QVERIFY(note->isVisible());
+    QCOMPARE(note->width(), tokens::fieldWMax);
+    QCOMPARE(note->height(), note->heightForWidth(note->width()));
+}
+
+// R6-08: the Skip and Rename question has the app icon, and its text is not narrow.
+void TestAppDialogs::skipConfirmBox()
+{
+    SkipQuestion q;
+    q.skipCount = 2;
+    q.renameCount = 4;
+    q.conflicts = 2;
+    q.cascadeCount = 1;
+    const std::unique_ptr<QMessageBox> box = makeSkipConfirmBox(nullptr, q);
+    QCOMPARE(box->buttonRole(box->defaultButton()), QMessageBox::AcceptRole); // Skip and Rename
+    QCOMPARE(box->buttonRole(box->escapeButton()), QMessageBox::RejectRole);
+    QCOMPARE(box->icon(), QMessageBox::NoIcon);
+    QVERIFY(!box->iconPixmap().isNull());
+    QCOMPARE(box->iconPixmap().deviceIndependentSize().toSize(), QSize(64, 64));
+    box->show();
+    QVERIFY(QTest::qWaitForWindowExposed(box.get()));
+    auto *info = box->findChild<QLabel *>(QStringLiteral("qt_msgbox_informativelabel"));
+    QVERIFY(info);
+    QVERIFY2(info->width() >= tokens::fieldWMax, qPrintable(QString::number(info->width())));
 }
 
 QTEST_MAIN(TestAppDialogs)
