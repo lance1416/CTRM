@@ -47,6 +47,8 @@
 #include <QToolButton>
 
 #include <algorithm>
+#include <functional>
+#include <utility>
 
 namespace ctrm::app {
 
@@ -312,10 +314,14 @@ class RuleSplitter : public PlainSplitter
 public:
     // editor is a scroll area with pages: QScrollArea keeps an old size hint of its widget, so
     // the splitter asks the pages.
-    RuleSplitter(QWidget *listPage, QListView *list, QScrollArea *editor)
+    // openHeight: the height that the open Chain options take from this splitter. The list
+    // height does not count it: the editor gives it up (C06).
+    RuleSplitter(QWidget *listPage, QListView *list, QScrollArea *editor,
+                 std::function<int()> openHeight)
         : PlainSplitter(Qt::Vertical)
         , m_list(list)
         , m_editor(editor)
+        , m_openHeight(std::move(openHeight))
     {
         setChildrenCollapsible(false);
         addWidget(listPage);
@@ -363,13 +369,20 @@ private:
         if (m_userSizes || count() != 2)
             return;
         const int total = height() - handleWidth();
+        // The height as if Chain options were closed.
+        const int planned = total + (m_openHeight ? m_openHeight() : 0);
         QWidget *list = widget(0);
         const int listMin = list->minimumSizeHint().height();
         const int listHint = std::max(listMin, list->sizeHint().height());
         // The tallest page, not the current one: the list height does not change when the
         // user selects another rule (R1-01).
         const int editorHint = tallestPage() + 2 * m_editor->frameWidth();
-        const int listHeight = wholeRows(total - editorHint, listMin, listHint, editorHint, total);
+        int listHeight = wholeRows(planned - editorHint, listMin, listHint, editorHint, planned);
+        // The editor keeps its minimum: then the list gives up height, in whole rows.
+        const int editorMin = m_editor->minimumSizeHint().height();
+        const int row = m_list->sizeHintForRow(0);
+        while (listHeight > listMin && total - listHeight < editorMin)
+            listHeight = std::max(listMin, listHeight - std::max(1, row));
         const QList<int> wanted{listHeight, std::max(0, total - listHeight)};
         if (sizes() != wanted) {
             const int before = sizes().value(0);
@@ -421,6 +434,7 @@ private:
 
     QListView *m_list;
     QScrollArea *m_editor;
+    std::function<int()> m_openHeight;
     bool m_userSizes = false;
 };
 
@@ -555,7 +569,8 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     m_scroll = new EditorScrollArea;
     m_scroll->setWidget(m_editors);
 
-    m_splitter = new RuleSplitter(listPage, m_list, m_scroll);
+    m_splitter = new RuleSplitter(listPage, m_list, m_scroll,
+                                  [this] { return m_chainOptions->openHeight(); });
 
     auto *layout = new QVBoxLayout(this);
     layout->addWidget(header);

@@ -115,6 +115,7 @@ private slots:
     void primaryAddRuleIsPlainButton();
     void editorsFitPanelWidth();
     void editorFadeWhenCut();
+    void listKeepsHeightWhenChainOpens();
 };
 
 void TestAppRulePanel::factory()
@@ -759,6 +760,34 @@ void TestAppRulePanel::editorsFitPanelWidth()
     f.panel->setFont(big);
     QApplication::processEvents();
     check("large font");
+}
+
+void TestAppRulePanel::listKeepsHeightWhenChainOpens()
+{
+    // C06 (ui-design 8.10): when Chain options opens, the editor area gives up the height; the
+    // rule list keeps its height.
+    Fixture f({"replace", "insert", "remove", "numbering"});
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    auto *chain = f.panel->findChild<ChainOptionsWidget *>();
+    for (const int height : {800, 640}) {
+        f.window.resize(f.window.width(), height);
+        QApplication::processEvents();
+        const int before = f.panel->ruleList()->height();
+        chain->setOpen(true);
+        QApplication::processEvents();
+        QVERIFY2(f.panel->ruleList()->height() == before,
+                 qPrintable(QStringLiteral("%1: %2 != %3")
+                                    .arg(height)
+                                    .arg(f.panel->ruleList()->height())
+                                    .arg(before)));
+        chain->setOpen(false);
+        QApplication::processEvents();
+        QVERIFY2(f.panel->ruleList()->height() == before,
+                 qPrintable(QStringLiteral("%1 closed: %2 != %3")
+                                    .arg(height)
+                                    .arg(f.panel->ruleList()->height())
+                                    .arg(before)));
+    }
 }
 
 #include "tst_app_rulepanel.moc"

@@ -16,6 +16,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QStyle>
@@ -362,6 +363,71 @@ QWidget *makeInlineField(QWidget *first, const QList<QWidget *> &more)
         layout->addWidget(control);
     layout->addStretch(1);
     return field;
+}
+
+namespace {
+
+// The label of a wrapping check box: a click changes the check box, and the first text line
+// stays centred on the box when the font or the style changes.
+class WrappingCheckLabel : public QLabel
+{
+public:
+    WrappingCheckLabel(QCheckBox *check, const QString &text)
+        : QLabel(text)
+        , m_check(check)
+    {
+        setWordWrap(true);
+        setTextFormat(Qt::PlainText);
+        setAlignment(Qt::AlignLeft | Qt::AlignTop);
+        setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+        updateMargin();
+    }
+
+    QSize minimumSizeHint() const override { return {0, QLabel::minimumSizeHint().height()}; }
+
+protected:
+    void mouseReleaseEvent(QMouseEvent *event) override
+    {
+        QLabel::mouseReleaseEvent(event);
+        if (event->button() == Qt::LeftButton && rect().contains(event->position().toPoint()) &&
+            m_check->isEnabled()) {
+            m_check->click();
+            m_check->setFocus(Qt::MouseFocusReason);
+        }
+    }
+
+    void changeEvent(QEvent *event) override
+    {
+        QLabel::changeEvent(event);
+        if (event->type() == QEvent::FontChange || event->type() == QEvent::StyleChange)
+            updateMargin();
+    }
+
+private:
+    void updateMargin()
+    {
+        const int box = formControlHeight(m_check);
+        setContentsMargins(0, std::max(0, (box - fontMetrics().height()) / 2), 0, 0);
+    }
+
+    QCheckBox *m_check;
+};
+
+} // namespace
+
+QWidget *makeWrappingCheckBox(QCheckBox *check, const QString &text)
+{
+    auto *row = new QWidget;
+    auto *layout = new QHBoxLayout(row);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(tokens::space1);
+    check->setText(QString());
+    check->setAccessibleName(text);
+    check->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    check->setFixedHeight(formControlHeight(check) + layoutItemMargins(check).height());
+    layout->addWidget(check, 0, Qt::AlignTop);
+    layout->addWidget(new WrappingCheckLabel(check, text), 1);
+    return row;
 }
 
 int formControlHeight(const QWidget *w)

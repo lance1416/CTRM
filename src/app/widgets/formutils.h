@@ -5,6 +5,7 @@
 #include <QObject>
 #include <QPointer>
 
+class QCheckBox;
 class QComboBox;
 class QFormLayout;
 class QLabel;
@@ -27,6 +28,12 @@ QLayout *makeFieldGroup(const QList<QWidget *> &controls);
 
 // A control with its sub-fields on one line: QHBoxLayout, margins 0.
 QWidget *makeInlineField(QWidget *first, const QList<QWidget *> &more);
+
+// A check box with a label that wraps: an empty QCheckBox and a word-wrapped QLabel with text,
+// on one line (QHBoxLayout, margins 0). The first text line is centred on the box. A click on the
+// label changes the check box; the check box has text as its accessible name. A long label then
+// never makes its column wider (ui-design 4.1, 8.10).
+QWidget *makeWrappingCheckBox(QCheckBox *check, const QString &text);
 
 // Makes the label baseline the same as the text baseline of firstControl (ui-design 6.2).
 // It applies again when the font or the style of the label or the control changes.

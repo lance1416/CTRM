@@ -30,6 +30,7 @@
 #include <QSpinBox>
 #include <QStyleOptionButton>
 #include <QToolButton>
+#include <QVBoxLayout>
 #include <QtTest>
 
 #include <functional>
@@ -124,6 +125,8 @@ private slots:
     void extensionFolderNote();
     void chainOptionsDefaults();
     void chainOptionsChangedCount();
+    void chainOptionsHeaderChevron();
+    void chainOptionsLabelsWrap();
     void sameLabelColumnAllPages();
     void mnemonicsReachAControl();
     void setRuleEmitsNothing();
@@ -611,10 +614,13 @@ void TestAppEditors2::chainOptionsDefaults()
     QVERIFY(portable->isChecked());
     QVERIFY(!duplicates->isChecked());
     QVERIFY(!folders->isChecked());
-    QCOMPARE(portable->text(),
+    // The text is in a wrapping label next to the check box (O08, C06); the check box has it as
+    // its accessible name.
+    QCOMPARE(portable->accessibleName(),
              QStringLiteral("Use portable names (check Windows rules on all systems)"));
-    QCOMPARE(duplicates->text(), QStringLiteral("Add a number to duplicate names: x (2).txt"));
-    QCOMPARE(folders->text(), QStringLiteral("Treat folder names as name + extension"));
+    QCOMPARE(duplicates->accessibleName(),
+             QStringLiteral("Add a number to duplicate names: x (2).txt"));
+    QCOMPARE(folders->accessibleName(), QStringLiteral("Treat folder names as name + extension"));
     auto *header = child<QToolButton>(&w, "chainOptionsHeader");
     QCOMPARE(header->text(), QStringLiteral("Chain options"));
     QCOMPARE(w.options(), ChainOptions{});
@@ -648,6 +654,69 @@ void TestAppEditors2::chainOptionsChangedCount()
     QCOMPARE(changed.count(), 2);
     QCOMPARE(header->text(), QStringLiteral("Chain options (1 changed)"));
     QVERIFY(child<QCheckBox>(&w, "autoResolveDuplicates")->isChecked());
+}
+
+void TestAppEditors2::chainOptionsHeaderChevron()
+{
+    // O04 (ui-design 8.10): a 12 px chevron from the icon set, not a style arrow. The gap over the
+    // header is space-4 with a 1 px separator line in the middle.
+    QWidget host;
+    auto *layout = new QVBoxLayout(&host);
+    layout->setContentsMargins(0, 0, 0, 0);
+    auto *w = new ChainOptionsWidget(&host);
+    layout->addWidget(w);
+    layout->addStretch();
+    host.resize(400, 300);
+    host.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&host));
+    auto *header = child<QToolButton>(w, "chainOptionsHeader");
+    QCOMPARE(header->arrowType(), Qt::NoArrow);
+    QCOMPARE(header->iconSize(), QSize(tokens::iconXs, tokens::iconXs));
+    QVERIFY(!header->icon().isNull());
+    const qint64 closed = header->icon().cacheKey();
+    w->setOpen(true);
+    QVERIFY(header->icon().cacheKey() != closed);
+    w->setOpen(false);
+    QCOMPARE(header->icon().cacheKey(), closed);
+
+    auto *line = w->findChild<QWidget *>(QStringLiteral("chainOptionsSeparator"));
+    QVERIFY(line && line->isVisible());
+    QCOMPARE(line->height(), 1);
+    const QRect lineRect = ctrm::test::visualRect(line, w);
+    QCOMPARE(lineRect.top(), tokens::space2);
+    const QRect headerRect = ctrm::test::visualRect(header, w);
+    QCOMPARE(headerRect.top() - lineRect.top(), tokens::space4 - tokens::space2);
+}
+
+void TestAppEditors2::chainOptionsLabelsWrap()
+{
+    // O08, C06 (ui-design 8.10): the check box labels wrap in a narrow column and do not make the
+    // column wider. A click on a label changes its check box.
+    ChainOptionsWidget w(nullptr);
+    w.setOptions(ChainOptions{});
+    w.setOpen(true);
+    auto *portable = child<QCheckBox>(&w, "portableNames");
+    QLabel *text = nullptr;
+    for (QLabel *label : w.findChildren<QLabel *>()) {
+        if (label->text() == portable->accessibleName())
+            text = label;
+    }
+    QVERIFY(text);
+    QVERIFY(text->wordWrap());
+    const int oneLine = text->fontMetrics().horizontalAdvance(text->text());
+    QVERIFY2(w.minimumSizeHint().width() < oneLine,
+             qPrintable(QStringLiteral("%1 >= %2").arg(w.minimumSizeHint().width()).arg(oneLine)));
+    w.resize(oneLine / 2 + 60, 400);
+    w.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&w));
+    QVERIFY(text->geometry().right() < w.width());
+    QVERIFY(text->height() >= 2 * text->fontMetrics().lineSpacing());
+    QVERIFY(text->mapTo(&w, QPoint(0, text->height())).y() <= w.height());
+
+    QVERIFY(portable->isChecked());
+    QTest::mouseClick(text, Qt::LeftButton, {}, QPoint(4, 4));
+    QVERIFY(!portable->isChecked());
+    QCOMPARE(w.options().portableNames, false);
 }
 
 void TestAppEditors2::sameLabelColumnAllPages()

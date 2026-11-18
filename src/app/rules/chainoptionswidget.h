@@ -20,6 +20,9 @@ public:
     void setOptions(const ctrm::ChainOptions &o); // does not emit optionsChanged()
     ctrm::ChainOptions options() const;
     void setOpen(bool open);
+    // The height that the open check boxes now add to the closed area. 0 when closed. The rule list
+    // height does not count it (C06).
+    int openHeight() const;
     // The form of the check boxes, for LabelColumnSync.
     QFormLayout *form() const;
 
@@ -31,8 +34,11 @@ protected:
 
 private:
     void updateHeader();
+    void updateIcon();
 
     QToolButton *m_header;
+    QWidget *m_top; // the separator and the header
+    QWidget *m_separator;
     QWidget *m_body;
     QFormLayout *m_form;
     QCheckBox *m_portableNames;
