@@ -12,7 +12,6 @@
 #include <QDateTime>
 #include <QDir>
 #include <QDirIterator>
-#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QProcess>
@@ -407,13 +406,12 @@ void TstSafety::killMidBatchRecover()
                       QByteArray::number(i));
     const auto before = env.tree.checksums();
 
+    // The helper stops after step 400 and waits: no time limit here for the speed of the steps.
     QProcess helper;
-    helper.start(QStringLiteral(CTRM_CRASH_HELPER), {folder, env.historyDir.path(), "5"});
+    helper.start(QStringLiteral(CTRM_CRASH_HELPER), {folder, env.historyDir.path(), "400"});
     QVERIFY2(helper.waitForStarted(), qPrintable(helper.errorString()));
-    QElapsedTimer timer;
-    timer.start();
     int step = 0;
-    while (step < 400 && timer.elapsed() < 60000) {
+    while (step < 400) {
         if (!helper.canReadLine() && !helper.waitForReadyRead(1000)) {
             if (helper.state() == QProcess::NotRunning)
                 break;
@@ -426,7 +424,7 @@ void TstSafety::killMidBatchRecover()
         }
     }
     QVERIFY2(step >= 400, helper.readAllStandardError().constData());
-    QVERIFY(step < 1000);
+    QCOMPARE(helper.state(), QProcess::Running); // in the middle of the batch
     helper.kill();
     QVERIFY(helper.waitForFinished());
 

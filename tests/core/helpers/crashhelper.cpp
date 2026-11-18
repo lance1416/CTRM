@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// ctrm_crash_helper <folder> <historyDir> <delayMs>
+// ctrm_crash_helper <folder> <historyDir> <stopStep>
 // Makes f0000.txt ... f0999.txt in <folder> when missing, then renames them with the prefix
-// "x_" through BatchService. Sleeps <delayMs> before each rename and prints "STEP <n>" after
-// each step, so that a test can kill the process in the middle of the batch.
+// "x_" through BatchService. Prints "STEP <n>" after each step. After step <stopStep> it waits
+// in the middle of the batch until the test kills it: the test does not depend on the speed of
+// the steps (each step syncs the journal, which is slow on a loaded machine).
 #include "exec/batchservice.h"
 #include "fs/folderinfo.h"
 #include "fs/itemsource.h"
@@ -19,34 +20,6 @@ using namespace ctrm;
 
 namespace {
 
-class SlowFileSystem final : public FileSystem
-{
-public:
-    SlowFileSystem(FileSystem &inner, int delayMs)
-        : m_inner(inner)
-        , m_delayMs(delayMs)
-    {}
-    VolumeInfo volumeInfo(const QString &folder) override { return m_inner.volumeInfo(folder); }
-    std::optional<QList<DirEntry>> listFolder(const QString &folder, QString *error) override
-    {
-        return m_inner.listFolder(folder, error);
-    }
-    bool exists(const QString &path) override { return m_inner.exists(path); }
-    std::optional<FileIdentity> identity(const QString &path, IdentityType type) override
-    {
-        return m_inner.identity(path, type);
-    }
-    RenameResult renameNoReplace(const QString &from, const QString &to) override
-    {
-        QThread::msleep(m_delayMs);
-        return m_inner.renameNoReplace(from, to);
-    }
-
-private:
-    FileSystem &m_inner;
-    int m_delayMs;
-};
-
 int fail(const char *what, const QString &detail)
 {
     std::fprintf(stderr, "%s: %s\n", what, qPrintable(detail));
@@ -60,9 +33,9 @@ int main(int argc, char **argv)
     QCoreApplication app(argc, argv);
     const QStringList args = app.arguments();
     if (args.size() != 4)
-        return fail("usage", "ctrm_crash_helper <folder> <historyDir> <delayMs>");
+        return fail("usage", "ctrm_crash_helper <folder> <historyDir> <stopStep>");
     const QString folder = args[1];
-    const int delayMs = args[3].toInt();
+    const int stopStep = args[3].toInt();
 
     for (int i = 0; i < 1000; ++i) {
         QFile f(folder + QStringLiteral("/f%1.txt").arg(i, 4, 10, QLatin1Char('0')));
@@ -73,7 +46,7 @@ int main(int argc, char **argv)
     }
 
     const std::unique_ptr<FileSystem> native = createNativeFileSystem();
-    SlowFileSystem fs(*native, delayMs);
+    FileSystem &fs = *native;
     HistoryStore history(args[2]);
     BatchService service(fs, history, AppInfo{QStringLiteral("test"), {}});
 
@@ -94,9 +67,13 @@ int main(int argc, char **argv)
     if (!session)
         return fail("start", error);
     std::atomic<bool> cancel{false};
-    const RunOutcome out = session->run(cancel, [](int done, int) {
+    const RunOutcome out = session->run(cancel, [stopStep](int done, int) {
         std::printf("STEP %d\n", done);
         std::fflush(stdout);
+        if (done >= stopStep) {
+            for (;;)
+                QThread::sleep(1);
+        }
     });
     if (!out.finished)
         return fail("run", out.failure.errorText);
