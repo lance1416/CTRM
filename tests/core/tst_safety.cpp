@@ -400,18 +400,25 @@ void TstSafety::readOnlyFailureRollsBack()
 void TstSafety::killMidBatchRecover()
 {
     Env env;
+    // Few files: on a loaded machine each file write and delete waits behind the disk syncs of
+    // other processes. 100 files still leave most of the steps open at the kill.
+    constexpr int kFiles = 100;
     const QString folder = env.tree.mkdir("batch");
-    for (int i = 0; i < 1000; ++i)
-        env.tree.file(QStringLiteral("batch/f%1.txt").arg(i, 4, 10, QLatin1Char('0')),
+    for (int i = 0; i < kFiles; ++i)
+        env.tree.file(QStringLiteral("batch/f%1.txt").arg(i, 3, 10, QLatin1Char('0')),
                       QByteArray::number(i));
     const auto before = env.tree.checksums();
 
-    // The helper stops after step 400 and waits: no time limit here for the speed of the steps.
+    // The helper stops after a few of its kFiles steps and waits, so the kill is in the middle of
+    // the batch. Each step and each roll back step syncs the journal (about 2 s on a loaded
+    // machine), so the test does only a few steps.
+    constexpr int kStopStep = 20;
     QProcess helper;
-    helper.start(QStringLiteral(CTRM_CRASH_HELPER), {folder, env.historyDir.path(), "400"});
+    helper.start(QStringLiteral(CTRM_CRASH_HELPER),
+                 {folder, env.historyDir.path(), QString::number(kStopStep)});
     QVERIFY2(helper.waitForStarted(), qPrintable(helper.errorString()));
     int step = 0;
-    while (step < 400) {
+    while (step < kStopStep) {
         if (!helper.canReadLine() && !helper.waitForReadyRead(1000)) {
             if (helper.state() == QProcess::NotRunning)
                 break;
@@ -423,10 +430,12 @@ void TstSafety::killMidBatchRecover()
                 step = line.mid(5).toInt();
         }
     }
-    QVERIFY2(step >= 400, helper.readAllStandardError().constData());
+    QVERIFY2(step >= kStopStep, helper.readAllStandardError().constData());
     QCOMPARE(helper.state(), QProcess::Running); // in the middle of the batch
     helper.kill();
     QVERIFY(helper.waitForFinished());
+    const QStringList killed = namesIn(folder);
+    QCOMPARE(killed.filter(QRegularExpression(QStringLiteral("^x_"))).size(), kStopStep);
 
     const QList<BatchSummary> pending = env.service.pendingRecovery();
     QCOMPARE(pending.size(), 1);
@@ -434,7 +443,7 @@ void TstSafety::killMidBatchRecover()
     const FinishResult f = env.service.recoverRollBack(pending.first().batchId);
     QVERIFY2(f.error.isEmpty(), qPrintable(f.error));
     QCOMPARE(f.state, BatchState::RolledBack);
-    QCOMPARE(namesIn(folder).size(), 1000);
+    QCOMPARE(namesIn(folder).size(), kFiles);
     QVERIFY(!hasTempName(namesIn(folder)));
     QCOMPARE(env.tree.checksums(), before);
 }

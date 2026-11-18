@@ -1,16 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // ctrm_crash_helper <folder> <historyDir> <stopStep>
-// Makes f0000.txt ... f0999.txt in <folder> when missing, then renames them with the prefix
-// "x_" through BatchService. Prints "STEP <n>" after each step. After step <stopStep> it waits
-// in the middle of the batch until the test kills it: the test does not depend on the speed of
-// the steps (each step syncs the journal, which is slow on a loaded machine).
+// Renames each file in <folder> with the prefix "x_" through BatchService. Prints "STEP <n>" after
+// each step. After step <stopStep> it waits in the middle of the batch until the test kills it: the
+// test does not depend on the speed of the steps (each step syncs the journal, which is slow on a
+// loaded machine).
 #include "exec/batchservice.h"
 #include "fs/folderinfo.h"
 #include "fs/itemsource.h"
 #include "rules/insertrule.h"
 
 #include <QCoreApplication>
-#include <QFile>
 #include <QThread>
 
 #include <atomic>
@@ -36,14 +35,6 @@ int main(int argc, char **argv)
         return fail("usage", "ctrm_crash_helper <folder> <historyDir> <stopStep>");
     const QString folder = args[1];
     const int stopStep = args[3].toInt();
-
-    for (int i = 0; i < 1000; ++i) {
-        QFile f(folder + QStringLiteral("/f%1.txt").arg(i, 4, 10, QLatin1Char('0')));
-        if (f.exists())
-            continue;
-        if (!f.open(QIODevice::WriteOnly) || f.write(QByteArray::number(i)) < 0)
-            return fail("cannot write", f.fileName());
-    }
 
     const std::unique_ptr<FileSystem> native = createNativeFileSystem();
     FileSystem &fs = *native;
