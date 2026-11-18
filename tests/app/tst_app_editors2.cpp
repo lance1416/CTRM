@@ -130,6 +130,7 @@ private slots:
     void chainOptionsLabelsWrap();
     void joinLastWordsJoinsLastPair();
     void extensionFieldsApart();
+    void inlineGroupsEvenPitch();
     void wrappingCheckBoxRightToLeft();
     void wrappingCheckBoxFocusFrame();
     void sameLabelColumnAllPages();
@@ -487,17 +488,21 @@ void TestAppEditors2::formRhythm()
                 }
             }
             if (auto *grid = qobject_cast<QGridLayout *>(field->layout())) {
+                // R7-01: a group with an inline-field row has one even pitch for all rows.
+                bool hasInline = false;
+                for (int r = 0; r < grid->rowCount(); ++r) {
+                    QLayoutItem *second = grid->itemAtPosition(r, 1);
+                    hasInline |= second && second != grid->itemAtPosition(r, 0); // not a span
+                }
                 for (int r = 1; r < grid->rowCount(); ++r) {
                     QLayoutItem *a = grid->itemAtPosition(r - 1, 0);
                     QLayoutItem *b = grid->itemAtPosition(r, 0);
                     if (!a || !b || !a->widget() || !b->widget() || b->widget()->isHidden())
                         continue;
-                    // R5-04, R6-05: one pitch of control-h; control-h + space-1 under a row
-                    // with an inline field, so two fields never touch.
+                    // R5-04, R6-05, R7-01: one pitch of control-h; control-h + space-1 in a
+                    // group with an inline field, so a field has space-1 above and below it.
                     const int pitch = grid->cellRect(r, 0).top() - grid->cellRect(r - 1, 0).top();
-                    const bool inlineRow = grid->itemAtPosition(r - 1, 1) &&
-                                           grid->itemAtPosition(r - 1, 1) != a; // not a span
-                    QVERIFY2(pitch == (inlineRow ? controlH + space1 : controlH),
+                    QVERIFY2(pitch == (hasInline ? controlH + space1 : controlH),
                              qPrintable(
                                      at +
                                      QStringLiteral(" group row %1: pitch %2").arg(r).arg(pitch)));
@@ -877,6 +882,35 @@ void TestAppEditors2::extensionFieldsApart()
                                     .arg(box.center().y())
                                     .arg(field.center().y())));
     }
+}
+
+// R7-01 (ui-design 6.1 rule 15): all rows of the Extension action group and the Numbering
+// position group have one 28 px pitch (control-h + space-1): the centres of the radio buttons.
+void TestAppEditors2::inlineGroupsEvenPitch()
+{
+    using namespace ctrm::app::tokens;
+    const auto check = [](QWidget *e, const QStringList &names) {
+        QVERIFY(QTest::qWaitForWindowExposed(e));
+        QApplication::processEvents();
+        for (int i = 1; i < names.size(); ++i) {
+            const int pitch =
+                    ctrm::test::visualRect(child<QRadioButton>(e, qPrintable(names.at(i))), e)
+                            .center()
+                            .y() -
+                    ctrm::test::visualRect(child<QRadioButton>(e, qPrintable(names.at(i - 1))), e)
+                            .center()
+                            .y();
+            QVERIFY2(pitch == controlH + space1,
+                     qPrintable(names.at(i) + QStringLiteral(": pitch %1").arg(pitch)));
+        }
+    };
+    Fixture<ExtensionEditor, ExtensionRule> extension;
+    check(extension.editor.get(),
+          {QStringLiteral("lower"), QStringLiteral("upper"), QStringLiteral("set"),
+           QStringLiteral("add"), QStringLiteral("remove")});
+    Fixture<NumberingEditor, NumberingRule> numbering;
+    check(numbering.editor.get(), {QStringLiteral("suffix"), QStringLiteral("prefix"),
+                                   QStringLiteral("atIndex"), QStringLiteral("replaceName")});
 }
 
 // R5-08: only the last two words are joined, with a no-break space.

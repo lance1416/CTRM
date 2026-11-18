@@ -479,6 +479,10 @@ QLayout *makeFieldGroup(const QList<QWidget *> &controls)
         rows.append(row);
     }
 
+    // A group with an inline field: all rows have space-1 under them (the last row: the form
+    // gap), so the pitch is even and a field never touches a row (R6-05, R7-01, 6.1 rule 15).
+    const bool hasInline =
+            std::any_of(rows.cbegin(), rows.cend(), [](const auto &row) { return row.size() > 1; });
     auto *layout = new FieldGroupLayout;
     layout->setContentsMargins(0, 0, 0, 0);
     for (int r = 0; r < rows.size(); ++r) {
@@ -486,9 +490,7 @@ QLayout *makeFieldGroup(const QList<QWidget *> &controls)
         for (int c = 0; c < row.size(); ++c) {
             QWidget *w = row.at(c);
             const int span = row.size() == 1 ? columns + 1 : 1;
-            // A row with an inline field has space-1 under it when a row follows, so two
-            // fields never touch (R6-05, 6.1 rule 15).
-            const bool padded = row.size() > 1 && r + 1 < rows.size();
+            const bool padded = hasInline && r + 1 < rows.size();
             if (isToggle(w)) {
                 // One group row pitch of control-h (R5-04, R5-02). The form becomes the parent
                 // with the grid: addItem does not take the widget.
@@ -663,8 +665,8 @@ void fillFieldColumn(QWidget *w)
 int applyGroupRhythm(QGridLayout *grid)
 {
     // One row pitch of control-h: a check box or a radio button is centred in a control-h row
-    // (its ToggleItem); a row with an inline field and a row under it is control-h + space-1
-    // (R5-04, R6-05, 6.1 rule 15).
+    // (its ToggleItem); in a group with an inline field, a row with a row under it is
+    // control-h + space-1 (R5-04, R6-05, R7-01, 6.1 rule 15).
     grid->setVerticalSpacing(0);
     grid->setHorizontalSpacing(tokens::space2);
     int firstRow = 0;
