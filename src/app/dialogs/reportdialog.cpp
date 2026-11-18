@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "dialogs/reportdialog.h"
 
+#include "dialogs/dialoglayout.h"
 #include "models/historymodel.h"
 #include "text/plural.h"
 #include "theme/colors.h"
@@ -95,6 +96,7 @@ ReportDialog::ReportDialog(const FinishResult &result, const QDateTime &when, QW
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_table->setTextElideMode(Qt::ElideMiddle);
     m_table->verticalHeader()->hide();
+    useRowHeight(m_table);
     m_table->setShowGrid(false); // G1, as the other tables
     // M12: the names get the free width; State and Result are as wide as their content.
     QHeaderView *header = m_table->horizontalHeader();
@@ -124,10 +126,10 @@ ReportDialog::ReportDialog(const FinishResult &result, const QDateTime &when, QW
     });
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
-    auto *layout = new QVBoxLayout(this);
+    QVBoxLayout *layout = makeDialogLayout(this);
     layout->addWidget(summary);
     layout->addWidget(m_table, 1);
-    layout->addWidget(buttons);
+    addButtonRow(layout, buttons);
     resize(sizeHint().expandedTo(QSize(640, 360)));
 }
 

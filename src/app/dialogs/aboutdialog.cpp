@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "dialogs/aboutdialog.h"
 
+#include "dialogs/dialoglayout.h"
 #include "theme/icons.h"
 #include "theme/typography.h"
 #include "version.h"
@@ -66,14 +67,14 @@ AboutDialog::AboutDialog(QWidget *parent)
     close->setDefault(true);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
-    auto *layout = new QVBoxLayout(this);
+    QVBoxLayout *layout = makeDialogLayout(this);
     layout->addWidget(icon);
     layout->addWidget(name);
     layout->addWidget(version);
     layout->addWidget(band);
     layout->addWidget(tagline);
     layout->addWidget(licence);
-    layout->addWidget(buttons);
+    addButtonRow(layout, buttons);
     setFixedWidth(qMax(360, sizeHint().width()));
 }
 

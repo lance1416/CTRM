@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "dialogs/preferencesdialog.h"
 
+#include "dialogs/dialoglayout.h"
 #include "settings.h"
+#include "theme/tokens.h"
 #include "theme/typography.h"
 #include "widgets/formutils.h"
 
@@ -66,14 +68,18 @@ PreferencesDialog::PreferencesDialog(Settings &settings, ApplyMode mode, QWidget
     m_folderDrop->addItem(tr("Rename the folder itself"), int(FolderDropAnswer::RenameFolder));
     m_folderDrop->addItem(tr("Add its contents"), int(FolderDropAnswer::AddContents));
 
-    auto *layout = new QVBoxLayout(this);
+    QVBoxLayout *layout = makeDialogLayout(this);
     auto *sync = new LabelColumnSync(this);
+    // C12: the rows of a section are space-2 apart, under the title; space-4 between sections.
     const auto addSection = [&](const QString &title) {
+        if (layout->count() > 0)
+            layout->addSpacing(tokens::space4 - layout->spacing());
         layout->addWidget(sectionTitle(title, this));
         // M30: the form is in the dialog layout, not in a page widget with no margins. The
         // macOS style draws a check box past its layout rect, and such a page cut the text.
         QFormLayout *form = makeForm(nullptr);
         form->setContentsMargins(0, 0, 0, 0);
+        form->setVerticalSpacing(tokens::space2);
         layout->addLayout(form);
         sync->addForm(form);
         return form;
@@ -91,13 +97,17 @@ PreferencesDialog::PreferencesDialog(Settings &settings, ApplyMode mode, QWidget
                     makeInlineField(m_keepCount, {new QLabel(tr("batches"))}));
     history->addRow(tr("Keep for:"), makeInlineField(m_keepDays, {new QLabel(tr("days"))}));
     sync->sync(); // one field edge for the three sections
+    // C12: the two spin boxes have one width, the width of the larger range.
+    const int spinWidth = qMax(m_keepCount->sizeHint().width(), m_keepDays->sizeHint().width());
+    m_keepCount->setFixedWidth(spinWidth);
+    m_keepDays->setFixedWidth(spinWidth);
 
     if (m_mode == ApplyMode::OnAccept) {
         auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
         buttons->setObjectName(QStringLiteral("buttons"));
         connect(buttons, &QDialogButtonBox::accepted, this, &PreferencesDialog::accept);
         connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-        layout->addWidget(buttons);
+        addButtonRow(layout, buttons);
     }
     layout->setSizeConstraint(QLayout::SetFixedSize);
 

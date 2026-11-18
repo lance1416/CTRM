@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "dialogs/undopreviewdialog.h"
 
+#include "dialogs/dialoglayout.h"
 #include "models/historymodel.h"
 #include "text/messages.h"
 #include "text/plural.h"
@@ -140,6 +141,7 @@ UndoPreviewDialog::UndoPreviewDialog(const UndoPreview &preview, QWidget *parent
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
     table->setTextElideMode(Qt::ElideMiddle);
     table->verticalHeader()->hide();
+    useRowHeight(table);
     table->setShowGrid(false);
     table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     table->horizontalHeader()->setStretchLastSection(true);
@@ -177,12 +179,12 @@ UndoPreviewDialog::UndoPreviewDialog(const UndoPreview &preview, QWidget *parent
     bottom->addStretch(1);
     bottom->addWidget(reason);
     bottom->addWidget(buttons);
-    auto *layout = new QVBoxLayout(this);
+    QVBoxLayout *layout = makeDialogLayout(this);
     layout->addWidget(counts);
     layout->addLayout(weakRow);
     layout->addWidget(table, 1);
     layout->addWidget(footer);
-    layout->addLayout(bottom);
+    addButtonRow(layout, bottom);
     resize(sizeHint().expandedTo(QSize(640, 400)));
 }
 

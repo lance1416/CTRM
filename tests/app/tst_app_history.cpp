@@ -408,10 +408,20 @@ void TestHistory::damagedRow()
     w.show();
     QVERIFY(QTest::qWaitForWindowExposed(&w));
     QApplication::processEvents();
-    const int detailBottom = detail->mapTo(&w, QPoint(0, detail->height())).y();
-    const int keepTop = keep->mapTo(&w, QPoint()).y();
-    QVERIFY2(keepTop - detailBottom < 30,
-             qPrintable(QStringLiteral("%1 %2").arg(detailBottom).arg(keepTop)));
+    // The error line, when shown, is between the two; it can wrap to more lines.
+    auto *error = w.findChild<QLabel *>(QStringLiteral("historyDetailError"));
+    QVERIFY(error);
+    QList<const QLabel *> lines{detail};
+    if (error->isVisibleTo(&w))
+        lines.append(error);
+    lines.append(keep);
+    for (qsizetype i = 1; i < lines.size(); ++i) {
+        const int aboveBottom =
+                lines.at(i - 1)->mapTo(&w, QPoint(0, lines.at(i - 1)->height())).y();
+        const int top = lines.at(i)->mapTo(&w, QPoint()).y();
+        QVERIFY2(top >= aboveBottom && top - aboveBottom < 30,
+                 qPrintable(QStringLiteral("%1 %2").arg(aboveBottom).arg(top)));
+    }
     w.selectBatch(model->batch(row == 0 ? 1 : 0).batchId);
     QVERIFY(w.findChild<QTableView *>(QStringLiteral("historyOperations"))->isVisibleTo(&w));
 

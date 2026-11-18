@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "managepresetsdialog.h"
 
+#include "dialogs/dialoglayout.h"
 #include "rules/rulesummary.h"
 #include "theme/typography.h"
 
@@ -78,10 +79,10 @@ ManagePresetsDialog::ManagePresetsDialog(PresetStore &store, QWidget *parent)
     close->setDefault(true);
     connect(box, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
-    auto *layout = new QVBoxLayout(this);
+    QVBoxLayout *layout = makeDialogLayout(this);
     layout->addLayout(top, 1);
     layout->addLayout(buttons);
-    layout->addWidget(box);
+    addButtonRow(layout, box);
 
     connect(m_list, &QListWidget::currentRowChanged, this, &ManagePresetsDialog::updateSelection);
     connect(m_rename, &QPushButton::clicked, this, &ManagePresetsDialog::rename);

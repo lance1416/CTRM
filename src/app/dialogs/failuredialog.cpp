@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "dialogs/failuredialog.h"
 
+#include "dialogs/dialoglayout.h"
 #include "text/plural.h"
 #include "theme/colors.h"
 #include "theme/icons.h"
@@ -74,9 +75,9 @@ FailureDialog::FailureDialog(const FailureInfo &info, QWidget *parent)
     auto *top = new QHBoxLayout;
     top->addWidget(icon, 0, Qt::AlignTop);
     top->addLayout(text, 1);
-    auto *layout = new QVBoxLayout(this);
+    QVBoxLayout *layout = makeDialogLayout(this);
     layout->addLayout(top);
-    layout->addWidget(buttons);
+    addButtonRow(layout, buttons);
     layout->setSizeConstraint(QLayout::SetFixedSize);
 }
 

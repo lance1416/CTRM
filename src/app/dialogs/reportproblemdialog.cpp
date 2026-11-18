@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "dialogs/reportproblemdialog.h"
 
+#include "dialogs/dialoglayout.h"
+#include "theme/tokens.h"
 #include "widgets/buttonstyle.h"
 
 #include <QApplication>
@@ -30,8 +32,9 @@ ReportProblemDialog::ReportProblemDialog(const QString &info, QWidget *parent)
     details->setReadOnly(true);
     details->setTabChangesFocus(true);
     const int lines = int(info.count(u'\n')) + 2;
+    // The document margin is space-1 above and under the text.
     details->setFixedHeight(details->fontMetrics().lineSpacing() * lines +
-                            2 * details->frameWidth() + 8);
+                            2 * details->frameWidth() + 2 * tokens::space1);
 
     auto *buttons = new QDialogButtonBox(this);
     QPushButton *copy = buttons->addButton(tr("Copy Information"), QDialogButtonBox::ActionRole);
@@ -51,10 +54,10 @@ ReportProblemDialog::ReportProblemDialog(const QString &info, QWidget *parent)
     });
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
-    auto *layout = new QVBoxLayout(this);
+    QVBoxLayout *layout = makeDialogLayout(this);
     layout->addWidget(text);
     layout->addWidget(details);
-    layout->addWidget(buttons);
+    addButtonRow(layout, buttons);
     resize(qMax(440, sizeHint().width()), sizeHint().height());
 }
 

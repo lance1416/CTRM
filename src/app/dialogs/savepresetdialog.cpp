@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "dialogs/savepresetdialog.h"
 
+#include "dialogs/dialoglayout.h"
 #include "widgets/buttonstyle.h"
 
 #include <QDialogButtonBox>
@@ -43,9 +44,9 @@ SavePresetDialog::SavePresetDialog(const QStringList &userNames, const QStringLi
     connect(box, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(box, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
-    auto *layout = new QVBoxLayout(this);
+    QVBoxLayout *layout = makeDialogLayout(this);
     layout->addLayout(m_form);
-    layout->addWidget(box);
+    addButtonRow(layout, box);
     layout->setSizeConstraint(QLayout::SetFixedSize);
 
     connect(m_edit, &QLineEdit::textChanged, this, &SavePresetDialog::updateState);

@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "dialogs/recoverydialog.h"
 
+#include "dialogs/dialoglayout.h"
 #include "models/historymodel.h"
 #include "text/messages.h"
 #include "theme/colors.h"
 #include "theme/icons.h"
+#include "theme/tokens.h"
 #include "theme/typography.h"
 #include "widgets/buttonstyle.h"
 #include "widgets/tertiarybutton.h"
@@ -260,6 +262,7 @@ RecoveryDialog::RecoveryDialog(const RecoveryInfo &info, QWidget *parent)
         table->setTextElideMode(Qt::ElideMiddle);
         table->setWordWrap(false);
         table->verticalHeader()->hide();
+        useRowHeight(table);
         table->setShowGrid(false);
         table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
         table->resizeRowsToContents();
@@ -272,7 +275,8 @@ RecoveryDialog::RecoveryDialog(const RecoveryInfo &info, QWidget *parent)
         note->setObjectName(QStringLiteral("openStepsNote"));
         note->setWordWrap(true);
 
-        text->addSpacing(fontMetrics().height() / 2);
+        // The open steps are a new group: space-4 above them (the rows are space-2 apart).
+        text->addSpacing(tokens::space4 - tokens::space2);
         text->addLayout(labelRow);
         text->addWidget(table);
         text->addWidget(note);
@@ -307,9 +311,9 @@ RecoveryDialog::RecoveryDialog(const RecoveryInfo &info, QWidget *parent)
     setPrimary(mark, false);
     setPrimary(primary, true);
 
-    auto *layout = new QVBoxLayout(this);
+    QVBoxLayout *layout = makeDialogLayout(this);
     layout->addLayout(top);
-    layout->addLayout(buttons);
+    addButtonRow(layout, buttons);
     // The size follows the contents (ui-design 9.10): no empty band above the buttons, and the
     // heading stays next to the icon.
     layout->setSizeConstraint(QLayout::SetFixedSize);

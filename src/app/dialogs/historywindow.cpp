@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "dialogs/historywindow.h"
 
+#include "dialogs/dialoglayout.h"
 #include "dialogs/reportdialog.h"
 #include "exec/batchservice.h"
 #include "models/historymodel.h"
@@ -77,6 +78,7 @@ HistoryWindow::HistoryWindow(HistoryStore &store, QWidget *parent)
     m_batches->setSelectionMode(QAbstractItemView::SingleSelection);
     m_batches->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_batches->verticalHeader()->hide();
+    useRowHeight(m_batches);
     m_batches->setShowGrid(false);
     m_batches->setTextElideMode(Qt::ElideMiddle);
     m_batches->setWordWrap(false);
@@ -92,6 +94,7 @@ HistoryWindow::HistoryWindow(HistoryStore &store, QWidget *parent)
     m_operationTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_operationTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_operationTable->verticalHeader()->hide();
+    useRowHeight(m_operationTable);
     m_operationTable->setShowGrid(false);
     // M08: the names get the width; Result is as wide as its text.
     QHeaderView *operationsHeader = m_operationTable->horizontalHeader();
@@ -142,9 +145,9 @@ HistoryWindow::HistoryWindow(HistoryStore &store, QWidget *parent)
     buttons->addWidget(m_retryRollBack);
     buttons->addWidget(m_undo);
 
-    auto *layout = new QVBoxLayout(this);
+    QVBoxLayout *layout = makeDialogLayout(this);
     layout->addWidget(splitter, 1);
-    layout->addLayout(buttons);
+    addButtonRow(layout, buttons);
     resize(760, 560);
 
     connect(m_batches->selectionModel(), &QItemSelectionModel::currentRowChanged, this,

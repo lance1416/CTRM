@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "dialogs/folderdropdialog.h"
 
+#include "dialogs/dialoglayout.h"
 #include "theme/typography.h"
 
 #include <QApplication>
@@ -55,13 +56,13 @@ FolderDropDialog::FolderDropDialog(const FolderDropQuestion &question, QWidget *
     });
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
-    auto *layout = new QVBoxLayout(this);
+    QVBoxLayout *layout = makeDialogLayout(this);
     layout->addWidget(title);
     layout->addWidget(questionLabel);
     layout->addWidget(info);
     layout->addWidget(m_includeHidden);
     layout->addWidget(m_dontAskAgain);
-    layout->addWidget(buttons);
+    addButtonRow(layout, buttons);
     layout->setSizeConstraint(QLayout::SetFixedSize);
 }
 
