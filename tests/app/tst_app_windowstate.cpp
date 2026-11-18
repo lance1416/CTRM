@@ -738,6 +738,9 @@ void TestAppWindowState::messageBar()
     QVERIFY(text);
     QCOMPARE(text->textFormat(), Qt::PlainText);
     QVERIFY(!undo->isDefault());
+    // C15: a light action: a borderless button with accent text.
+    QVERIFY(undo->isFlat());
+    QCOMPARE(undo->palette().color(QPalette::ButtonText), bar.palette().color(QPalette::Accent));
 
     // A button that is in the new message too stays.
     bar.showMessage(StateIcon::Done, QStringLiteral("Again"), {undo});
@@ -754,6 +757,11 @@ void TestAppWindowState::messageBar()
     auto *close = bar.findChild<QToolButton *>(QStringLiteral("messageBarClose"));
     QVERIFY(close);
     QVERIFY(!close->accessibleName().isEmpty());
+    // C07: an icon button of hit-min with an icon of the set.
+    QCOMPARE(close->size(), QSize(tokens::hitMin, tokens::hitMin));
+    QCOMPARE(close->iconSize(), QSize(tokens::iconS, tokens::iconS));
+    QVERIFY(close->property("iconButton").toBool());
+    QVERIFY(!close->icon().isNull());
     close->click();
     QCOMPARE(closed.size(), 1);
     QVERIFY(!bar.isVisibleTo(&parent));
@@ -766,7 +774,7 @@ void TestAppWindowState::messageBar()
 
 void TestAppWindowState::messageBarOneLine()
 {
-    // M11, mockup .msgbar: icon, text, buttons and close on one centre line; padding 6 px.
+    // M11, O07: icon, text, buttons and close on one centre line; inset space-2.
     QWidget parent;
     auto *layout = new QVBoxLayout(&parent);
     auto *bar = new MessageBar(&parent);

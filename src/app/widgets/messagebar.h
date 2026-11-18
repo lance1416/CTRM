@@ -9,9 +9,10 @@
 class QHBoxLayout;
 class QLabel;
 class QPushButton;
-class QToolButton;
 
 namespace ctrm::app {
+
+class TertiaryButton;
 
 // A message above the table or the action bar (ui-design 9.3, 9.8): icon, text, buttons and a
 // close button. It is hidden until showMessage.
@@ -37,7 +38,7 @@ private:
     QLabel *m_icon;
     QLabel *m_text;
     QHBoxLayout *m_buttonLayout;
-    QToolButton *m_close;
+    TertiaryButton *m_close;
     QList<QPushButton *> m_buttons;
     StateIcon m_stateIcon = StateIcon::Done;
     bool m_updating = false;

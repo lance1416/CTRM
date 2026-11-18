@@ -63,6 +63,10 @@ MessageBar::MessageBar(QWidget *parent)
     m_close->setObjectName(QStringLiteral("messageBarClose"));
     m_close->setAutoRaise(true);
     m_close->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    // C07: an icon button of hit-min with an icon-s icon.
+    m_close->setIconButton(true);
+    m_close->setFixedSize(tokens::hitMin, tokens::hitMin);
+    m_close->setIconSize(QSize(tokens::iconS, tokens::iconS));
     m_close->setToolTip(tr("Close"));
     m_close->setAccessibleName(tr("Close message"));
     connect(m_close, &QToolButton::clicked, this, [this] {
@@ -105,9 +109,11 @@ void MessageBar::showMessage(StateIcon icon, const QString &text,
     m_stateIcon = icon;
     m_text->setText(text);
     for (QPushButton *button : buttons) {
-        // Secondary buttons (ui-design 5.1): never default.
+        // C15: a light action, as the macOS banner actions: a borderless button with accent
+        // text, never default.
         button->setAutoDefault(false);
         button->setDefault(false);
+        button->setFlat(true);
         // Into the bar first: a button with no parent shows as its own window and takes the
         // activation from the main window (M01).
         m_buttonLayout->addWidget(button);
@@ -164,10 +170,17 @@ void MessageBar::updateColors()
     }
     setAutoFillBackground(colors.tintsEnabled);
 
-    m_close->setIcon(style()->standardIcon(QStyle::SP_TitleBarCloseButton, nullptr, this));
-    const int size = style()->pixelMetric(QStyle::PM_SmallIconSize, nullptr, this);
-    m_icon->setPixmap(
-            stateIcon(m_stateIcon, colors).pixmap(QSize(size, size), devicePixelRatioF()));
+    // design-tokens 5: the icon of the set, not the style pixmap.
+    m_close->setIcon(toolIcon(ToolIcon::Clear, base));
+    m_icon->setPixmap(stateIcon(m_stateIcon, colors)
+                              .pixmap(QSize(tokens::iconS, tokens::iconS), devicePixelRatioF()));
+    for (QPushButton *button : std::as_const(m_buttons)) {
+        if (!button)
+            continue;
+        QPalette accent;
+        accent.setColor(QPalette::ButtonText, base.color(QPalette::Accent));
+        button->setPalette(accent);
+    }
     m_updating = false;
 }
 
