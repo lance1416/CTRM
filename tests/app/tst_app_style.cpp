@@ -16,6 +16,7 @@
 #include <QComboBox>
 #include <QFocusFrame>
 #include <QFormLayout>
+#include <QHeaderView>
 #include <QImage>
 #include <QLineEdit>
 #include <QPainter>
@@ -23,7 +24,9 @@
 #include <QPushButton>
 #include <QRadioButton>
 #include <QSpinBox>
+#include <QStandardItemModel>
 #include <QStyleOption>
+#include <QTableView>
 #include <QToolBar>
 #include <QToolButton>
 #include <QtTest>
@@ -161,6 +164,7 @@ private slots:
     void toolBarFirstIconAtInset();
     void oneFocusRing();
     void toggleCentredInTallRow();
+    void headerNoSeparatorAfterLast();
 };
 
 void TestAppStyle::lineEditFilled()
@@ -683,6 +687,39 @@ void TestAppStyle::toggleCentredInTallRow()
         QCOMPARE(spy->rect.height(), natural);
         QCOMPARE(spy->dy, 0);
     }
+}
+
+void TestAppStyle::headerNoSeparatorAfterLast()
+{
+    // R5-11: the table header draws no separator after the last section; the other sections
+    // keep theirs.
+    Styled s;
+    auto *table = new QTableView;
+    auto *model = new QStandardItemModel(1, 3, table);
+    table->setModel(model);
+    table->horizontalHeader()->setStretchLastSection(true);
+    s.add(table);
+    table->resize(400, 120);
+    QHeaderView *header = table->horizontalHeader();
+    for (QWidget *child : table->findChildren<QWidget *>())
+        child->setStyle(s.style.get());
+    header->resize(header->width(), header->sizeHint().height());
+    const QImage image = header->grab().toImage();
+    const qreal dpr = image.devicePixelRatio();
+    const int y = qRound(header->height() / 2 * dpr);
+    const auto rightEdgeIsInside = [&](int column) {
+        const int left = header->sectionViewportPosition(column);
+        const int right = left + header->sectionSize(column);
+        const QColor inside = image.pixelColor(qRound((right - 6) * dpr), y);
+        for (int x = qRound((right - 2) * dpr); x < qRound(right * dpr); ++x) {
+            if (image.pixelColor(x, y) != inside)
+                return false;
+        }
+        return true;
+    };
+    QVERIFY(rightEdgeIsInside(2));
+    // The style draws separators at all: the first section has one (Fusion and macOS).
+    QVERIFY(!rightEdgeIsInside(0));
 }
 
 QTEST_MAIN(TestAppStyle)

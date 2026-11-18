@@ -295,6 +295,25 @@ void CtrmStyle::drawControl(ControlElement element, const QStyleOption *option, 
             return;
         }
     }
+    if (element == CE_HeaderSection) {
+        // R5-11: no separator after the last section. Draw the section wider than its rect and
+        // clip it, so the separator at its right end is not drawn.
+        const auto *header = qstyleoption_cast<const QStyleOptionHeader *>(option);
+        if (header && header->orientation == Qt::Horizontal &&
+            (header->position == QStyleOptionHeader::End ||
+             header->position == QStyleOptionHeader::OnlyOneSection)) {
+            constexpr int kSeparatorRoom = 4; // more than the separator at each scale
+            QStyleOptionHeader wide = *header;
+            wide.rect = header->direction == Qt::RightToLeft
+                                ? header->rect.adjusted(-kSeparatorRoom, 0, 0, 0)
+                                : header->rect.adjusted(0, 0, kSeparatorRoom, 0);
+            painter->save();
+            painter->setClipRect(header->rect, Qt::IntersectClip);
+            QProxyStyle::drawControl(element, &wide, painter, widget);
+            painter->restore();
+            return;
+        }
+    }
     if ((element == CE_CheckBox || element == CE_RadioButton) && widget) {
         // R5-02: a form gives a check box or a radio button a row taller than its natural
         // height. QMacStyle draws the native indicator at the top of the rect and the text in
