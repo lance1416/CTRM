@@ -321,7 +321,7 @@ void TestAppStyle::flatButtonStates()
     QVERIFY2(near(at(1), c.fillHover), qPrintable(describe(at(1), c.fillHover)));
     button->setDown(true);
     QVERIFY2(near(at(1), c.fillPressed), qPrintable(describe(at(1), c.fillPressed)));
-    // The text has the ButtonText colour (accent in the message bar).
+    // The text has the ButtonText colour (here the accent, a colour that is easy to find).
     const QImage pressed = paint(button);
     bool accentText = false;
     for (int x = 0; x < pressed.width() && !accentText; ++x)
