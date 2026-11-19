@@ -330,7 +330,7 @@ void TestItemAdder::bundleIsOneItem()
 {
 #ifndef Q_OS_MACOS
     QSKIP("bundles exist on macOS only");
-#endif
+#else
     TempTree t;
     const QString bundle = t.mkdir(QStringLiteral("Tool.app"));
     t.file(QStringLiteral("Tool.app/Contents/Info.plist"), "<plist/>");
@@ -342,6 +342,7 @@ void TestItemAdder::bundleIsOneItem()
     f.adder.addPaths({bundle, file});
     QVERIFY(f.questions.isEmpty());
     QCOMPARE(f.names(), (QStringList{"Tool.app", "a.txt"}));
+#endif
 }
 
 void TestItemAdder::trailingSlashAndRepeats()

@@ -321,11 +321,12 @@ void TestAppTheme::toolIconUsesWindowText()
 {
 #ifdef Q_OS_LINUX
     QSKIP("Linux uses the theme icon first");
-#endif
+#else
     QPalette p = referencePalette(false);
     p.setColor(QPalette::WindowText, QColor(0x123456));
     const QImage image = toolIcon(ToolIcon::Delete, p).pixmap(QSize(16, 16), 2.0).toImage();
     QVERIFY(hasPixel(image, QColor(0x123456)));
+#endif
 }
 
 void TestAppTheme::tokenValues()
