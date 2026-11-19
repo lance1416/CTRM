@@ -341,7 +341,11 @@ void CtrmStyle::drawControl(ControlElement element, const QStyleOption *option, 
             const QColor neutral = CtrmColors::fromPalette(combo->palette).stateNeutral;
             for (const auto role : {QPalette::ButtonText, QPalette::Text, QPalette::WindowText})
                 dim.palette.setColor(QPalette::Disabled, role, neutral);
+            // QMacStyle draws the label with the pen of the painter.
+            painter->save();
+            painter->setPen(neutral);
             QProxyStyle::drawControl(element, &dim, painter, widget);
+            painter->restore();
             return;
         }
     }

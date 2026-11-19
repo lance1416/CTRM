@@ -15,8 +15,12 @@ set_tests_properties(tst_app_preview tst_app_acceptance PROPERTIES LABELS perf)
 # The alignment tests also run with the native style: it moves widgets inside their layout items,
 # so an edge that is correct in Fusion can be wrong there. Platforms with no native style (Linux)
 # have only the Fusion run.
-if(APPLE)
+# Qt before 6.9.3, and 6.10.0, crash in QMacStyle on the offscreen platform: it uses the window id
+# as an NSView when it paints a shown window. Those versions have no native run.
+if(APPLE AND NOT (Qt6_VERSION VERSION_LESS 6.9.3 OR Qt6_VERSION VERSION_EQUAL 6.10.0))
     set(CTRM_NATIVE_STYLE macOS)
+elseif(APPLE)
+    message(STATUS "Qt ${Qt6_VERSION}: no native macOS style test runs (QMacStyle offscreen crash)")
 elseif(WIN32)
     set(CTRM_NATIVE_STYLE windows11)
 endif()

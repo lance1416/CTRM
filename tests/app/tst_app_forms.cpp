@@ -16,6 +16,7 @@
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLibraryInfo>
 #include <QLineEdit>
 #include <QPainter>
 #include <QProxyStyle>
@@ -28,6 +29,7 @@
 #include <QStyleOptionButton>
 #include <QToolButton>
 #include <QVBoxLayout>
+#include <QVersionNumber>
 #include <QtTest>
 
 #include <memory>
@@ -35,6 +37,15 @@
 using namespace ctrm::app;
 
 namespace {
+
+// Qt before 6.9.3, and 6.10.0, send the window id to QMacStyle as an NSView. On a platform other
+// than cocoa (offscreen) the id is not a view, so QMacStyle crashes when it paints a shown window.
+bool macStylePaintCrashes()
+{
+    const QVersionNumber qt = QLibraryInfo::version();
+    const bool unchecked = qt < QVersionNumber(6, 9, 3) || qt.normalized() == QVersionNumber(6, 10);
+    return unchecked && QGuiApplication::platformName() != QLatin1String("cocoa");
+}
 
 // The "Case:" form of ui-design 6.3, on a style.
 struct CaseForm
@@ -188,6 +199,9 @@ void TestAppForms::baselineMatches_data()
 void TestAppForms::baselineMatches()
 {
     QFETCH(QString, styleName);
+    if (styleName.compare(QStringLiteral("macOS"), Qt::CaseInsensitive) == 0 &&
+        macStylePaintCrashes())
+        QSKIP("QMacStyle of this Qt version cannot paint on this platform.");
     const std::unique_ptr<QStyle> style(QStyleFactory::create(styleName));
     QVERIFY(style);
     CaseForm f(style.get());
