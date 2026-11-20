@@ -172,7 +172,15 @@ jobs:
         run: cmake --build --preset ci
 
       - name: Test
+        env:
+          QT_FORCE_STDERR_LOGGING: "1"
         run: ctest --preset ci
+
+      - name: Show the output of failed tests
+        if: failure()
+        env:
+          QT_FORCE_STDERR_LOGGING: "1"
+        run: ctest --preset ci --rerun-failed --verbose
 
   perf:
     name: Performance tests (${{ matrix.name }})
