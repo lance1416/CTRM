@@ -2,11 +2,13 @@
 #include "controllers/itemadder.h"
 #include "dialogs/folderdropdialog.h"
 #include "fs/filesystem.h"
+#include "fsblock.h"
 #include "models/itemtablemodel.h"
 #include "settings.h"
 #include "temptree.h"
 
 #include <QCheckBox>
+#include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QLabel>
@@ -17,6 +19,7 @@
 #include <QtTest>
 
 #include <memory>
+#include <optional>
 
 using namespace ctrm;
 using namespace ctrm::app;
@@ -371,17 +374,14 @@ void TestItemAdder::unreadableFolderMessage()
     TempTree t;
     const QString folder = t.mkdir(QStringLiteral("locked"));
     t.file(QStringLiteral("locked/x"), "x");
-    QVERIFY(QFile::setPermissions(folder, QFileDevice::Permissions()));
-    if (QDir(folder).entryList(QDir::NoDotAndDotDot | QDir::AllEntries).contains("x")) {
-        QFile::setPermissions(folder, QFileDevice::ReadOwner | QFileDevice::WriteOwner |
-                                              QFileDevice::ExeOwner);
+    std::optional<UnlistableFolder> lock(std::in_place, folder);
+    QVERIFY(lock->isActive());
+    if (QDir(folder).entryList(QDir::NoDotAndDotDot | QDir::AllEntries).contains("x"))
         QSKIP("the folder is readable without permission (root)");
-    }
     Fixture f;
     QSignalSpy spy(&f.adder, &ItemAdder::statusMessage);
     f.adder.addPaths({folder});
-    QFile::setPermissions(folder,
-                          QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
+    lock.reset();
     QCOMPARE(f.model.rowCount(), 0);
     QCOMPARE(spy.count(), 1);
     QCOMPARE(spy.at(0).at(0).toString(),

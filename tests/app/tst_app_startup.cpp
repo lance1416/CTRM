@@ -7,6 +7,7 @@
 #include "controllers/recoverycontroller.h"
 #include "dialogs/recoverydialog.h"
 #include "exec/historystore.h"
+#include "fsblock.h"
 #include "mainwindow.h"
 #include "models/rulelistmodel.h"
 #include "rules/replacerule.h"
@@ -166,11 +167,8 @@ void TestAppStartup::lockOfOpenCtrmStays()
     QTemporaryDir dir;
     InstanceLock first(dir.path());
     QVERIFY(first.tryLock());
-    QFile file(first.filePath());
-    QVERIFY(file.open(QIODevice::ReadWrite));
-    QVERIFY(file.setFileTime(QDateTime::currentDateTime().addSecs(-3600),
-                             QFileDevice::FileModificationTime));
-    file.close();
+    QVERIFY(setModificationTimeShared(first.filePath(),
+                                      QDateTime::currentDateTime().addSecs(-3600)));
     InstanceLock second(dir.path());
     QVERIFY(!second.tryLock());
 }

@@ -3,6 +3,7 @@
 #include "fs/filesystem.h"
 #include "fs/folderinfo.h"
 #include "fs/itemsource.h"
+#include "fsblock.h"
 #include "temptree.h"
 
 #include <QDir>
@@ -251,7 +252,8 @@ void TestItemSource::canonicalItemPathResolvesParentOnly()
     TempTree t;
     t.file("real/a.txt", "A");
     const QString link = t.root() + "/linked";
-    QVERIFY(QFile::link(t.root() + "/real", link));
+    // A junction on Windows: QFileInfo::canonicalFilePath does not resolve it.
+    QVERIFY(makeFolderLink(t.root() + "/real", link));
     QCOMPARE(canonicalItemPath(link + "/a.txt"), t.root() + "/real/a.txt");
     QCOMPARE(canonicalItemPath(t.root() + "/real/../real/a.txt"), t.root() + "/real/a.txt");
     // The item link itself is not resolved.

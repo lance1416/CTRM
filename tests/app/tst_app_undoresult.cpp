@@ -5,6 +5,7 @@
 #include "controllers/historycontroller.h"
 #include "controllers/itemadder.h"
 #include "fs/filesystem.h"
+#include "fsblock.h"
 #include "mainwindow.h"
 #include "models/itemtablemodel.h"
 #include "models/rulelistmodel.h"
@@ -18,7 +19,6 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
-#include <QScopeGuard>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -159,11 +159,8 @@ void TestUndoResult::partialUndo()
     Fixture f;
     f.window.show();
     f.renameOld({QStringLiteral("a/old_a.txt"), QStringLiteral("b/old_b.txt")});
-    const QString b = f.tree.root() + QStringLiteral("/b");
-    QFile::setPermissions(b, QFile::ReadOwner | QFile::ExeOwner);
-    const auto restore = qScopeGuard([&] {
-        QFile::setPermissions(b, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
-    });
+    const RenameBlock block(f.tree.root() + QStringLiteral("/b/new_b.txt"));
+    QVERIFY(block.isActive());
 
     QVERIFY(f.run([&] { f.barButton("resultUndo")->click(); }));
     QVERIFY(QFile::exists(f.tree.root() + QStringLiteral("/a/old_a.txt")));

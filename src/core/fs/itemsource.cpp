@@ -9,6 +9,12 @@
 
 #include <algorithm>
 
+#if defined(Q_OS_WIN)
+#include <QVarLengthArray>
+
+#include <qt_windows.h>
+#endif
+
 namespace ctrm {
 
 namespace {
@@ -102,6 +108,40 @@ QSet<QString> appleDoubleSidecars(const QList<DirEntry> &entries)
 }
 #endif
 
+#if defined(Q_OS_WIN)
+// QFileInfo::canonicalFilePath follows symbolic links but not junctions (Qt 6:
+// QFileInfo::isSymLink is false for a junction). Windows gives the final path of the folder,
+// with all symbolic links and junctions resolved. Empty when Windows cannot give it.
+QString finalFolderPath(const QString &folder)
+{
+    QString native = QDir::toNativeSeparators(folder);
+    native = native.startsWith(QStringLiteral("\\\\"))
+                     ? QStringLiteral("\\\\?\\UNC\\") + native.mid(2)
+                     : QStringLiteral("\\\\?\\") + native;
+    const HANDLE h = CreateFileW(reinterpret_cast<LPCWSTR>(native.utf16()), FILE_READ_ATTRIBUTES,
+                                 FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                                 OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    if (h == INVALID_HANDLE_VALUE)
+        return {};
+    constexpr DWORD kFlags = FILE_NAME_NORMALIZED | VOLUME_NAME_DOS;
+    QVarLengthArray<wchar_t, MAX_PATH> buffer(MAX_PATH);
+    DWORD len = GetFinalPathNameByHandleW(h, buffer.data(), DWORD(buffer.size()), kFlags);
+    if (len >= DWORD(buffer.size())) { // too small: len is the size with the end null
+        buffer.resize(qsizetype(len));
+        len = GetFinalPathNameByHandleW(h, buffer.data(), DWORD(buffer.size()), kFlags);
+    }
+    CloseHandle(h);
+    if (len == 0 || len >= DWORD(buffer.size()))
+        return {};
+    QString path = QString::fromWCharArray(buffer.data(), qsizetype(len));
+    if (path.startsWith(QStringLiteral("\\\\?\\UNC\\")))
+        path = QStringLiteral("\\\\") + path.mid(8);
+    else if (path.startsWith(QStringLiteral("\\\\?\\")))
+        path = path.mid(4);
+    return QDir::fromNativeSeparators(path);
+}
+#endif
+
 } // namespace
 
 bool naturalLess(const QString &a, const QString &b)
@@ -118,9 +158,13 @@ QString canonicalItemPath(const QString &absolutePath)
     const QString cleaned = QDir::cleanPath(QDir::fromNativeSeparators(absolutePath));
     const QFileInfo info(cleaned);
     const QString name = info.fileName();
-    const QString parent = QFileInfo(info.path()).canonicalFilePath();
+    QString parent = QFileInfo(info.path()).canonicalFilePath();
     if (parent.isEmpty() || name.isEmpty())
         return cleaned;
+#if defined(Q_OS_WIN)
+    if (const QString resolved = finalFolderPath(parent); !resolved.isEmpty())
+        parent = resolved;
+#endif
     return childPath(QDir::fromNativeSeparators(parent), name);
 }
 

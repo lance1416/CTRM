@@ -5,6 +5,7 @@
 #include "exec/batchservice.h"
 #include "exec/historystore.h"
 #include "fs/filesystem.h"
+#include "fsblock.h"
 #include "mainwindow.h"
 #include "models/itemtablemodel.h"
 #include "models/rulelistmodel.h"
@@ -122,21 +123,6 @@ struct Fixture
     FailureChoice failureAnswer = FailureChoice::RollBack;
     std::optional<FailureInfo> failure;
     std::optional<FinishResult> report;
-};
-
-// Makes the folder read-only for the test and writable again at the end.
-struct ReadOnlyFolder
-{
-    explicit ReadOnlyFolder(QString path)
-        : m_path(std::move(path))
-    {
-        QFile::setPermissions(m_path, QFile::ReadOwner | QFile::ExeOwner);
-    }
-    ~ReadOnlyFolder()
-    {
-        QFile::setPermissions(m_path, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
-    }
-    QString m_path;
 };
 
 } // namespace
@@ -326,12 +312,13 @@ void TestBatch::previewChangedStops()
 void TestBatch::failureRollBack()
 {
     Fixture f;
-    // Folders of the same depth run in name order: "a" first, then "b" fails.
+    // Folders of the same depth run in name order: "a" first, then "b/old_b.txt" fails.
     f.file(QStringLiteral("a/old_a.txt"));
     f.file(QStringLiteral("b/old_b.txt"));
     f.add({QStringLiteral("a/old_a.txt"), QStringLiteral("b/old_b.txt")});
     f.replace(QStringLiteral("old"), QStringLiteral("new"));
-    ReadOnlyFolder ro(f.tree.root() + QStringLiteral("/b"));
+    const RenameBlock block(f.tree.root() + QStringLiteral("/b/old_b.txt"));
+    QVERIFY(block.isActive());
 
     f.failureAnswer = FailureChoice::RollBack;
     f.window.actions().rename->trigger();
@@ -359,12 +346,13 @@ void TestBatch::failureRollBack()
 void TestBatch::failureKeep()
 {
     Fixture f;
-    // Folders of the same depth run in name order: "a" first, then "b" fails.
+    // Folders of the same depth run in name order: "a" first, then "b/old_b.txt" fails.
     f.file(QStringLiteral("a/old_a.txt"));
     f.file(QStringLiteral("b/old_b.txt"));
     f.add({QStringLiteral("a/old_a.txt"), QStringLiteral("b/old_b.txt")});
     f.replace(QStringLiteral("old"), QStringLiteral("new"));
-    ReadOnlyFolder ro(f.tree.root() + QStringLiteral("/b"));
+    const RenameBlock block(f.tree.root() + QStringLiteral("/b/old_b.txt"));
+    QVERIFY(block.isActive());
 
     f.failureAnswer = FailureChoice::Keep;
     f.window.actions().rename->trigger();
