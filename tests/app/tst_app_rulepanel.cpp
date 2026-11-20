@@ -567,7 +567,7 @@ void TestAppRulePanel::inactiveSelectionContrast()
     option.initFrom(list);
     option.widget = list;
     option.rect = QRect(0, 0, 300, list->sizeHintForRow(0));
-    option.state = QStyle::State_Enabled | QStyle::State_Selected; // no State_Active
+    option.state = QStyle::State_Enabled; // no State_Active
     option.palette.setColor(QPalette::Highlight, QColor(0xd0, 0xd0, 0xd0));
     option.palette.setColor(QPalette::HighlightedText, QColor(0xff, 0x00, 0xff));
     const auto countMagenta = [&](QStyle::State extra) {
@@ -587,8 +587,12 @@ void TestAppRulePanel::inactiveSelectionContrast()
             }
         return n;
     };
-    QCOMPARE(countMagenta(QStyle::State_None), 0);
-    QVERIFY(countMagenta(QStyle::State_Active) > 0); // the accent selection keeps it
+    // The check mark of the check box can be HighlightedText on its accent fill (the windows11
+    // style), also when the row is not selected. So compare with the row that is not selected.
+    const int unselected = countMagenta(QStyle::State_None);
+    option.state |= QStyle::State_Selected;
+    QCOMPARE(countMagenta(QStyle::State_None), unselected);
+    QVERIFY(countMagenta(QStyle::State_Active) > unselected); // the accent selection keeps it
 }
 
 void TestAppRulePanel::listFollowsRows()
@@ -800,9 +804,22 @@ void TestAppRulePanel::primaryAddRuleIsPlainButton()
     // O1: the macOS style draws no accent on a pull-down button, so the primary Add Rule is a
     // plain default button that opens the menu below it on click (ui-design 5.1, 5.4).
     Fixture f;
-    f.window.move(600, 100); // room for the menu on both sides of the button
+    // Room for the menu on both sides of the button: Qt moves a menu that goes past the screen
+    // edge. The menu is as wide as its text (wider with the box glyphs of a test machine that
+    // has no fonts). The window starts one menu width from the screen edge, so a button at any
+    // place in the window (also in right to left) has room on its start side.
+    const QRect screen = f.window.screen()->availableGeometry();
+    const int menuWidth = f.actions.addRuleMenu->sizeHint().width();
+    f.window.move(screen.left() + menuWidth, 100);
     QVERIFY(QTest::qWaitForWindowExposed(&f.window));
     QPushButton *add = f.panel->addRuleButton();
+    const QRect button(add->mapToGlobal(QPoint()), add->size());
+    QVERIFY2(button.left() + menuWidth - 1 <= screen.right() &&
+                     button.right() - menuWidth + 1 >= screen.left(),
+             qPrintable(QStringLiteral("button %1..%2, menu %3")
+                                .arg(button.left())
+                                .arg(button.right())
+                                .arg(menuWidth)));
     f.panel->setPrimaryAddRule(true);
     QCOMPARE(add->menu(), nullptr);
     QVERIFY(add->isDefault());

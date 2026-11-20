@@ -362,10 +362,33 @@ void TestAppStyle::mnemonicTextWhole()
                 }
             }
         }
-        QString plain = label;
-        plain.remove(QLatin1Char('&'));
-        const int expected = button->fontMetrics().horizontalAdvance(plain);
-        QVERIFY2(right - left + 1 >= expected - 3, qPrintable(QStringLiteral("%1: %2 < %3")
+        // The ink of the whole text, drawn with no limit. Not the advance: a glyph can have less
+        // ink than its advance (the box glyphs of a test machine that has no fonts).
+        const int flags = button->style()->styleHint(QStyle::SH_UnderlineShortcut, nullptr, button)
+                                  ? Qt::TextShowMnemonic
+                                  : Qt::TextHideMnemonic;
+        // The same height and flags as the label, so the text has the same sub-pixel position.
+        QImage whole(button->fontMetrics().size(flags, label).width() + 20, button->height(),
+                     QImage::Format_ARGB32_Premultiplied);
+        whole.fill(fill);
+        QPainter painter(&whole);
+        painter.setFont(button->font());
+        painter.setPen(button->palette().color(QPalette::ButtonText));
+        painter.drawText(whole.rect(), flags | Qt::AlignCenter | Qt::TextSingleLine, label);
+        painter.end();
+        int wholeLeft = whole.width();
+        int wholeRight = -1;
+        for (int y = 0; y < whole.height(); ++y) {
+            for (int x = 0; x < whole.width(); ++x) {
+                if (!near(whole.pixelColor(x, y), fill, 24)) {
+                    wholeLeft = qMin(wholeLeft, x);
+                    wholeRight = qMax(wholeRight, x);
+                }
+            }
+        }
+        const int expected = wholeRight - wholeLeft + 1;
+        QVERIFY(expected > 0);
+        QVERIFY2(right - left + 1 >= expected - 1, qPrintable(QStringLiteral("%1: %2 < %3")
                                                                       .arg(label)
                                                                       .arg(right - left + 1)
                                                                       .arg(expected)));
