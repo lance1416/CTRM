@@ -165,6 +165,12 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
+      # On Windows the offscreen platform reads fonts from Qt's lib/fonts, which is empty. With
+      # no fonts Qt draws boxes as wide as the font size, and the layout tests fail.
+      - name: Use the system fonts for offscreen tests
+        if: runner.os == 'Windows'
+        run: echo "QT_QPA_FONTDIR=$env:WINDIR\Fonts" >> $env:GITHUB_ENV
+
       - name: Configure
         run: cmake --preset ci
 
@@ -226,6 +232,12 @@ jobs:
       - name: Set up MSVC environment
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
+
+      # On Windows the offscreen platform reads fonts from Qt's lib/fonts, which is empty. With
+      # no fonts Qt draws boxes as wide as the font size, and the layout tests fail.
+      - name: Use the system fonts for offscreen tests
+        if: runner.os == 'Windows'
+        run: echo "QT_QPA_FONTDIR=$env:WINDIR\Fonts" >> $env:GITHUB_ENV
 
       - name: Configure
         run: cmake --preset perf
