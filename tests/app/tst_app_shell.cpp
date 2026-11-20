@@ -9,6 +9,7 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDir>
+#include <QFontDatabase>
 #include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
@@ -97,6 +98,7 @@ class TestAppShell : public QObject
 {
     Q_OBJECT
 private slots:
+    void fontsInstalled();
     void testContextUsesDirs();
     void settingsDefaults();
     void settingsRoundTrip();
@@ -112,6 +114,15 @@ private slots:
     void editActionsUseFocusWidget();
     void noNetworkModule();
 };
+
+void TestAppShell::fontsInstalled()
+{
+    // The layout tests measure text. With no fonts, Qt draws each glyph as a box as wide as the
+    // font size, so text is about two times wider and those tests fail for the wrong reason.
+    // On Windows the offscreen platform needs QT_QPA_FONTDIR (the CI sets it).
+    QVERIFY2(!QFontDatabase::families().isEmpty(),
+             "No fonts: set QT_QPA_FONTDIR to a folder with fonts (Windows: %WINDIR%\\Fonts).");
+}
 
 void TestAppShell::testContextUsesDirs()
 {
