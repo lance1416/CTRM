@@ -19,6 +19,7 @@
 #include <QAbstractItemModel>
 #include <QApplication>
 #include <QClipboard>
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QLabel>
@@ -38,6 +39,12 @@ using namespace ctrm;
 using namespace ctrm::app;
 
 namespace {
+
+// The dialog shows paths with the separators of the OS (backslashes on Windows).
+QString native(const char *text)
+{
+    return QDir::toNativeSeparators(QString::fromUtf8(text));
+}
 
 struct Fixture
 {
@@ -306,8 +313,11 @@ void TestAppRecovery::openStepsShown()
     QCOMPARE(m->index(1, 2).data().toString(), QStringLiteral("IMG_0411.JPG"));
     QVERIFY(!table->showGrid()); // G1
     QCOMPARE(m->index(0, 0).data(Qt::AccessibleTextRole).toString(),
-             QStringLiteral("/data/Trip/IMG_0412.JPG to temporary name .ctrm-tmp-7f3a-2"));
-    QVERIFY(m->index(0, 1).data(Qt::ToolTipRole).toString().contains(u"/data/Trip/IMG_0412.JPG"));
+             native("/data/Trip/IMG_0412.JPG to temporary name .ctrm-tmp-7f3a-2"));
+    QVERIFY(m->index(0, 1)
+                    .data(Qt::ToolTipRole)
+                    .toString()
+                    .contains(native("/data/Trip/IMG_0412.JPG")));
 
     RecoveryDialog one(infoWith({twoOpenSteps().first()}), nullptr);
     QCOMPARE(one.findChild<QLabel *>(QStringLiteral("openStepsLabel"))->text(),
@@ -331,8 +341,8 @@ void TestAppRecovery::openStepsCopyList()
     copy->click();
     const QStringList lines = QApplication::clipboard()->text().split(u'\n', Qt::SkipEmptyParts);
     QCOMPARE(lines.size(), 2);
-    QCOMPARE(lines[0], QStringLiteral("/data/Trip/IMG_0412.JPG\t/data/Trip/.ctrm-tmp-7f3a-2"));
-    QCOMPARE(lines[1], QStringLiteral("/data/Trip/.ctrm-tmp-7f3a-1\t/data/Trip/IMG_0411.JPG"));
+    QCOMPARE(lines[0], native("/data/Trip/IMG_0412.JPG\t/data/Trip/.ctrm-tmp-7f3a-2"));
+    QCOMPARE(lines[1], native("/data/Trip/.ctrm-tmp-7f3a-1\t/data/Trip/IMG_0411.JPG"));
 }
 
 void TestAppRecovery::openStepsMarkNotDefault()
@@ -366,7 +376,7 @@ void TestAppRecovery::damagedNoRollBack()
     QVERIFY(dialog.findChild<QPushButton *>(QStringLiteral("close"))->isDefault());
 
     RecoveryInfo info = infoWith({}, true);
-    QVERIFY(RecoveryDialog::bodyText(info).contains(u"Check the item names in /data/Trip."));
+    QVERIFY(RecoveryDialog::bodyText(info).contains(native("Check the item names in /data/Trip.")));
     QVERIFY(RecoveryDialog::bodyText(info).contains(
             u"If you close this dialog, CTRM asks again at the next start."));
     info.folders.clear();
