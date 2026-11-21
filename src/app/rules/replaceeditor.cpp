@@ -21,7 +21,7 @@ ReplaceEditor::ReplaceEditor(QWidget *parent)
     : RuleEditor(parent)
     , m_pendingText(new PendingTextEdit(this))
     , m_find(new QLineEdit)
-    , m_hint(new QLabel)
+    , m_hint(new NoteLabel)
     , m_replace(new QLineEdit)
     , m_mode(makeChoiceCombo({{tr("Literal"), int(Mode::Literal)},
                               {tr("Wildcard"), int(Mode::Wildcard)},

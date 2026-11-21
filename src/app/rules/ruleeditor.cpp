@@ -39,16 +39,15 @@ void colorErrorRow(QWidget *row)
 
 QWidget *makeErrorRow()
 {
-    auto *row = new QWidget;
+    auto *row = new WrappedField<QWidget>;
     row->setObjectName(QStringLiteral("fieldError"));
     auto *layout = new QHBoxLayout(row);
     layout->setContentsMargins(0, 0, 0, 0);
     auto *icon = new QLabel(row);
     icon->setObjectName(QStringLiteral("fieldErrorIcon"));
     icon->setAlignment(Qt::AlignTop);
-    auto *text = new QLabel(row);
+    auto *text = new NoteLabel(QString(), row);
     text->setObjectName(QStringLiteral("fieldErrorText"));
-    text->setWordWrap(true);
     text->setTextFormat(Qt::PlainText);
     layout->addWidget(icon, 0, Qt::AlignTop);
     layout->addWidget(text, 1);

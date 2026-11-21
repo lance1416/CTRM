@@ -27,7 +27,7 @@ CleanUpEditor::CleanUpEditor(QWidget *parent)
                                   {tr("Remove"), int(Spaces::Remove)}}))
     , m_replaceInvalid(new QCheckBox(tr("&Replace invalid characters with")))
     , m_replacement(new QLineEdit)
-    , m_portableNote(new QLabel)
+    , m_portableNote(new NoteLabel)
     , m_applyTo(makeApplyToCombo(nullptr)) // the form row sets the parent: tab order
 {
     m_trim->setObjectName(QStringLiteral("trim"));

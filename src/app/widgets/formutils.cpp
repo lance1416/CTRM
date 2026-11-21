@@ -283,6 +283,13 @@ namespace {
 // margin of the style (the focus ring space of a combo box): its visible top is then under the
 // top of its label. This form puts the visible top of the first field on the top of the form,
 // as the other rows (C03).
+//
+// QFormLayout keeps one set of row heights for height-for-width and the width it is for. A
+// heightForWidth at the size hint width (QWidget::sizeHint asks it) writes the set but does not
+// change that width. setGeometry at the old width then uses the rows of the size hint width: a
+// wrapped note gets the height of more lines, or is cut. A query at another width first makes
+// setGeometry calculate the rows for its own width. At the size hint width itself Qt uses the
+// set as it is: then it is for a width 1 px larger.
 class FormLayout : public QFormLayout
 {
 public:
@@ -290,6 +297,12 @@ public:
 
     void setGeometry(const QRect &rect) override
     {
+        if (hasHeightForWidth()) {
+            int other = rect.width() + 1;
+            if (other == sizeHint().width())
+                ++other;
+            heightForWidth(other);
+        }
         QFormLayout::setGeometry(rect);
 #ifdef Q_OS_MACOS
         for (int row = 0; row < rowCount(); ++row) {
@@ -608,6 +621,12 @@ bool WrappingCheckBox::hitButton(const QPoint &pos) const
     return rect().contains(pos);
 }
 
+NoteLabel::NoteLabel(const QString &text, QWidget *parent)
+    : WrappedField<QLabel>(text, parent)
+{
+    setWordWrap(true);
+}
+
 QString joinLastWords(const QString &text)
 {
     const qsizetype last = text.trimmed().lastIndexOf(QLatin1Char(' '));
@@ -647,8 +666,12 @@ int fixControlHeight(QWidget *w)
 void fillFieldColumn(QWidget *w)
 {
     // A hint wraps at the panel edge, not at the width of its size hint (R5-08).
+    // Only the horizontal policy changes: a new QSizePolicy has no height-for-width, and
+    // QFormLayout then gives the row only the size hint height (one line for a NoteLabel).
     if (auto *label = qobject_cast<QLabel *>(w); label && label->wordWrap()) {
-        label->setSizePolicy(QSizePolicy::Expanding, label->sizePolicy().verticalPolicy());
+        QSizePolicy policy = label->sizePolicy();
+        policy.setHorizontalPolicy(QSizePolicy::Expanding);
+        label->setSizePolicy(policy);
         return;
     }
     if (!qobject_cast<QLineEdit *>(w) && !qobject_cast<QComboBox *>(w))

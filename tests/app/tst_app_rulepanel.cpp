@@ -5,10 +5,12 @@
 #include "rules/chainoptionswidget.h"
 #include "rules/changecaserule.h"
 #include "rules/cleanupeditor.h"
+#include "rules/editorhelpers.h"
 #include "rules/extensioneditor.h"
 #include "rules/insertrule.h"
 #include "rules/numberingeditor.h"
 #include "rules/numberingrule.h"
+#include "rules/replaceeditor.h"
 #include "rules/replacerule.h"
 #include "rules/ruleeditor.h"
 #include "rules/ruleeditorfactory.h"
@@ -22,6 +24,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QFormLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -33,6 +36,7 @@
 #include <QScopeGuard>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QSet>
 #include <QSignalSpy>
 #include <QSpinBox>
 #include <QSplitter>
@@ -127,6 +131,7 @@ private slots:
     void ruleRowLayout();
     void ruleRowBoxClickAndError();
     void ruleRowDisabledDimmed();
+    void wrappedNotesNoEmptyLine();
 };
 
 void TestAppRulePanel::factory()
@@ -876,6 +881,74 @@ void TestAppRulePanel::editorFadeWhenCut()
     QVERIFY(!fade->isVisible());
     bar->setValue(0);
     QVERIFY(fade->isVisible());
+}
+
+// A word-wrapped QLabel gives a size hint at about half its width. In the rule panel each note
+// must be as high as its text at its width: no empty line under a note of one line.
+void TestAppRulePanel::wrappedNotesNoEmptyLine()
+{
+    Fixture f({"replace", "cleanup", "numbering", "extension"});
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    auto *replace = f.panel->findChild<ReplaceEditor *>();
+    selectData(replace->findChild<QComboBox *>(QStringLiteral("mode")),
+               int(ReplaceRule::Mode::Wildcard));
+    f.panel->findChild<CleanUpEditor *>()->setPortableNames(true);
+    f.panel->findChild<ExtensionEditor *>()->setFolderExtensions(true);
+
+    // Font sizes: QFormLayout used the rows of its size hint width at some of them (8, 10, 12
+    // pt). 1 px: the panel at its minimum width, where the notes wrap. 300 px high: the editor
+    // scrolls.
+    for (const int points : {0, 8, 10, 12}) { // 0: the default font
+        QFont font = QApplication::font();
+        if (points > 0)
+            font.setPointSize(points);
+        f.window.setFont(font);
+        for (const QSize size :
+             {QSize(1, 800), QSize(360, 800), QSize(900, 800), QSize(360, 300)}) {
+            f.window.resize(size);
+            QSet<QString> checked;
+            bool wrapped = false;
+            for (int row = 0; row < f.model.rowCount(); ++row) {
+                f.select(row);
+                QApplication::processEvents();
+                QWidget *editor = f.panel->currentEditor();
+                if (editor == replace) { // a select loads the rule again, and the rule has no error
+                    replace->showFieldError(0, QStringLiteral("Missing ) at position 3."));
+                    QApplication::processEvents();
+                }
+                const QString where = QStringLiteral("%1 at %2x%3, %4 pt")
+                                              .arg(editor->metaObject()->className())
+                                              .arg(size.width())
+                                              .arg(size.height())
+                                              .arg(font.pointSizeF());
+                // The page is not cut: it is as high as its content at its width.
+                QVERIFY2(editor->height() >= editor->heightForWidth(editor->width()),
+                         qPrintable(where));
+                for (QLabel *label : editor->findChildren<QLabel *>()) {
+                    if (!label->wordWrap() || !label->isVisible() || label->text().isEmpty())
+                        continue;
+                    checked.insert(label->objectName());
+                    int text = label->heightForWidth(label->width());
+                    // The error row is at least as high as its icon.
+                    if (label->objectName() == u"fieldErrorText")
+                        text = std::max(text, label->parentWidget()
+                                                      ->findChild<QLabel *>(
+                                                              QStringLiteral("fieldErrorIcon"))
+                                                      ->height());
+                    wrapped |= text > label->fontMetrics().lineSpacing() * 3 / 2;
+                    QVERIFY2(label->height() == text,
+                             qPrintable(QStringLiteral("%1, %2: %3 px high, text %4 px")
+                                                .arg(where, label->objectName())
+                                                .arg(label->height())
+                                                .arg(text)));
+                }
+            }
+            QCOMPARE(checked, (QSet<QString>{"hint", "fieldErrorText", "portableNote", "orderNote",
+                                             "folderNote"}));
+            if (size.width() == 1)
+                QVERIFY(wrapped); // a note of two lines is also checked
+        }
+    }
 }
 
 void TestAppRulePanel::editorsFitPanelWidth()

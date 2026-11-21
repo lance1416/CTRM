@@ -2,13 +2,13 @@
 #pragma once
 
 #include <QCheckBox>
+#include <QLabel>
 #include <QList>
 #include <QObject>
 #include <QPointer>
 
 class QComboBox;
 class QFormLayout;
-class QLabel;
 class QLayout;
 class QLayoutItem;
 class QStyleOptionButton;
@@ -58,6 +58,30 @@ private:
 // it, so the box is on the field edge (C04) and the box and the text share one centre (R5-02).
 // applyFormRhythm uses it for the check boxes and radio buttons of a form.
 QLayoutItem *makeToggleItem(QWidget *w);
+
+// A form field that wraps its text. A wrapped QLabel gives a size hint about half as wide as its
+// text and so two lines high (a widget with a height-for-width layout gives the height at its
+// size hint width), and QFormLayout makes a row at least as high as the size hint of its field:
+// an empty line under a note of one line. This size hint is as high as the content with no width
+// limit (one line for text without line breaks); QFormLayout adds the lines for the real width
+// with heightForWidth. The width of the size hint does not change.
+template <typename Base>
+class WrappedField : public Base
+{
+public:
+    using Base::Base;
+    QSize sizeHint() const override
+    {
+        return {Base::sizeHint().width(), this->heightForWidth(QWIDGETSIZE_MAX)};
+    }
+};
+
+// A word-wrapped note in a form.
+class NoteLabel : public WrappedField<QLabel>
+{
+public:
+    explicit NoteLabel(const QString &text = QString(), QWidget *parent = nullptr);
+};
 
 // text with a no-break space between its last two words: a wrapped hint never ends with one word
 // alone on its last line (R5-08). Plain text only: a space in a rich text tag would break it.

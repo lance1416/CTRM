@@ -38,7 +38,7 @@ NumberingEditor::NumberingEditor(QWidget *parent)
     , m_scope(makeChoiceCombo({{tr("Included items only"), int(Scope::Checked)},
                                {tr("All items"), int(Scope::All)}}))
     , m_applyTo(makeApplyToCombo(nullptr)) // the form row sets the parent: tab order
-    , m_orderNote(new QLabel(
+    , m_orderNote(new NoteLabel(
               joinLastWords(tr("Order: the table order. Sort or drag rows to change it."))))
 {
     m_start->setObjectName(QStringLiteral("start"));
