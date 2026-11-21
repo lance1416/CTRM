@@ -104,7 +104,7 @@ private:
     Qt::FocusReason takeFocusReason();
     void focusRules(Qt::FocusReason reason);
     void focusTable(Qt::FocusReason reason);
-    void focusEditor();
+    void focusEditor(Qt::FocusReason reason);
 
     AppContext &m_ctx;
     Actions m_actions;

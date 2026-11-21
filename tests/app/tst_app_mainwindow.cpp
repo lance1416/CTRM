@@ -1364,8 +1364,9 @@ void TestMainWindow::programFocusKeepsKeyboardModeOff()
     }
 
     // The menu items of the focus actions (no shortcut key).
-    for (QAction *action : {f.window.actions().find, f.window.actions().focusRules,
-                            f.window.actions().focusTable, f.window.actions().nextProblem}) {
+    for (QAction *action :
+         {f.window.actions().find, f.window.actions().focusRules, f.window.actions().focusTable,
+          f.window.actions().focusEditor, f.window.actions().nextProblem}) {
         action->trigger();
         QVERIFY2(!KeyboardMode::isOn(), qPrintable(action->objectName()));
     }
@@ -1405,6 +1406,16 @@ void TestMainWindow::focusShortcutsTurnKeyboardModeOn()
         QTRY_VERIFY2(QApplication::focusWidget() == step.to, name.constData());
         QVERIFY2(KeyboardMode::isOn(), name.constData());
     }
+
+    // Cmd+3 puts the focus in the first field of the rule editor.
+    f.window.rulePanel()->ruleList()->setCurrentIndex(f.window.ruleModel().index(0, 0));
+    table->setFocus(Qt::OtherFocusReason);
+    QTRY_COMPARE(QApplication::focusWidget(), table);
+    mode->setOn(false);
+    QTest::keySequence(&f.window, f.window.actions().focusEditor->shortcut());
+    QTRY_VERIFY(f.window.rulePanel()->isAncestorOf(QApplication::focusWidget()) &&
+                QApplication::focusWidget() != f.window.rulePanel()->ruleList());
+    QVERIFY(KeyboardMode::isOn());
     mode->setOn(false);
 }
 

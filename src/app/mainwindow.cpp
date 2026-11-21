@@ -739,9 +739,10 @@ void MainWindow::connectActions()
     connect(a.focusTable, &QAction::triggered, this, [this] { focusTable(takeFocusReason()); });
     // A shortcut key sends QEvent::Shortcut to the action before it triggers; a click on a
     // button or a menu item does not.
-    for (QAction *action : {a.find, a.nextProblem, a.previousProblem, a.focusRules, a.focusTable})
+    for (QAction *action :
+         {a.find, a.nextProblem, a.previousProblem, a.focusRules, a.focusTable, a.focusEditor})
         action->installEventFilter(this);
-    connect(a.focusEditor, &QAction::triggered, this, &MainWindow::focusEditor);
+    connect(a.focusEditor, &QAction::triggered, this, [this] { focusEditor(takeFocusReason()); });
     connect(m_table->selectionModel(), &QItemSelectionModel::selectionChanged, this,
             &MainWindow::updateListActions);
 
@@ -1028,9 +1029,9 @@ void MainWindow::focusTable(Qt::FocusReason reason)
         focus(m_filter, reason);
 }
 
-void MainWindow::focusEditor()
+void MainWindow::focusEditor(Qt::FocusReason reason)
 {
-    m_rulePanel->focusEditor(); // the first field, not the first in the focus chain (M29)
+    m_rulePanel->focusEditor(reason); // the first field, not the first in the focus chain (M29)
 }
 
 void MainWindow::restoreLayout()
