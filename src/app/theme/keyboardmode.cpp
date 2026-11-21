@@ -13,9 +13,11 @@
 #include <QPainter>
 #include <QPlainTextEdit>
 #include <QPointer>
+#include <QShortcutEvent>
 #include <QStyleOptionViewItem>
 #include <QTableView>
 #include <QTextEdit>
+#include <QTimer>
 #include <QTreeView>
 
 namespace ctrm::app {
@@ -63,6 +65,12 @@ bool takesTab(const QObject *watched)
     if (const auto *edit = qobject_cast<const QTextEdit *>(watched))
         return !edit->tabChangesFocus() && !edit->isReadOnly();
     return false;
+}
+
+// A key that moves the focus in a button group.
+bool isArrowKey(int key)
+{
+    return key == Qt::Key_Left || key == Qt::Key_Right || key == Qt::Key_Up || key == Qt::Key_Down;
 }
 
 } // namespace
@@ -121,17 +129,28 @@ bool KeyboardMode::eventFilter(QObject *watched, QEvent *event)
     switch (event->type()) {
     case QEvent::KeyPress: {
         const int key = static_cast<QKeyEvent *>(event)->key();
-        if ((key == Qt::Key_Tab || key == Qt::Key_Backtab) && !takesTab(watched))
+        if ((key == Qt::Key_Tab || key == Qt::Key_Backtab) && !takesTab(watched)) {
             setOn(true);
+            startFocusKey();
+        } else if (isArrowKey(key)) {
+            startFocusKey();
+        }
         break;
     }
+    case QEvent::Shortcut:
+        // A shortcut key: the action can move the focus (Find, Next Problem, Go to Rules).
+        if (!static_cast<QShortcutEvent *>(event)->isAmbiguous())
+            startFocusKey();
+        break;
     case QEvent::FocusIn: {
         // Arrow keys in a button group and focus shortcuts move the focus with these reasons.
-        // Only a real focus change: QDialog sends a synthetic Tab FocusIn when it shows.
+        // Qt uses the Tab reason also with no key: when the focus widget hides (R8-01), and
+        // in the synthetic FocusIn of a QDialog that shows. So the reason counts only during a
+        // focus key, and only for the real focus widget.
         const Qt::FocusReason reason = static_cast<QFocusEvent *>(event)->reason();
         if ((reason == Qt::TabFocusReason || reason == Qt::BacktabFocusReason ||
              reason == Qt::ShortcutFocusReason) &&
-            watched == QApplication::focusWidget())
+            m_focusKey && watched == QApplication::focusWidget())
             setOn(true);
         // Qt clears the attribute of a window when it shows. Keep it the same as the mode.
         if (auto *widget = qobject_cast<QWidget *>(watched))
@@ -142,12 +161,26 @@ bool KeyboardMode::eventFilter(QObject *watched, QEvent *event)
     case QEvent::MouseButtonDblClick:
     case QEvent::TouchBegin:
     case QEvent::TabletPress:
+        m_focusKey = false;
         setOn(false);
         break;
     default:
         break;
     }
     return QObject::eventFilter(watched, event);
+}
+
+void KeyboardMode::startFocusKey()
+{
+    m_focusKey = true;
+    if (m_focusKeyEndQueued)
+        return;
+    // The key event and the focus changes it causes are done when the event loop runs again.
+    m_focusKeyEndQueued = true;
+    QTimer::singleShot(0, this, [this] {
+        m_focusKey = false;
+        m_focusKeyEndQueued = false;
+    });
 }
 
 void drawCurrentRowOutline(QPainter *painter, const QStyleOptionViewItem &option)

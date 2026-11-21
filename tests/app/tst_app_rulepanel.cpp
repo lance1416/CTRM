@@ -120,6 +120,7 @@ private slots:
     void chainOptionsOpenChangedOnce();
     void listFadeWhenRulesHidden();
     void focusEditorKeepsMouseMode();
+    void pageChangeKeepsMouseMode();
     void setChainResetsEditor();
     void numberedCountForwarded();
     void inactiveSelectionContrast();
@@ -952,13 +953,34 @@ void TestAppRulePanel::focusEditorKeepsMouseMode()
                     f.panel->currentEditor() == QApplication::focusWidget());
         QVERIFY2(!KeyboardMode::isOn(), qPrintable(QString::number(row)));
     }
-    // Cmd+3 (a key press): keyboard mode turns on.
+    // The Shortcut reason with no key press (tst_app_mainwindow tests the Cmd+3 key).
     f.select(0);
     list->setFocus(Qt::MouseFocusReason);
-    KeyboardMode::instance()->setOn(false);
     f.panel->focusEditor(Qt::ShortcutFocusReason);
-    QVERIFY(KeyboardMode::isOn());
-    KeyboardMode::instance()->setOn(false);
+    QVERIFY(!KeyboardMode::isOn());
+}
+
+void TestAppRulePanel::pageChangeKeepsMouseMode()
+{
+    // R8-01: a rule deleted with the mouse while its editor field has the focus. The editor page
+    // changes and the field hides: keyboard mode stays off. (The panel gives the focus to no
+    // widget; tst_app_keyboardmode tests a hide that moves the focus with Qt::TabFocusReason.)
+    Fixture f({"replace", "numbering"});
+    QVERIFY(QTest::qWaitForWindowActive(&f.window));
+    KeyboardMode::instance()->setOn(false); // installs the event filter
+    f.select(0);
+    auto *field = f.panel->currentEditor()->findChild<QLineEdit *>();
+    QVERIFY(field && field->isVisible());
+    QTest::mouseClick(field, Qt::LeftButton);
+    QCOMPARE(QApplication::focusWidget(), field);
+    auto *deleteButton = f.panel->findChild<QAbstractButton *>(QStringLiteral("deleteButton"));
+    QVERIFY(deleteButton && deleteButton->isEnabled());
+    QTest::mouseClick(deleteButton, Qt::LeftButton);
+    QCOMPARE(f.model.rowCount(), 1);
+    QApplication::processEvents(); // a later focus move
+    QVERIFY(!field->isVisible());
+    QVERIFY(!field->hasFocus());
+    QVERIFY(!KeyboardMode::isOn());
 }
 
 QTEST_MAIN(TestAppRulePanel)

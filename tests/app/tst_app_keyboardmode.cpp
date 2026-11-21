@@ -15,6 +15,7 @@
 
 #include <QAbstractItemView>
 #include <QApplication>
+#include <QButtonGroup>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
@@ -32,6 +33,7 @@
 #include <QRadioButton>
 #include <QScopeGuard>
 #include <QSpinBox>
+#include <QStackedWidget>
 #include <QStandardItemModel>
 #include <QStyleOption>
 #include <QTableView>
@@ -147,6 +149,14 @@ struct Window
     }
 };
 
+// Turns the mode off and ends the event cycle of the last key: QTest key presses run no event
+// loop, so a focus key would count for the next step too.
+void resetMode()
+{
+    KeyboardMode::instance()->setOn(false);
+    QApplication::processEvents();
+}
+
 } // namespace
 
 class TestKeyboardMode : public QObject
@@ -169,6 +179,8 @@ private slots:
     void currentRowOutline();
     void macFocusFrameRules();
     void clickLeavesNoRing();
+    void hiddenFocusKeepsMode();
+    void focusKeysTurnModeOn();
 };
 
 void TestKeyboardMode::tabTurnsOnMouseTurnsOff()
@@ -198,9 +210,15 @@ void TestKeyboardMode::tabTurnsOnMouseTurnsOff()
     QVERIFY(!KeyboardMode::isOn());
     QCOMPARE(changed.count(), 4);
 
-    // A focus key (a focus shortcut, or an arrow key in a button group) turns it on.
+    // A Tab or Shortcut focus reason from the program, with no key, does not turn it on. Also
+    // after a focus key in an earlier event cycle.
+    resetMode();
+    QTest::keyClick(second, Qt::Key_Left); // a focus key that moves no focus
+    QVERIFY(!KeyboardMode::isOn());
+    QApplication::processEvents();
     first->setFocus(Qt::ShortcutFocusReason);
-    QVERIFY(KeyboardMode::isOn());
+    second->setFocus(Qt::TabFocusReason);
+    QVERIFY(!KeyboardMode::isOn());
 }
 
 void TestKeyboardMode::programFocusKeepsMode()
@@ -619,10 +637,131 @@ void TestKeyboardMode::clickLeavesNoRing()
         if (target == popup)
             break;
 
-        target->setFocus(Qt::TabFocusReason); // as the Tab key does
+        for (int i = 0; i < others.size() + 1 && !target->hasFocus(); ++i)
+            QTest::keyClick(QApplication::focusWidget(), Qt::Key_Tab);
         QVERIFY2(target->hasFocus(), target->metaObject()->className());
         QVERIFY(KeyboardMode::isOn());
         QVERIFY(KeyboardMode::showsRing(target));
+    }
+}
+
+void TestKeyboardMode::hiddenFocusKeepsMode()
+{
+    // R8-01: when the focus widget hides, Qt gives the focus to the next widget with
+    // Qt::TabFocusReason. With no key press, keyboard mode stays off.
+    Window w;
+    auto *first = w.add(new QLineEdit);
+    auto *pages = w.add(new QStackedWidget);
+    auto *field = new QLineEdit;
+    pages->addWidget(field);
+    pages->addWidget(new QLabel(QStringLiteral("Other page")));
+    auto *switchPage = w.add(new QPushButton(QStringLiteral("Next page")));
+    connect(switchPage, &QPushButton::clicked, pages, [pages] { pages->setCurrentIndex(1); });
+    auto *typed = w.add(new QLineEdit);
+    w.add(new QLineEdit);
+    connect(typed, &QLineEdit::textEdited, typed, &QWidget::hide);
+    w.show();
+    const auto focusMovedFrom = [](QWidget *hidden) {
+        return QApplication::focusWidget() && QApplication::focusWidget() != hidden;
+    };
+
+    // A page change by the mouse.
+    QTest::mouseClick(field, Qt::LeftButton);
+    QCOMPARE(QApplication::focusWidget(), field);
+    QTest::mouseClick(switchPage, Qt::LeftButton);
+    QVERIFY(!field->isVisible());
+    QVERIFY(focusMovedFrom(field));
+    QVERIFY(!KeyboardMode::isOn());
+
+    // A hide by the program.
+    first->setFocus(Qt::OtherFocusReason);
+    first->hide();
+    QVERIFY(focusMovedFrom(first));
+    QVERIFY(!KeyboardMode::isOn());
+
+    // A typed character (not a focus key) that hides the field.
+    QTest::mouseClick(typed, Qt::LeftButton);
+    QTest::keyClick(typed, Qt::Key_A);
+    QVERIFY(!typed->isVisible());
+    QVERIFY(focusMovedFrom(typed));
+    QVERIFY(!KeyboardMode::isOn());
+
+    // A hide after a focus key in an earlier event cycle.
+    QWidget *focused = QApplication::focusWidget();
+    QTest::keyClick(focused, Qt::Key_Left); // moves no focus
+    QVERIFY(!KeyboardMode::isOn());
+    QApplication::processEvents();
+    focused->hide();
+    QVERIFY(focusMovedFrom(focused));
+    QVERIFY(!KeyboardMode::isOn());
+}
+
+void TestKeyboardMode::focusKeysTurnModeOn()
+{
+    // ui-design 14 rule 1: Tab, Shift+Tab, an arrow key in a button group and a focus shortcut
+    // turn keyboard mode on.
+    Window w;
+    auto *edit = w.add(new QLineEdit);
+    auto *group = w.add(new QWidget);
+    auto *groupLayout = new QHBoxLayout(group);
+    auto *name = new QRadioButton(QStringLiteral("Name"));
+    auto *extension = new QRadioButton(QStringLiteral("Extension"));
+    groupLayout->addWidget(name);
+    groupLayout->addWidget(extension);
+    auto *buttons = new QButtonGroup(group); // as in the rule editors
+    buttons->addButton(name);
+    buttons->addButton(extension);
+    name->setChecked(true);
+    auto *other = w.add(new QLineEdit);
+    auto *find = new QAction(&w.window);
+    find->setShortcut(QKeySequence::Find);
+    auto *nextProblem = new QAction(&w.window);
+    nextProblem->setShortcut(Qt::Key_F8);
+    w.window.addActions({find, nextProblem});
+    connect(find, &QAction::triggered, edit, [edit] { edit->setFocus(Qt::ShortcutFocusReason); });
+    connect(nextProblem, &QAction::triggered, other,
+            [other] { other->setFocus(Qt::ShortcutFocusReason); });
+    w.show();
+
+    edit->setFocus(Qt::OtherFocusReason);
+    QTest::keyClick(edit, Qt::Key_Tab);
+    QVERIFY(KeyboardMode::isOn());
+    resetMode();
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_Backtab, Qt::ShiftModifier);
+    QVERIFY(KeyboardMode::isOn());
+
+    struct Arrow
+    {
+        Qt::Key key;
+        QRadioButton *from;
+        QRadioButton *to;
+    };
+    for (const Arrow &arrow :
+         {Arrow{Qt::Key_Right, name, extension}, Arrow{Qt::Key_Left, extension, name}}) {
+        arrow.from->setFocus(Qt::OtherFocusReason);
+        resetMode();
+        QTest::keyClick(arrow.from, arrow.key);
+        QCOMPARE(QApplication::focusWidget(), arrow.to);
+        QVERIFY2(KeyboardMode::isOn(), qPrintable(QKeySequence(arrow.key).toString()));
+    }
+
+    struct Step
+    {
+        QAction *action;
+        QWidget *to;
+    };
+    for (const Step &step : {Step{find, edit}, Step{nextProblem, other}}) {
+        extension->setFocus(Qt::OtherFocusReason);
+        resetMode();
+        QTest::keySequence(&w.window, step.action->shortcut());
+        QCOMPARE(QApplication::focusWidget(), step.to);
+        QVERIFY2(KeyboardMode::isOn(), qPrintable(step.action->shortcut().toString()));
+        // The same action from a menu (no key): the mode stays off.
+        extension->setFocus(Qt::OtherFocusReason);
+        resetMode();
+        step.action->trigger();
+        QCOMPARE(QApplication::focusWidget(), step.to);
+        QVERIFY(!KeyboardMode::isOn());
     }
 }
 

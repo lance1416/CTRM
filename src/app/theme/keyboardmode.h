@@ -10,8 +10,10 @@ class QWidget;
 namespace ctrm::app {
 
 // The app keyboard mode (ui-design 14 "Focus ring", O11). Tab, Shift+Tab or a key that moves the
-// focus (a Tab, Backtab or Shortcut focus reason) turns it on. A mouse press or a touch turns it
-// off. A focus change by the program (any other reason) does not change it.
+// focus turns it on: an arrow key in a button group, or a shortcut key whose action gives the
+// focus with Qt::ShortcutFocusReason. A mouse press or a touch turns it off. A focus change by
+// the program does not change it, also with a Tab or Shortcut reason: that reason counts only in
+// the event cycle of a focus key (R8-01).
 //
 // While it is on, each window has Qt::WA_KeyboardFocusChange, so the style options have
 // QStyle::State_KeyboardFocusChange. The text entry controls show the focus ring always; the other
@@ -42,8 +44,13 @@ protected:
 
 private:
     explicit KeyboardMode(QObject *parent);
+    // A focus key (Tab, an arrow, a shortcut) starts: until the event loop runs again, a focus
+    // change with a Tab, Backtab or Shortcut reason turns the mode on.
+    void startFocusKey();
 
     bool m_on = false;
+    bool m_focusKey = false;
+    bool m_focusKeyEndQueued = false;
 };
 
 // The current row of an item view in keyboard mode, when the view has the focus and the row is
