@@ -146,10 +146,68 @@ public:
 
 // The rule list: as high as its rows, at least kListRows (ui-design 4.4). The editor below it
 // gets the free space. When the panel is low, it can shrink to kLowListRows (R6-06).
+// A fade at the bottom edge of a scroll area viewport while its content is cut there
+// (ui-design 4.4; M06, R8-03): from transparent to the colour under it. It takes no mouse events.
+class BottomFade : public QWidget
+{
+public:
+    BottomFade(QAbstractScrollArea *area, const QString &name, int height,
+               QPalette::ColorRole colour)
+        : QWidget(area)
+        , m_area(area)
+        , m_height(height)
+        , m_colour(colour)
+    {
+        setObjectName(name);
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        setFocusPolicy(Qt::NoFocus);
+        hide();
+        QScrollBar *bar = area->verticalScrollBar();
+        connect(bar, &QScrollBar::valueChanged, this, &BottomFade::place);
+        connect(bar, &QScrollBar::rangeChanged, this, &BottomFade::place);
+    }
+
+    void setFadeHeight(int height)
+    {
+        m_height = height;
+        place();
+    }
+
+    // Call it when the viewport changes its size.
+    void place()
+    {
+        const QRect viewport = m_area->viewport()->geometry();
+        setGeometry(viewport.left(), viewport.bottom() + 1 - m_height, viewport.width(), m_height);
+        const QScrollBar *bar = m_area->verticalScrollBar();
+        setVisible(bar->value() < bar->maximum());
+        raise();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        QColor end = palette().color(m_colour);
+        QColor start = end;
+        start.setAlpha(0);
+        QLinearGradient gradient(0, 0, 0, height());
+        gradient.setColorAt(0, start);
+        gradient.setColorAt(1, end);
+        painter.fillRect(rect(), gradient);
+    }
+
+private:
+    QAbstractScrollArea *m_area;
+    int m_height;
+    QPalette::ColorRole m_colour;
+};
+
 class RuleListView : public QListView
 {
 public:
-    using QListView::QListView;
+    RuleListView()
+        : m_fade(new BottomFade(this, QStringLiteral("ruleListFade"), 0, QPalette::Base))
+    {}
 
     QSize sizeHint() const override { return {QListView::sizeHint().width(), heightFor(rows())}; }
     // When the panel is low (the minimum window), the list can shrink to 2 rows: the current
@@ -159,7 +217,20 @@ public:
         return {QListView::minimumSizeHint().width(), heightFor(kLowListRows)};
     }
 
+protected:
+    bool viewportEvent(QEvent *event) override
+    {
+        // Not all rules fit: the fade shows that the list continues (R8-03). Rows are never
+        // cut (M06), so a part of the next row is not the hint. The fade covers half a row:
+        // the summary line of the last row fades. Its bottom padding alone shows no fade.
+        if (event->type() == QEvent::Resize)
+            m_fade->setFadeHeight((heightFor(1) - 2 * frameWidth()) / 2);
+        return QListView::viewportEvent(event);
+    }
+
 private:
+    BottomFade *m_fade;
+
     int rowCount() const { return model() ? model()->rowCount() : 0; }
     int rows() const { return std::max(kListRows, rowCount()); }
 
@@ -226,43 +297,13 @@ private:
     QWidget *m_button;
 };
 
-// A fade at the bottom edge of the editor viewport while the page is cut there (ui-design 4.4,
-// M06): from transparent to the window colour. It takes no mouse events.
-class BottomFade : public QWidget
-{
-public:
-    static constexpr int kHeight = 16;
-
-    explicit BottomFade(QWidget *parent)
-        : QWidget(parent)
-    {
-        setObjectName(QStringLiteral("editorFade"));
-        setAttribute(Qt::WA_TransparentForMouseEvents);
-        setFocusPolicy(Qt::NoFocus);
-        hide();
-    }
-
-protected:
-    void paintEvent(QPaintEvent *) override
-    {
-        QPainter painter(this);
-        QColor end = palette().color(QPalette::Window);
-        QColor start = end;
-        start.setAlpha(0);
-        QLinearGradient gradient(0, 0, 0, height());
-        gradient.setColorAt(0, start);
-        gradient.setColorAt(1, end);
-        painter.fillRect(rect(), gradient);
-    }
-};
-
 // The editor area scrolls only up and down. Its minimum width is that of the widest editor, so
 // the rule panel cannot be narrower than an editor (ui-design 4.4).
 class EditorScrollArea : public QScrollArea
 {
 public:
     EditorScrollArea()
-        : m_fade(new BottomFade(this))
+        : m_fade(new BottomFade(this, QStringLiteral("editorFade"), kFadeHeight, QPalette::Window))
     {
         setObjectName(QStringLiteral("editorScroll"));
         setWidgetResizable(true);
@@ -271,9 +312,6 @@ public:
         // No focus stop of its own: it shows no focus ring. Its fields take the focus and
         // ensureWidgetVisible scrolls to them (M09, ui-design 14).
         setFocusPolicy(Qt::NoFocus);
-        QScrollBar *bar = verticalScrollBar();
-        connect(bar, &QScrollBar::valueChanged, m_fade, [this] { updateFade(); });
-        connect(bar, &QScrollBar::rangeChanged, m_fade, [this] { updateFade(); });
     }
 
     QSize minimumSizeHint() const override
@@ -296,21 +334,12 @@ protected:
         if (event->type() == QEvent::LayoutRequest)
             updateGeometry();
         if (event->type() == QEvent::Resize)
-            updateFade();
+            m_fade->place();
         return QScrollArea::viewportEvent(event);
     }
 
 private:
-    void updateFade()
-    {
-        const QRect area = viewport()->geometry();
-        m_fade->setGeometry(area.left(), area.bottom() + 1 - BottomFade::kHeight, area.width(),
-                            BottomFade::kHeight);
-        const QScrollBar *bar = verticalScrollBar();
-        m_fade->setVisible(bar->value() < bar->maximum());
-        m_fade->raise();
-    }
-
+    static constexpr int kFadeHeight = 16;
     BottomFade *m_fade;
 };
 
@@ -1061,17 +1090,17 @@ void RulePanel::detachEditor()
     m_shownRule = nullptr;
 }
 
-void RulePanel::focusEditor()
+void RulePanel::focusEditor(Qt::FocusReason reason)
 {
     if (auto *editor = qobject_cast<RuleEditor *>(currentEditor())) {
-        focusFirstField(editor);
+        focusFirstField(editor, reason);
         return;
     }
     if (QWidget *page = currentEditor())
-        page->setFocus(Qt::ShortcutFocusReason);
+        page->setFocus(reason);
 }
 
-void RulePanel::focusFirstField(RuleEditor *editor)
+void RulePanel::focusFirstField(RuleEditor *editor, Qt::FocusReason reason)
 {
     QFormLayout *form = editor->form();
     for (int row = 0; row < form->rowCount(); ++row) {
@@ -1103,7 +1132,7 @@ void RulePanel::focusFirstField(RuleEditor *editor)
                 target = w;
         }
         if (target) {
-            target->setFocus(Qt::OtherFocusReason);
+            target->setFocus(reason);
             m_scroll->ensureWidgetVisible(target);
             return;
         }

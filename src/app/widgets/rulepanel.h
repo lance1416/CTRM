@@ -49,8 +49,10 @@ public:
     QPushButton *addRuleButton() const;
     void setPrimaryAddRule(bool primary); // empty-with-items state (ui-design 5.4)
     void setNumberedCount(int n);         // the numbering editor and summary
-    // Cmd+3 (ui-design 12): the focus goes to the first field of the editor.
-    void focusEditor();
+    // Cmd+3 (ui-design 12): the focus goes to the first field of the editor. reason:
+    // Qt::ShortcutFocusReason only when a key press starts the move; that reason turns keyboard
+    // mode on (ui-design 14 rule 5, R8-01).
+    void focusEditor(Qt::FocusReason reason = Qt::OtherFocusReason);
     // max(360 px, the widest editor page): computed at the start and on a font, style or scale
     // change only, never from the current page, the rules or Chain options (O08, ui-design 4.4).
     QSize minimumSizeHint() const override;
@@ -68,7 +70,7 @@ private:
     void addRule(const QString &type);
     void showRule(int row);
     void detachEditor();
-    void focusFirstField(RuleEditor *editor);
+    void focusFirstField(RuleEditor *editor, Qt::FocusReason reason = Qt::OtherFocusReason);
     void onEditorEdited(RuleEditor *editor);
     void applyChainOptions(const ctrm::ChainOptions &o);
     void updateActions();

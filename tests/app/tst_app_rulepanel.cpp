@@ -16,6 +16,7 @@
 #include "rules/ruleeditorfactory.h"
 #include "rules/ruleregistry.h"
 #include "rules/unsupportedrule.h"
+#include "theme/keyboardmode.h"
 #include "theme/tokens.h"
 #include "widgets/formutils.h"
 #include "widgets/rulepanel.h"
@@ -117,6 +118,8 @@ private slots:
     void upperPartsStableAndTitleAligned();
     void openChainOptionsScrollsIntoView();
     void chainOptionsOpenChangedOnce();
+    void listFadeWhenRulesHidden();
+    void focusEditorKeepsMouseMode();
     void setChainResetsEditor();
     void numberedCountForwarded();
     void inactiveSelectionContrast();
@@ -892,6 +895,70 @@ void TestAppRulePanel::chainOptionsOpenChangedOnce()
     chain.findChild<QToolButton *>(QStringLiteral("chainOptionsHeader"))->click();
     QCOMPARE(spy.size(), 3);
     QCOMPARE(spy.last().first().toBool(), true);
+}
+
+void TestAppRulePanel::listFadeWhenRulesHidden()
+{
+    // R8-03 (ui-design 4.4): when not all rules fit, a fade over the lower half of the last row
+    // shows that the list continues. Rows are never cut (M06), so the fade is the hint.
+    Fixture f({"numbering", "replace", "insert"});
+    f.window.resize(400, 420);
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    auto *list = f.panel->ruleList();
+    auto *fade = list->findChild<QWidget *>(QStringLiteral("ruleListFade"));
+    QVERIFY(fade);
+    QTRY_COMPARE(list->height(), 2 * list->sizeHintForRow(0) + 2 * list->frameWidth());
+    f.select(0);
+    QApplication::processEvents();
+    QVERIFY(list->verticalScrollBar()->maximum() > 0);
+    QTRY_VERIFY(fade->isVisible());
+    const QRect viewport = list->viewport()->geometry();
+    const int half = list->sizeHintForRow(0) / 2;
+    QVERIFY(half >= 16); // the summary line fades, not only the padding under it
+    QCOMPARE(fade->geometry(),
+             QRect(viewport.left(), viewport.bottom() + 1 - half, viewport.width(), half));
+    QVERIFY(fade->testAttribute(Qt::WA_TransparentForMouseEvents));
+
+    // At the end of the list nothing is under the last row: no fade.
+    f.select(2);
+    QTRY_VERIFY(!fade->isVisible());
+    f.select(0);
+    QTRY_VERIFY(fade->isVisible());
+
+    // All rules fit: no fade.
+    f.window.resize(400, 1000);
+    QTRY_COMPARE(list->verticalScrollBar()->maximum(), 0);
+    QTRY_VERIFY(!fade->isVisible());
+}
+
+void TestAppRulePanel::focusEditorKeepsMouseMode()
+{
+    // R8-01: a focus move by the program does not turn keyboard mode on. Only a key press
+    // (the caller gives Qt::ShortcutFocusReason) does.
+    Fixture f({"replace"});
+    f.model.insertRule(1, std::make_unique<UnsupportedRule>(
+                                  QJsonObject{{"type", "dateTime"}, {"format", "yyyy"}}));
+    QVERIFY(QTest::qWaitForWindowActive(&f.window));
+    KeyboardMode::instance()->setOn(false); // installs the event filter
+    auto *list = f.panel->ruleList();
+    for (const int row : {0, 1}) {
+        f.panel->ruleList()->setFocus(Qt::MouseFocusReason);
+        const QRect rect = list->visualRect(f.model.index(row));
+        QTest::mouseClick(list->viewport(), Qt::LeftButton, {}, rect.center());
+        QCOMPARE(f.currentRow(), row);
+        QVERIFY(!KeyboardMode::isOn());
+        f.panel->focusEditor(); // for example from the menu, with the mouse
+        QTRY_VERIFY(f.panel->currentEditor()->isAncestorOf(QApplication::focusWidget()) ||
+                    f.panel->currentEditor() == QApplication::focusWidget());
+        QVERIFY2(!KeyboardMode::isOn(), qPrintable(QString::number(row)));
+    }
+    // Cmd+3 (a key press): keyboard mode turns on.
+    f.select(0);
+    list->setFocus(Qt::MouseFocusReason);
+    KeyboardMode::instance()->setOn(false);
+    f.panel->focusEditor(Qt::ShortcutFocusReason);
+    QVERIFY(KeyboardMode::isOn());
+    KeyboardMode::instance()->setOn(false);
 }
 
 QTEST_MAIN(TestAppRulePanel)
