@@ -17,8 +17,12 @@
 #include "rules/replacerule.h"
 #include "temptree.h"
 #include "text/messages.h"
+#include "theme/ctrmstyle.h"
 #include "theme/tokens.h"
+#include "widgets/actionbar.h"
+#include "widgets/emptystate.h"
 #include "widgets/itemtableview.h"
+#include "widgets/messagebar.h"
 #include "widgets/rulepanel.h"
 
 #include <QAction>
@@ -34,10 +38,14 @@
 #include <QMenuBar>
 #include <QPushButton>
 #include <QSettings>
+#include <QSplitter>
+#include <QStatusBar>
+#include <QStyleHints>
 #include <QTableView>
 #include <QTemporaryDir>
 #include <QTimeZone>
 #include <QToolBar>
+#include <QToolButton>
 #include <QtTest>
 
 #include <memory>
@@ -175,6 +183,8 @@ private slots:
     void quickUndoWeakOpensPreview();
     void quickUndoUnavailableAfterListChange();
     void startFocusIsTable();
+    void buttonsTakeNoClickFocus();
+    void noStatusBarLayoutStable();
     void undoIgnoresTextFocus();
     void historyStatesShown();
     void whenText();
@@ -267,15 +277,112 @@ void TestHistory::quickUndoUnavailableAfterListChange()
 
 void TestHistory::startFocusIsTable()
 {
-    // ui-design 10.3 (audit R6-04): no text field gets the focus at start. The empty list
-    // has Add Files; when the items come, the table gets the focus, not the Filter field.
+    // ui-design 14 "Start focus" (O11), 10.3 (R6-04): the start focus is never a button or a
+    // text field. An empty list: the empty state, which draws no ring. Items: the table, not the
+    // Filter field. After Clear List: the empty state again.
     Fixture f;
     f.window.show();
     QVERIFY(QTest::qWaitForWindowActive(&f.window));
-    QTRY_COMPARE(QApplication::focusWidget(),
-                 f.window.findChild<QPushButton *>(QStringLiteral("emptyAddFiles")));
+    auto *empty = f.window.findChild<EmptyState *>();
+    QVERIFY(empty);
+    QCOMPARE(empty->focusPolicy(), Qt::StrongFocus);
+    QTRY_COMPARE(QApplication::focusWidget(), empty);
     f.window.itemAdder().addPaths({f.tree.file(QStringLiteral("a.txt"), "x")});
     QTRY_COMPARE(QApplication::focusWidget(), f.window.tableView());
+    f.window.actions().clearList->trigger();
+    QTRY_COMPARE(QApplication::focusWidget(), empty);
+    // The first Tab goes into the normal Tab order. With the macOS "Keyboard navigation"
+    // setting off, buttons are no Tab stops and only text and list controls are; there is none
+    // here, so the focus stays.
+    QTest::keyClick(empty, Qt::Key_Tab);
+    if (QGuiApplication::styleHints()->tabFocusBehavior() == Qt::TabFocusAllControls)
+        QTRY_COMPARE(QApplication::focusWidget(),
+                     f.window.findChild<QPushButton *>(QStringLiteral("emptyAddFiles")));
+    else
+        QCOMPARE(QApplication::focusWidget(), empty);
+}
+
+void TestHistory::buttonsTakeNoClickFocus()
+{
+    // ui-design 14 "Start focus" (O11): push and tool buttons are Tab stops only (TabFocus), so a
+    // click leaves no focus ring. A button with no focus keeps it.
+    CtrmStyle style(QApplication::style()->name());
+    QPushButton push(QStringLiteral("Add Files..."));
+    QToolButton tool;
+    QToolButton noFocus;
+    noFocus.setFocusPolicy(Qt::NoFocus);
+    push.setFocusPolicy(Qt::StrongFocus); // the default on all platforms except macOS
+    for (QWidget *w : std::initializer_list<QWidget *>{&push, &tool, &noFocus}) {
+        w->setStyle(&style);
+        w->ensurePolished(); // a style polishes a widget before its first show
+    }
+    QCOMPARE(push.focusPolicy(), Qt::TabFocus);
+    QCOMPARE(tool.focusPolicy(), Qt::TabFocus);
+    QCOMPARE(noFocus.focusPolicy(), Qt::NoFocus);
+}
+
+void TestHistory::noStatusBarLayoutStable()
+{
+    // ui-design 9.13 (O14): no status bar in any state. Short messages go to the message bar.
+    // The action bar y and the rule panel height never change.
+    Fixture f;
+    f.window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    auto *actionBar = f.window.actionBar();
+    QWidget *rulePanel = f.window.rulePanelSlot();
+    MessageBar *bar = f.window.messageBar();
+    const auto y = [&] { return actionBar->mapTo(&f.window, QPoint(0, 0)).y(); };
+    const int y0 = y();
+    const int h0 = rulePanel->height();
+    const auto check = [&](const char *state) {
+        QCoreApplication::processEvents();
+        QVERIFY2(f.window.findChildren<QStatusBar *>().isEmpty(), state);
+        QVERIFY2(y() == y0, qPrintable(QStringLiteral("%1: action bar y %2, was %3")
+                                               .arg(QLatin1StringView(state))
+                                               .arg(y())
+                                               .arg(y0)));
+        QVERIFY2(rulePanel->height() == h0, state);
+    };
+    check("first start");
+
+    const QString a = f.tree.file(QStringLiteral("old_a.txt"), "x");
+    const QString b = f.tree.file(QStringLiteral("old_b.txt"), "x");
+    f.window.itemAdder().addPaths({a, b});
+    f.window.itemAdder().addPaths({a}); // a duplicate: a neutral note
+    QVERIFY(bar->isVisible());
+    QVERIFY(bar->isNote());
+    check("add files with a duplicate");
+
+    f.window.itemAdder().addPaths({f.root() + QStringLiteral("/missing.txt")});
+    QVERIFY(bar->isVisible());
+    QVERIFY(!bar->isNote()); // not added: a warning
+    check("an item not added");
+
+    f.window.ruleModel().insertRule(0, replaceRule(QStringLiteral("old"), QStringLiteral("new")));
+    QTRY_VERIFY(f.window.previewIsCurrent());
+    check("add a rule");
+
+    QVERIFY(f.run([&] { f.window.actions().rename->trigger(); }));
+    QVERIFY(f.exists(QStringLiteral("new_a.txt")));
+    check("rename");
+
+    QVERIFY(f.run([&] { f.history.quickUndo(); }));
+    QVERIFY(f.exists(QStringLiteral("old_a.txt")));
+    check("undo");
+
+    // An error: a file changed on disk before the rename. A warning.
+    QTRY_VERIFY(f.window.previewIsCurrent());
+    QVERIFY(QFile::remove(b));
+    f.batch.renameNow();
+    QTRY_COMPARE(bar->findChild<QLabel *>(QStringLiteral("messageBarText"))->text(),
+                 QStringLiteral("The files changed on disk. Check the new preview."));
+    QVERIFY(bar->isVisible());
+    QVERIFY(!bar->isNote());
+    QTRY_VERIFY(f.window.previewIsCurrent());
+    check("files changed on disk");
+
+    f.window.actions().clearList->trigger();
+    check("clear list");
 }
 
 void TestHistory::undoIgnoresTextFocus()

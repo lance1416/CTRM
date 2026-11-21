@@ -20,7 +20,6 @@
 #include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
-#include <QStatusBar>
 
 namespace ctrm::app {
 
@@ -215,13 +214,14 @@ void BatchController::prepareAndRun(bool skip)
     switch (prepared.kind) {
     case PrepareResult::Kind::PreviewChanged:
         m_skipReasons.clear();
-        m_w.statusBar()->showMessage(tr("The files changed on disk. Check the new preview."));
-        // Refresh reads the folders and identities again and makes the new preview.
+        // Refresh reads the folders and identities again and makes the new preview. The message
+        // comes after it: a refresh ends the result state and closes its message.
         m_w.actions().refresh->trigger();
+        m_w.showShortMessage(tr("The files changed on disk. Check the new preview."), true);
         return;
     case PrepareResult::Kind::NothingToDo:
         m_skipReasons.clear();
-        m_w.statusBar()->showMessage(tr("Nothing to rename."));
+        m_w.showShortMessage(tr("Nothing to rename."), false);
         return;
     case PrepareResult::Kind::Error:
         m_skipReasons.clear();

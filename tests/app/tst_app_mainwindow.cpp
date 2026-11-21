@@ -563,17 +563,19 @@ void TestMainWindow::problemActionsNeedProblems()
 
 void TestMainWindow::noEmptyStatusBar()
 {
-    // M21: the action bar is the last row. The status bar shows only with a message.
+    // M21, O14: the action bar is the last row. There is no status bar; a short message goes
+    // to the message bar (ui-design 9.13).
     Fixture f;
     f.window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&f.window));
-    QVERIFY(!f.window.statusBar()->isVisible());
+    QVERIFY(f.window.findChildren<QStatusBar *>().isEmpty());
     f.addFiles({QStringLiteral("a.txt")});
-    f.addFiles({QStringLiteral("a.txt")}); // already in the list: a status message
-    QVERIFY(f.window.statusBar()->isVisible());
-    QVERIFY(!f.window.statusBar()->currentMessage().isEmpty());
-    f.window.statusBar()->clearMessage();
-    QVERIFY(!f.window.statusBar()->isVisible());
+    f.addFiles({QStringLiteral("a.txt")}); // already in the list: a short message
+    QVERIFY(f.window.findChildren<QStatusBar *>().isEmpty());
+    QVERIFY(f.window.messageBar()->isVisible());
+    QVERIFY(f.window.messageBar()->isNote());
+    QCOMPARE(f.window.messageBar()->findChild<QLabel *>(QStringLiteral("messageBarText"))->text(),
+             QStringLiteral("1 item was already in the list."));
 }
 
 void TestMainWindow::flowStripIsThin()

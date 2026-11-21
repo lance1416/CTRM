@@ -23,6 +23,10 @@ public:
     explicit MessageBar(QWidget *parent);
     // The bar takes the buttons. The text is plain text. A new message deletes the old buttons.
     void showMessage(StateIcon icon, const QString &text, const QList<QPushButton *> &buttons);
+    // A neutral short message (ui-design 9.13): the tool-info icon in text-dim, no tint, no
+    // buttons.
+    void showNote(const QString &text);
+    bool isNote() const { return m_note; }
     void clear(); // hides the bar; does not emit closed()
 
 signals:
@@ -41,6 +45,7 @@ private:
     TertiaryButton *m_close;
     QList<QPushButton *> m_buttons;
     StateIcon m_stateIcon = StateIcon::Done;
+    bool m_note = false;
     bool m_updating = false;
 };
 

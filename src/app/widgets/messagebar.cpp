@@ -107,6 +107,7 @@ void MessageBar::showMessage(StateIcon icon, const QString &text,
         m_buttons.removeAll(button);
     removeButtons();
     m_stateIcon = icon;
+    m_note = false;
     m_text->setText(text);
     for (QPushButton *button : buttons) {
         // C15: a light action, as the macOS banner actions: a borderless button with
@@ -127,6 +128,13 @@ void MessageBar::showMessage(StateIcon icon, const QString &text,
     show();
     QAccessibleEvent event(this, QAccessible::Alert);
     QAccessible::updateAccessibility(&event);
+}
+
+void MessageBar::showNote(const QString &text)
+{
+    showMessage(StateIcon::Excluded, text, {});
+    m_note = true;
+    updateColors();
 }
 
 void MessageBar::clear()
@@ -164,20 +172,27 @@ void MessageBar::updateColors()
     setPalette(QPalette());
     const QPalette base = palette();
     const CtrmColors colors = CtrmColors::fromPalette(base);
-    // A high-contrast theme has no tints (design-tokens 2.6): the palette only.
-    if (colors.tintsEnabled) {
+    // A high-contrast theme has no tints (design-tokens 2.6): the palette only. A note has no
+    // tint (ui-design 9.13).
+    const bool tinted = colors.tintsEnabled && !m_note;
+    if (tinted) {
         QPalette tint;
         tint.setColor(QPalette::Window,
                       mix(stateColor(m_stateIcon, colors), colors.window, 0.12)); // R5-09
         setPalette(tint);
     }
-    setAutoFillBackground(colors.tintsEnabled);
+    setAutoFillBackground(tinted);
 
     // design-tokens 5: the icon of the set, not the style pixmap. R5-07: a plain x (tool-close);
     // tool-clear (x in a circle) is only for clearing a field.
     m_close->setIcon(toolIcon(ToolIcon::Close, base));
-    m_icon->setPixmap(stateIcon(m_stateIcon, colors)
-                              .pixmap(QSize(tokens::iconS, tokens::iconS), devicePixelRatioF()));
+    QIcon icon = stateIcon(m_stateIcon, colors);
+    if (m_note) {
+        QPalette dim = base;
+        dim.setColor(QPalette::WindowText, colors.stateNeutral); // text-dim
+        icon = toolIcon(ToolIcon::Info, dim);
+    }
+    m_icon->setPixmap(icon.pixmap(QSize(tokens::iconS, tokens::iconS), devicePixelRatioF()));
     for (QPushButton *button : std::as_const(m_buttons)) {
         if (!button)
             continue;

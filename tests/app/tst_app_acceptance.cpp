@@ -65,15 +65,16 @@
 #include "temptree.h"
 #include "widgets/emptystate.h"
 #include "widgets/itemtableview.h"
+#include "widgets/messagebar.h"
 
 #include <QDir>
 #include <QElapsedTimer>
+#include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
 #include <QMimeData>
 #include <QSettings>
 #include <QSignalSpy>
-#include <QStatusBar>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QUrl>
@@ -213,7 +214,7 @@ void TestAcceptance::ac1_4_duplicateOnce()
     QVERIFY(f.drop({file}));
     QVERIFY(f.drop({file}));
     QCOMPARE(f.oldNames(), QStringList{QStringLiteral("a.txt")});
-    QCOMPARE(f.window.statusBar()->currentMessage(),
+    QCOMPARE(f.window.messageBar()->findChild<QLabel *>(QStringLiteral("messageBarText"))->text(),
              QStringLiteral("1 item was already in the list."));
 }
 

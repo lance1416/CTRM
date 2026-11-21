@@ -40,8 +40,9 @@ public:
     void addFilesViaDialog(QWidget *parent);
 
 signals:
-    // Duplicates and items that were not added. Not sent when all items were added.
-    void statusMessage(const QString &text);
+    // Duplicates and items that were not added. Not sent when all items were added. warning is
+    // true when items were not added; false for duplicates only (ui-design 9.13).
+    void addMessage(const QString &text, bool warning);
 
 private:
     ctrm::FileSystem &m_fs;

@@ -221,7 +221,7 @@ void ItemAdder::addPaths(const QStringList &paths)
                                       : tr("%n items were not added. They cannot be found or read.",
                                            nullptr, notReadable));
     if (!texts.isEmpty())
-        emit statusMessage(texts.join(QLatin1Char(' ')));
+        emit addMessage(texts.join(QLatin1Char(' ')), unsupported + sidecars + notReadable > 0);
 }
 
 void ItemAdder::addFolderViaDialog(QWidget *parent)

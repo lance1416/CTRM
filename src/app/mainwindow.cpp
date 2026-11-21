@@ -37,7 +37,6 @@
 #include <QSizePolicy>
 #include <QSplitter>
 #include <QStackedWidget>
-#include <QStatusBar>
 #include <QStyle>
 #include <QToolBar>
 #include <QToolButton>
@@ -100,10 +99,7 @@ MainWindow::MainWindow(AppContext &ctx, QWidget *parent)
     updateToolIcons();
     buildCentralWidget();
     buildPanels();
-    // M21: the action bar is the last row. The status bar shows only with a message.
-    statusBar()->hide();
-    connect(statusBar(), &QStatusBar::messageChanged, this,
-            [this](const QString &text) { statusBar()->setVisible(!text.isEmpty()); });
+    // M21, O14: the action bar is the last row. There is no status bar (ui-design 9.13).
     // M04: View > Show Columns has the column items of the table header.
     m_showColumnsMenu->addActions(
             m_table->findChild<QMenu *>(QStringLiteral("columnsMenu"))->actions());
@@ -133,8 +129,9 @@ MainWindow::MainWindow(AppContext &ctx, QWidget *parent)
 void MainWindow::showEvent(QShowEvent *e)
 {
     QMainWindow::showEvent(e);
-    // ui-design 10.3 (audit R6-04): the start focus is the item area (the table, or Add Files
-    // when the list is empty), not a text field. A focus set before the first show is lost.
+    // ui-design 14 "Start focus" (O11): the start focus is the item area (the table, or the
+    // empty state when the list is empty), never a button or a text field, so no focus ring
+    // shows before the user uses the keyboard. A focus set before the first show is lost.
     if (!m_startFocusSet) {
         m_startFocusSet = true;
         focusTable();
@@ -662,8 +659,7 @@ void MainWindow::connectActions()
             [this] { m_itemAdder->addFolderViaDialog(this); });
     connect(m_emptyState, &EmptyState::pathsDropped, m_itemAdder, &ItemAdder::addPaths);
     connect(m_table, &ItemTableView::pathsDropped, m_itemAdder, &ItemAdder::addPaths);
-    connect(m_itemAdder, &ItemAdder::statusMessage, this,
-            [this](const QString &text) { statusBar()->showMessage(text); });
+    connect(m_itemAdder, &ItemAdder::addMessage, this, &MainWindow::showShortMessage);
 
     // The list.
     connect(a.removeFromList, &QAction::triggered, this, &MainWindow::removeFromList);
@@ -909,12 +905,17 @@ int MainWindow::offNumberingRule() const
 void MainWindow::updateTablePage()
 {
     const bool empty = m_itemModel.rowCount() == 0;
-    // When the empty state hides, Qt gives its focus to the next widget, the Filter field. The
-    // focus goes to the table instead (audit R6-04).
-    const bool focusInEmptyState = m_emptyState->isAncestorOf(QApplication::focusWidget());
+    // When a page hides, Qt gives its focus to the next widget: the Filter field, or a button.
+    // The focus goes to the item area of the new page instead (audit R6-04, O11): the table, or
+    // the empty state, which draws no focus ring.
+    QWidget *focused = QApplication::focusWidget();
+    const bool focusInEmptyState = m_emptyState == focused || m_emptyState->isAncestorOf(focused);
+    const bool focusInTablePage = m_tablePage->isAncestorOf(focused);
     m_tablePages->setCurrentWidget(empty ? static_cast<QWidget *>(m_emptyState) : m_tablePage);
     if (focusInEmptyState && !empty)
         focus(m_table);
+    else if (focusInTablePage && empty)
+        focus(m_emptyState);
     const bool noMatch = !empty && m_proxy.rowCount() == 0;
     const bool hadFocus = m_table->hasFocus();
     m_tableOrNoMatch->setCurrentWidget(noMatch ? m_noMatch : static_cast<QWidget *>(m_table));
@@ -978,10 +979,21 @@ void MainWindow::focusRules()
         focus(m_rulePanel->addRuleButton());
 }
 
+void MainWindow::showShortMessage(const QString &text, bool warning)
+{
+    // ui-design 9.13: in the message bar, never in a status bar. It stays until the user closes
+    // it or the next message replaces it.
+    m_clearMessageShown = false;
+    if (warning)
+        m_messageBar->showMessage(StateIcon::Warning, text, {});
+    else
+        m_messageBar->showNote(text);
+}
+
 void MainWindow::focusTable()
 {
     if (m_itemModel.rowCount() == 0)
-        focus(m_emptyState->findChild<QPushButton *>(QStringLiteral("emptyAddFiles")));
+        focus(m_emptyState);
     else if (m_tableOrNoMatch->currentWidget() == m_table)
         focus(m_table);
     else

@@ -281,9 +281,13 @@ void CtrmStyle::polish(QWidget *widget)
     if (auto *frame = qobject_cast<QFocusFrame *>(widget); frame && frame != m_ringFrame)
         frame->installEventFilter(this);
     // Hover states (design-tokens 4.5) need the hover events.
-    if (qobject_cast<QPushButton *>(widget) || qobject_cast<QToolButton *>(widget) ||
-        qobject_cast<QAbstractSpinBox *>(widget))
+    const bool button = qobject_cast<QPushButton *>(widget) || qobject_cast<QToolButton *>(widget);
+    if (button || qobject_cast<QAbstractSpinBox *>(widget))
         widget->setAttribute(Qt::WA_Hover);
+    // ui-design 14 "Start focus" (O11): a click does not focus a button, so it leaves no ring.
+    // A button is a Tab stop only when the system keyboard navigation setting is on (macOS).
+    if (button && widget->focusPolicy() == Qt::StrongFocus)
+        widget->setFocusPolicy(Qt::TabFocus);
 }
 
 void CtrmStyle::unpolish(QWidget *widget)

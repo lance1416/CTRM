@@ -65,6 +65,8 @@ public:
     void setRunning(bool running); // read-only rules, table, toolbar (ui-design 9.5)
     void setResultShown(bool shown, int renamedCount = 0);
     void setPresetTitle(const QString &name, bool modified); // "CTRM - <name>" + modified mark
+    // A short message in the message bar (ui-design 9.13): a warning, or a neutral note.
+    void showShortMessage(const QString &text, bool warning);
 
 protected:
     // Updates the tool icons. Activation also reads the folders again: files can change

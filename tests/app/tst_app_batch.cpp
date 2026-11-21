@@ -24,7 +24,6 @@
 #include <QPushButton>
 #include <QSemaphore>
 #include <QSettings>
-#include <QStatusBar>
 #include <QTemporaryDir>
 #include <QThread>
 #include <QtTest>
@@ -300,8 +299,9 @@ void TestBatch::previewChangedStops()
     QVERIFY(QFile::remove(b));
 
     f.batch.renameNow();
-    QTRY_COMPARE(f.window.statusBar()->currentMessage(),
-                 QStringLiteral("The files changed on disk. Check the new preview."));
+    QTRY_COMPARE(
+            f.window.messageBar()->findChild<QLabel *>(QStringLiteral("messageBarText"))->text(),
+            QStringLiteral("The files changed on disk. Check the new preview."));
     QVERIFY(!f.batch.isRunning());
     QVERIFY(f.exists(QStringLiteral("old_a.txt")));
     QVERIFY(f.ctx.history().list().isEmpty());

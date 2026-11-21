@@ -186,7 +186,7 @@ void TestItemAdder::droppedAppleDoubleNotAdded()
     const QString orphan = t.file(QStringLiteral("._gone.txt"), "x");
     {
         Fixture f;
-        QSignalSpy spy(&f.adder, &ItemAdder::statusMessage);
+        QSignalSpy spy(&f.adder, &ItemAdder::addMessage);
         f.adder.addPaths({sideA, orphan});
 #ifdef Q_OS_MACOS
         QCOMPARE(f.names(), QStringList{"._gone.txt"});
@@ -202,7 +202,7 @@ void TestItemAdder::droppedAppleDoubleNotAdded()
 #ifdef Q_OS_MACOS
     {
         Fixture f;
-        QSignalSpy spy(&f.adder, &ItemAdder::statusMessage);
+        QSignalSpy spy(&f.adder, &ItemAdder::addMessage);
         f.adder.addPaths({sideA, sideB});
         QVERIFY(f.names().isEmpty());
         QCOMPARE(spy.count(), 1);
@@ -218,13 +218,14 @@ void TestItemAdder::duplicateMessage()
     TempTree t;
     const QString a = t.file(QStringLiteral("a.txt"), "a");
     Fixture f;
-    QSignalSpy spy(&f.adder, &ItemAdder::statusMessage);
+    QSignalSpy spy(&f.adder, &ItemAdder::addMessage);
     f.adder.addPaths({a});
     QCOMPARE(spy.count(), 0);
     f.adder.addPaths({a});
     QCOMPARE(f.model.rowCount(), 1);
     QCOMPARE(spy.count(), 1);
     QCOMPARE(spy.at(0).at(0).toString(), QStringLiteral("1 item was already in the list."));
+    QCOMPARE(spy.at(0).at(1).toBool(), false); // duplicates only: a neutral note (ui-design 9.13)
 }
 
 void TestItemAdder::dontAskAgainSaved()
@@ -356,7 +357,7 @@ void TestItemAdder::trailingSlashAndRepeats()
     const QString b = t.file(QStringLiteral("b.txt"), "x");
     Fixture f;
     f.reply.choice = FolderDropReply::Choice::RenameFolder;
-    QSignalSpy spy(&f.adder, &ItemAdder::statusMessage);
+    QSignalSpy spy(&f.adder, &ItemAdder::addMessage);
     f.adder.addPaths({folder + QLatin1Char('/'), a, a});
     QCOMPARE(f.names(), (QStringList{"d", "a.txt"}));
     QCOMPARE(spy.count(), 1);
@@ -367,6 +368,8 @@ void TestItemAdder::trailingSlashAndRepeats()
     QCOMPARE(spy.at(1).at(0).toString(),
              QStringLiteral("2 items were already in the list. 1 item was not added. It cannot "
                             "be found or read."));
+    QCOMPARE(spy.at(0).at(1).toBool(), false);
+    QCOMPARE(spy.at(1).at(1).toBool(), true); // items not added: a warning (ui-design 9.13)
 }
 
 void TestItemAdder::unreadableFolderMessage()
@@ -379,13 +382,14 @@ void TestItemAdder::unreadableFolderMessage()
     if (QDir(folder).entryList(QDir::NoDotAndDotDot | QDir::AllEntries).contains("x"))
         QSKIP("the folder is readable without permission (root)");
     Fixture f;
-    QSignalSpy spy(&f.adder, &ItemAdder::statusMessage);
+    QSignalSpy spy(&f.adder, &ItemAdder::addMessage);
     f.adder.addPaths({folder});
     lock.reset();
     QCOMPARE(f.model.rowCount(), 0);
     QCOMPARE(spy.count(), 1);
     QCOMPARE(spy.at(0).at(0).toString(),
              QStringLiteral("1 item was not added. It cannot be found or read."));
+    QCOMPARE(spy.at(0).at(1).toBool(), true);
 }
 
 QTEST_MAIN(TestItemAdder)
