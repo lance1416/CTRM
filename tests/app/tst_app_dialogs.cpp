@@ -251,6 +251,7 @@ void TestAppDialogs::savePresetNoteHeight_data()
     QTest::addColumn<double>("textPart");
     QTest::newRow("oneLine") << 0.9; // QLabel's own size hint wraps this text at half the width
     QTest::newRow("twoLines") << 1.5;
+    QTest::newRow("bigFont") << 2.5; // a wrapped label with no limit is wider than field-w-max
 }
 
 // The note row is as high as the note text at the field width: no empty line under one line of

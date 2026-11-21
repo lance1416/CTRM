@@ -15,24 +15,6 @@
 
 namespace ctrm::app {
 
-namespace {
-
-// A word-wrapped QLabel gives a size hint at half its width when its text fits on one line, and
-// QFormLayout makes the row at least that high: an empty line under the note. The note wraps at
-// field-w-max, so its size hint is the text at that width.
-class FieldNote : public QLabel
-{
-public:
-    using QLabel::QLabel;
-
-    QSize sizeHint() const override
-    {
-        return {tokens::fieldWMax, heightForWidth(tokens::fieldWMax)};
-    }
-};
-
-} // namespace
-
 SavePresetDialog::SavePresetDialog(const QStringList &userNames, const QStringList &builtInNames,
                                    const QString &suggested, QWidget *parent)
     : QDialog(parent)
@@ -40,7 +22,7 @@ SavePresetDialog::SavePresetDialog(const QStringList &userNames, const QStringLi
     , m_builtInNames(builtInNames)
     , m_edit(new QLineEdit(suggested, this))
     , m_form(new QFormLayout)
-    , m_note(new FieldNote(this))
+    , m_note(new NoteLabel(QString(), this))
     , m_save(nullptr)
 {
     setObjectName(QStringLiteral("savePresetDialog"));
@@ -49,8 +31,10 @@ SavePresetDialog::SavePresetDialog(const QStringList &userNames, const QStringLi
     m_edit->selectAll();
     m_note->setObjectName(QStringLiteral("presetNameNote"));
     m_note->setTextFormat(Qt::PlainText);
-    m_note->setWordWrap(true);
     m_note->setForegroundRole(QPalette::PlaceholderText);
+    // A wrapped label with no width limit gives a size hint wider than field-w-max for a long
+    // text, and the field column grows: the note wraps at the field width (audit R6-07).
+    m_note->setMaximumWidth(tokens::fieldWMax);
 
     m_form->addRow(tr("Preset name:"), m_edit);
     m_form->addRow(QString(), m_note); // the dimmed line under the field
