@@ -147,8 +147,13 @@ ItemTableView::ItemTableView(ItemTableModel &model, ItemFilterProxy &proxy, QWid
     header->setContextMenuPolicy(Qt::CustomContextMenu);
     // An icon-s icon with space-3 of room (28 px), as before at 1x.
     const int iconColumn = tokens::iconS + tokens::space3;
+    // The automatic minimum grows with the font and resizeSection keeps to it, so it is set to
+    // the icon column first (O12).
+    header->setMinimumSectionSize(iconColumn);
     header->resizeSection(ItemTableModel::Include, iconColumn);
     header->resizeSection(ItemTableModel::State, iconColumn);
+    // O12: the State column always has this width; the user cannot resize it (ui-design 7.2).
+    header->setSectionResizeMode(ItemTableModel::State, QHeaderView::Fixed);
     header->resizeSection(ItemTableModel::OldName, kNameWidth);
     header->resizeSection(ItemTableModel::NewName, kNameWidth);
     // Only a drag or a double click on the header is a change by the user. Qt also resizes a

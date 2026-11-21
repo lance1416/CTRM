@@ -6,8 +6,6 @@
 
 #include <QStyledItemDelegate>
 
-#include <optional>
-
 namespace ctrm::app {
 
 // Draws the rows of the item table (ui-design 7.2): the state icon, the row tints, the dimmed
@@ -27,8 +25,8 @@ public:
     void paint(QPainter *painter, const QStyleOptionViewItem &option,
                const QModelIndex &index) const override;
 
-    // The state icon of the row of index (any column); nothing for an unchanged row.
-    static std::optional<StateIcon> rowStateIcon(const QModelIndex &index);
+    // The state icon of the row of index (any column). Each row has one (ui-design 7.2).
+    static StateIcon rowStateIcon(const QModelIndex &index);
     // The name of the state for the screen reader, for example "Conflict".
     static QString rowStateName(const QModelIndex &index);
 

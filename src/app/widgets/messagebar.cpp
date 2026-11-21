@@ -33,6 +33,7 @@ QColor stateColor(StateIcon icon, const CtrmColors &c)
         return c.stateDone;
     case StateIcon::RolledBack:
     case StateIcon::Excluded:
+    case StateIcon::Same:
         return c.stateNeutral;
     }
     return c.stateNeutral;

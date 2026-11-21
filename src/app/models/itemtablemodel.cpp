@@ -421,6 +421,8 @@ QString ItemTableModel::messageText(int row) const
             return blockedOldNameText(blocker);
         return diagnosticText(p.problems.first(), m_portable, m_ruleNames);
     }
+    if (p.status == Status::Unchanged)
+        return unchangedText(m_items[row].name); // O12: the tooltip gives the real name
     return statusText(p, m_portable);
 }
 
@@ -556,13 +558,15 @@ QVariant ItemTableModel::headerData(int section, Qt::Orientation orientation, in
 {
     if (orientation != Qt::Horizontal)
         return {};
-    if (role != Qt::DisplayRole && role != Qt::ToolTipRole)
+    if (role != Qt::DisplayRole && role != Qt::ToolTipRole && role != Qt::AccessibleTextRole)
         return {};
+    // The icon columns have no header text; the tooltip and the accessible name say what they
+    // are (ui-design 7.2).
     switch (Column(section)) {
     case Include:
-        return role == Qt::ToolTipRole ? tr("Include") : QString();
+        return role == Qt::DisplayRole ? QString() : tr("Include");
     case State:
-        return role == Qt::ToolTipRole ? tr("State") : QString();
+        return role == Qt::DisplayRole ? QString() : tr("State");
     case OldName:
         return tr("Old name");
     case NewName:

@@ -116,6 +116,8 @@ QString stateFile(StateIcon s)
         return QStringLiteral("state-rolled-back");
     case StateIcon::Excluded:
         return QStringLiteral("state-excluded");
+    case StateIcon::Same:
+        return QStringLiteral("state-same");
     case StateIcon::FlowDone:
         return QStringLiteral("flow-done");
     }
@@ -138,6 +140,7 @@ QColor stateColor(StateIcon s, const CtrmColors &c)
         return c.stateDone;
     case StateIcon::RolledBack:
     case StateIcon::Excluded:
+    case StateIcon::Same:
         return c.stateNeutral;
     }
     return c.stateNeutral;

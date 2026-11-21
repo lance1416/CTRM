@@ -12,6 +12,7 @@
         <file>icons/state-error.svg</file>
         <file>icons/state-excluded.svg</file>
         <file>icons/state-rolled-back.svg</file>
+        <file>icons/state-same.svg</file>
         <file>icons/state-warning.svg</file>
         <file>icons/tool-add-files.svg</file>
         <file>icons/tool-add-folder.svg</file>

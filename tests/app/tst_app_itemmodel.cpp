@@ -517,7 +517,8 @@ void TestItemModel::messageCellShort()
     QCOMPARE(cell(0, Qt::DisplayRole), QString());
     QCOMPARE(cell(0, ItemTableModel::MessageRole), QStringLiteral("Will rename"));
     QCOMPARE(cell(1, Qt::DisplayRole), QString());
-    QCOMPARE(cell(1, ItemTableModel::MessageRole), QStringLiteral("No change"));
+    QCOMPARE(cell(1, ItemTableModel::MessageRole),
+             QStringLiteral("No change. The name stays 'b'."));
     QCOMPARE(cell(2, Qt::DisplayRole), QStringLiteral("Invalid character: ?"));
     const QString full = QStringLiteral("Invalid: '?' is not permitted in portable names");
     QCOMPARE(cell(2, ItemTableModel::MessageRole), full);
@@ -655,7 +656,7 @@ void TestItemModel::postRunClearsOnChange()
     m.moveRows({1}, 0);
     QCOMPARE(m.index(1, 0).data(ItemTableModel::PostRunRole).toInt(), int(PostRun::None));
     QCOMPARE(m.index(1, ItemTableModel::Message).data(ItemTableModel::MessageRole).toString(),
-             QStringLiteral("No change"));
+             QStringLiteral("No change. The name stays 'a'."));
 }
 
 void TestItemModel::applyRenamesFollowsFolder()

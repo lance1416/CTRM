@@ -118,6 +118,11 @@ QString statusText(const ItemPreview &p, bool portableNames)
     }
 }
 
+QString unchangedText(const QString &name)
+{
+    return Messages::tr("No change. The name stays '%1'.").arg(name);
+}
+
 QString postRunText(const PostRunState &s)
 {
     switch (s.state) {

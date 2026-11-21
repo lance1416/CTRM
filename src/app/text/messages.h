@@ -35,6 +35,9 @@ QString diagnosticText(const Diagnostic &d, bool portableNames, const QStringLis
 // The Message column text of a preview row (ui-design 7.2).
 QString statusText(const ItemPreview &p, bool portableNames);
 
+// The full text of an item that keeps its name: "No change. The name stays 'a.txt'."
+QString unchangedText(const QString &name);
+
 // "Renamed", "Failed: ...", "Skipped: ...", "Rolled back to the old name". Empty for None.
 QString postRunText(const PostRunState &s);
 

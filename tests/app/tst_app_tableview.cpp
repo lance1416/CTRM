@@ -146,6 +146,10 @@ private slots:
     void emptyStateFusionSameHeight();
     void emptyStateDrop();
     void accessibleRowText();
+    void stateIconInEveryRow();
+    void neutralStateIconsSelected();
+    void stateColumnFixedWidth();
+    void unchangedStateTexts();
 };
 
 void TestAppTableView::headerClickSortsOnce()
@@ -373,7 +377,8 @@ void TestAppTableView::warningIconReplacesChange()
     QCOMPARE(image(warning.icon), image(stateIcon(StateIcon::Warning, colors)));
     QCOMPARE(image(f.option(1, ItemTableModel::State).icon),
              image(stateIcon(StateIcon::Change, colors)));
-    QVERIFY(f.option(2, ItemTableModel::State).icon.isNull());
+    QCOMPARE(image(f.option(2, ItemTableModel::State).icon),
+             image(stateIcon(StateIcon::Same, colors))); // O12
     // The State column shows the icon only.
     QVERIFY(f.option(1, ItemTableModel::State).text.isEmpty());
 }
@@ -603,6 +608,175 @@ void TestAppTableView::accessibleRowText()
     QVERIFY(text.contains(QStringLiteral("IMG_1.jpg")));
     QVERIFY(text.contains(QStringLiteral("Trip_1.jpg")));
     QVERIFY(text.contains(QStringLiteral("Will rename")));
+}
+
+void TestAppTableView::stateIconInEveryRow()
+{
+    // O12 (ui-design 7.2, table "State column"): each row has a centred 16 px state icon, also
+    // a row where nothing happens.
+    Fixture f({QStringLiteral("a.txt"), QStringLiteral("b.txt"), QStringLiteral("c.txt"),
+               QStringLiteral("d.txt"), QStringLiteral("e.txt"), QStringLiteral("f.txt"),
+               QStringLiteral("g.txt")});
+    setPreview(f.model, {row(Status::Unchanged, QStringLiteral("a.txt")),
+                         row(Status::Changed, QStringLiteral("x.txt")),
+                         row(Status::CaseOnly, QStringLiteral("C.txt")),
+                         row(Status::Changed, QStringLiteral("d.jpg"), {},
+                             {diag(DiagCode::ExtensionChanged)}),
+                         row(Status::Conflict, QStringLiteral("x.txt"),
+                             {diag(DiagCode::DuplicateInBatch, {}, 1)}),
+                         row(Status::Invalid, QString(), {diag(DiagCode::EmptyName)}),
+                         row(Status::Changed, QStringLiteral("y.txt"))});
+    f.model.setIncluded({f.model.items()[6].id}, false);
+    const CtrmColors colors = CtrmColors::fromPalette(f.view->palette());
+    const auto check = [&](const QList<StateIcon> &expected) {
+        for (int r = 0; r < expected.size(); ++r) {
+            const QStyleOptionViewItem o = f.option(r, ItemTableModel::State);
+            QVERIFY2(o.features & QStyleOptionViewItem::HasDecoration,
+                     qPrintable(QString::number(r)));
+            QVERIFY(!o.icon.isNull());
+            QCOMPARE(image(o.icon), image(stateIcon(expected[r], colors)));
+            QCOMPARE(o.decorationSize, QSize(tokens::iconS, tokens::iconS));
+            QCOMPARE(o.decorationAlignment, Qt::AlignCenter);
+            QVERIFY(o.text.isEmpty());
+        }
+    };
+    check({StateIcon::Same, StateIcon::Change, StateIcon::Change, StateIcon::Warning,
+           StateIcon::Conflict, StateIcon::Error, StateIcon::Excluded});
+
+    // After a batch: done, error, dash, rolled back; a row with no post-run state keeps its icon.
+    const QList<Item> items = f.model.items();
+    f.model.setPostRun({{items[0].id, {PostRun::Renamed, {}}},
+                        {items[1].id, {PostRun::Failed, QStringLiteral("x")}},
+                        {items[2].id, {PostRun::Skipped, QStringLiteral("x")}},
+                        {items[3].id, {PostRun::RolledBack, {}}}});
+    check({StateIcon::Done, StateIcon::Error, StateIcon::Excluded, StateIcon::RolledBack,
+           StateIcon::Conflict, StateIcon::Error, StateIcon::Excluded});
+
+    // The same icon is an equals sign in the dim text colour, not the change colour.
+    QVERIFY(image(stateIcon(StateIcon::Same, colors)) !=
+            image(stateIcon(StateIcon::Excluded, colors)));
+}
+
+void TestAppTableView::neutralStateIconsSelected()
+{
+    // O12: in a selected row the neutral icons (same, dash, rolled back) use the highlighted text
+    // colour; the state colours stay.
+    Fixture f({QStringLiteral("a.txt"), QStringLiteral("b.txt"), QStringLiteral("c.txt")});
+    setPreview(f.model, {row(Status::Unchanged, QStringLiteral("a.txt")),
+                         row(Status::Changed, QStringLiteral("x.txt")),
+                         row(Status::Changed, QStringLiteral("y.txt"))});
+    f.model.setIncluded({f.model.items()[2].id}, false);
+    const CtrmColors colors = CtrmColors::fromPalette(f.view->palette());
+    CtrmColors selected = colors;
+    selected.stateNeutral = f.view->palette().color(QPalette::HighlightedText);
+    const auto selectedOption = [&](int r) {
+        QStyleOptionViewItem opt;
+        opt.initFrom(f.view);
+        opt.state |= QStyle::State_Selected;
+        auto *delegate = qobject_cast<ItemDelegate *>(f.view->itemDelegate());
+        delegate->initStyleOption(&opt, f.view->model()->index(r, ItemTableModel::State));
+        return opt;
+    };
+    QCOMPARE(image(selectedOption(0).icon), image(stateIcon(StateIcon::Same, selected)));
+    QCOMPARE(image(selectedOption(1).icon), image(stateIcon(StateIcon::Change, colors)));
+    QCOMPARE(image(selectedOption(2).icon), image(stateIcon(StateIcon::Excluded, selected)));
+    QVERIFY(image(selectedOption(0).icon) != image(stateIcon(StateIcon::Same, colors)));
+}
+
+void TestAppTableView::stateColumnFixedWidth()
+{
+    // O12: the State column is 28 px, QHeaderView::Fixed, in all states.
+    Fixture f({});
+    f.show();
+    QHeaderView *header = f.view->horizontalHeader();
+    const auto check = [&](const char *when) {
+        QApplication::processEvents();
+        QVERIFY2(header->sectionResizeMode(ItemTableModel::State) == QHeaderView::Fixed, when);
+        QVERIFY2(header->sectionSize(ItemTableModel::State) == 28,
+                 qPrintable(QStringLiteral("%1: %2")
+                                    .arg(QLatin1String(when))
+                                    .arg(header->sectionSize(ItemTableModel::State))));
+    };
+    check("empty");
+    f.model.addItems({makeItem(QStringLiteral("a.txt")), makeItem(QStringLiteral("b.txt")),
+                      makeItem(QStringLiteral("c.txt"), QStringLiteral("/s"))});
+    setPreview(f.model, {row(Status::Unchanged, QStringLiteral("a.txt")),
+                         row(Status::Changed, QStringLiteral("x.txt")),
+                         row(Status::Conflict, QStringLiteral("x.txt"),
+                             {diag(DiagCode::DuplicateInBatch, {}, 1)})});
+    check("items");
+    f.proxy.setText(QStringLiteral("b"));
+    check("filter");
+    f.proxy.setText(QString());
+    f.proxy.setShowMode(ShowMode::Changed);
+    check("show changed only");
+    f.proxy.setShowMode(ShowMode::All);
+    f.clickHeader(ItemTableModel::OldName);
+    check("sort");
+    const QList<Item> items = f.model.items();
+    f.model.setPostRun({{items[0].id, {PostRun::Renamed, {}}}});
+    check("renamed");
+    f.model.setPostRun({{items[0].id, {PostRun::RolledBack, {}}}});
+    check("undo");
+    QFont big = f.view->font();
+    big.setPointSizeF(big.pointSizeF() * 2);
+    f.view->setFont(big);
+    check("font");
+    f.window.resize(500, 300);
+    f.view->resize(500, 300);
+    check("window size");
+    // The user cannot drag it: a drag on the right edge of the section does nothing.
+    const int edge = header->sectionViewportPosition(ItemTableModel::State) +
+                     header->sectionSize(ItemTableModel::State) - 1;
+    QTest::mousePress(header->viewport(), Qt::LeftButton, {}, QPoint(edge, header->height() / 2));
+    QTest::mouseMove(header->viewport(), QPoint(edge + 40, header->height() / 2));
+    QTest::mouseRelease(header->viewport(), Qt::LeftButton, {},
+                        QPoint(edge + 40, header->height() / 2));
+    check("drag");
+
+    // A big font before the view exists (an accessibility text size at start).
+    QWidget parent;
+    QFont start = parent.font();
+    start.setPointSizeF(start.pointSizeF() * 2);
+    parent.setFont(start);
+    ItemTableModel model;
+    ItemFilterProxy proxy;
+    ItemTableView bigView(model, proxy, &parent);
+    QCOMPARE(bigView.horizontalHeader()->sectionSize(ItemTableModel::State), 28);
+}
+
+void TestAppTableView::unchangedStateTexts()
+{
+    // O12: tooltip "No change. The name stays 'a.txt'.", accessible text "No change"; the header
+    // has no text, and its tooltip and accessible name are "State". New name does not change.
+    Fixture f({QStringLiteral("a.txt")});
+    setPreview(f.model, {row(Status::Unchanged, QStringLiteral("a.txt"))});
+    f.show();
+    const QModelIndex state = f.view->model()->index(0, ItemTableModel::State);
+    QCOMPARE(state.data(Qt::ToolTipRole).toString(),
+             QStringLiteral("No change. The name stays 'a.txt'."));
+    QCOMPARE(ItemDelegate::rowStateName(state), QStringLiteral("No change"));
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(f.view);
+    QVERIFY(iface && iface->tableInterface());
+    QAccessibleInterface *cell = iface->tableInterface()->cellAt(0, ItemTableModel::State);
+    QVERIFY(cell);
+    QVERIFY2(cell->text(QAccessible::Name).startsWith(QStringLiteral("No change, a.txt")),
+             qPrintable(cell->text(QAccessible::Name)));
+
+    const QAbstractItemModel *m = f.view->model();
+    QCOMPARE(m->headerData(ItemTableModel::State, Qt::Horizontal).toString(), QString());
+    QCOMPARE(m->headerData(ItemTableModel::State, Qt::Horizontal, Qt::ToolTipRole).toString(),
+             QStringLiteral("State"));
+    QCOMPARE(
+            m->headerData(ItemTableModel::State, Qt::Horizontal, Qt::AccessibleTextRole).toString(),
+            QStringLiteral("State"));
+
+    // New name: the name in text-dim, with no icon.
+    const QStyleOptionViewItem newName = f.option(0, ItemTableModel::NewName);
+    QCOMPARE(newName.text, QStringLiteral("a.txt"));
+    QVERIFY(newName.icon.isNull());
+    QCOMPARE(newName.palette.color(QPalette::Text),
+             f.view->palette().color(QPalette::PlaceholderText));
 }
 
 QTEST_MAIN(TestAppTableView)

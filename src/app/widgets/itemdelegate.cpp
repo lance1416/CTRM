@@ -55,7 +55,7 @@ bool ItemDelegate::highlightChanged() const
     return m_highlightChanged;
 }
 
-std::optional<StateIcon> ItemDelegate::rowStateIcon(const QModelIndex &index)
+StateIcon ItemDelegate::rowStateIcon(const QModelIndex &index)
 {
     const RowFacts f = rowFacts(index);
     switch (f.postRun) {
@@ -79,15 +79,14 @@ std::optional<StateIcon> ItemDelegate::rowStateIcon(const QModelIndex &index)
         return StateIcon::Warning;
     if (f.status == Status::Changed || f.status == Status::CaseOnly)
         return StateIcon::Change;
-    return std::nullopt;
+    return StateIcon::Same;
 }
 
 QString ItemDelegate::rowStateName(const QModelIndex &index)
 {
-    const auto icon = rowStateIcon(index);
-    if (!icon)
+    switch (rowStateIcon(index)) {
+    case StateIcon::Same:
         return tr("No change");
-    switch (*icon) {
     case StateIcon::Change:
         return tr("Change");
     case StateIcon::Conflict:
@@ -115,12 +114,13 @@ void ItemDelegate::initStyleOption(QStyleOptionViewItem *option, const QModelInd
 
     if (column == ItemTableModel::State) {
         option->text.clear();
-        option->icon = QIcon();
-        option->features &= ~QStyleOptionViewItem::HasDecoration;
-        if (const auto icon = rowStateIcon(index)) {
-            option->icon = stateIcon(*icon, m_colors);
-            option->features |= QStyleOptionViewItem::HasDecoration;
-        }
+        // Each row has an icon (O12). In a selected row the neutral icons use the highlighted
+        // text colour; the state colours stay (ui-design 7.2).
+        CtrmColors colors = m_colors;
+        if (option->state & QStyle::State_Selected)
+            colors.stateNeutral = option->palette.color(QPalette::HighlightedText);
+        option->icon = stateIcon(rowStateIcon(index), colors);
+        option->features |= QStyleOptionViewItem::HasDecoration;
         option->decorationAlignment = Qt::AlignCenter;
         option->displayAlignment = Qt::AlignCenter;
         option->decorationSize = QSize(tokens::iconS, tokens::iconS); // design-tokens 5.2
