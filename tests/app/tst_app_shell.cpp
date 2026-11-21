@@ -4,12 +4,14 @@
 #include "fakefilesystem.h"
 #include "mainwindow.h"
 #include "settings.h"
+#include "widgets/messagebar.h"
 
 #include <QAction>
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFontDatabase>
+#include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
@@ -99,6 +101,7 @@ class TestAppShell : public QObject
     Q_OBJECT
 private slots:
     void fontsInstalled();
+    void messageBarWrapsLongText();
     void testContextUsesDirs();
     void settingsDefaults();
     void settingsRoundTrip();
@@ -410,6 +413,48 @@ void TestAppShell::noNetworkModule()
     TestContext t;
     MainWindow w(*t.ctx);
     QCOMPARE(QCoreApplication::libraryPaths(), before);
+}
+
+void TestAppShell::messageBarWrapsLongText()
+{
+    // A long message wraps at the real text width: no cut line and no empty line, in a narrow
+    // and a wide window. The text label has a new QSizePolicy with no height-for-width flag, but
+    // QLabel::setText sets the flag again for a word-wrapped label, so the bar layout uses
+    // heightForWidth.
+    TestContext t;
+    MainWindow w(*t.ctx);
+    w.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&w));
+    MessageBar *bar = w.messageBar();
+    auto *text = bar->findChild<QLabel *>(QStringLiteral("messageBarText"));
+    QVERIFY(text);
+    const QString message = QStringLiteral(
+            "Could not rename 3 items because the files are open in another program or the folder "
+            "is read-only. Close the program and try again, or choose another folder. Could not "
+            "rename 3 items because the files are open in another program or the folder is "
+            "read-only. Close the program and try again, or choose another folder.");
+    bar->showMessage(StateIcon::Error, message, {});
+    for (int width : {900, 1600}) {
+        w.resize(width, 860);
+        QTRY_COMPARE(w.width(), width);
+        QCoreApplication::processEvents();
+        const QFontMetrics fm(text->font());
+        const int lines =
+                fm.boundingRect(QRect(0, 0, text->contentsRect().width(), QWIDGETSIZE_MAX),
+                                Qt::TextWordWrap, message)
+                        .height() /
+                fm.lineSpacing();
+        const QString info = QStringLiteral("window %1, text %2 x %3, %4 lines of %5")
+                                     .arg(width)
+                                     .arg(text->width())
+                                     .arg(text->height())
+                                     .arg(lines)
+                                     .arg(fm.lineSpacing());
+        QVERIFY2(lines > 1, qPrintable(info));
+        QCOMPARE(text->height(), text->heightForWidth(text->width()));
+        QVERIFY2(text->contentsRect().height() >= lines * fm.lineSpacing(), qPrintable(info));
+        QVERIFY2(text->contentsRect().height() < (lines + 1) * fm.lineSpacing(), qPrintable(info));
+    }
 }
 
 QTEST_MAIN(TestAppShell)
