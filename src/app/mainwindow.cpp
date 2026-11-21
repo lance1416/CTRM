@@ -129,7 +129,7 @@ MainWindow::MainWindow(AppContext &ctx, QWidget *parent)
 void MainWindow::showEvent(QShowEvent *e)
 {
     QMainWindow::showEvent(e);
-    // ui-design 14 "Start focus" (O11): the start focus is the item area (the table, or the
+    // ui-design 14 "Focus ring rule" 5 (O11): the start focus is the item area (the table, or the
     // empty state when the list is empty), never a button or a text field, so no focus ring
     // shows before the user uses the keyboard. A focus set before the first show is lost.
     if (!m_startFocusSet) {

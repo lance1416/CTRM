@@ -3,6 +3,7 @@
 #include "controllers/batchcontroller.h"
 #include "controllers/historycontroller.h"
 #include "controllers/itemadder.h"
+#include "controllers/preferencescontroller.h"
 #include "dialogs/historywindow.h"
 #include "dialogs/reportdialog.h"
 #include "dialogs/undopreviewdialog.h"
@@ -44,6 +45,7 @@
 #include <QTableView>
 #include <QTemporaryDir>
 #include <QTimeZone>
+#include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
 #include <QtTest>
@@ -184,6 +186,8 @@ private slots:
     void quickUndoUnavailableAfterListChange();
     void startFocusIsTable();
     void buttonsTakeNoClickFocus();
+    void programFocusAfterListEmpties();
+    void programFocusReturns();
     void noStatusBarLayoutStable();
     void undoIgnoresTextFocus();
     void historyStatesShown();
@@ -277,7 +281,7 @@ void TestHistory::quickUndoUnavailableAfterListChange()
 
 void TestHistory::startFocusIsTable()
 {
-    // ui-design 14 "Start focus" (O11), 10.3 (R6-04): the start focus is never a button or a
+    // ui-design 14 "Focus ring rule" 5 (O11), 10.3 (R6-04): the start focus is never a button or a
     // text field. An empty list: the empty state, which draws no ring. Items: the table, not the
     // Filter field. After Clear List: the empty state again.
     Fixture f;
@@ -319,6 +323,126 @@ void TestHistory::buttonsTakeNoClickFocus()
     QCOMPARE(push.focusPolicy(), Qt::TabFocus);
     QCOMPARE(tool.focusPolicy(), Qt::TabFocus);
     QCOMPARE(noFocus.focusPolicy(), Qt::NoFocus);
+}
+
+void TestHistory::programFocusAfterListEmpties()
+{
+    // ui-design 14 "Focus ring rule" 5 (O11): Clear List, or Remove of the last items, gives the
+    // focus to the empty state, not to the next widget in the chain (a button or a text field).
+    Fixture f;
+    f.window.show();
+    QVERIFY(QTest::qWaitForWindowActive(&f.window));
+    auto *empty = f.window.findChild<EmptyState *>();
+    f.window.itemAdder().addPaths(
+            {f.tree.file(QStringLiteral("a.txt"), "x"), f.tree.file(QStringLiteral("b.txt"), "x")});
+    QTRY_COMPARE(QApplication::focusWidget(), f.window.tableView());
+    f.window.actions().clearList->trigger();
+    QTRY_COMPARE(QApplication::focusWidget(), empty);
+
+    f.window.itemAdder().addPaths({f.tree.file(QStringLiteral("c.txt"), "x")});
+    QTRY_COMPARE(QApplication::focusWidget(), f.window.tableView());
+    f.window.tableView()->selectAll();
+    f.window.actions().removeFromList->trigger();
+    QCOMPARE(f.window.itemModel().rowCount(), 0);
+    QTRY_COMPARE(QApplication::focusWidget(), empty);
+}
+
+void TestHistory::programFocusReturns()
+{
+    // ui-design 14 "Focus ring rule" 5 (O11): when a menu or a dialog closes, or the window
+    // becomes active again, the focus goes back to the control that had it, never to a button
+    // or a text field that the user did not use. Each UI opens by its real code path and closes
+    // with Escape.
+    Fixture f;
+    PreferencesController preferences(f.window, f.ctx, nullptr);
+    f.window.show();
+    QVERIFY(QTest::qWaitForWindowActive(&f.window));
+
+    // Opens a UI with open(), presses Escape in it, then checks the focus of the main window.
+    const auto closesTo = [&](const char *what, const std::function<void()> &open,
+                              QWidget *expected) {
+        bool escaped = false;
+        QTimer closer;
+        closer.setInterval(10);
+        connect(&closer, &QTimer::timeout, &closer, [&] {
+            QWidget *w = QApplication::activePopupWidget();
+            if (!w)
+                w = QApplication::activeModalWidget();
+            for (QWidget *top : QApplication::topLevelWidgets())
+                if (!w && top != &f.window && top->isVisible() && top->windowType() != Qt::ToolTip)
+                    w = top;
+            if (w && w->isVisible()) {
+                closer.stop();
+                QTest::keyClick(w, Qt::Key_Escape);
+                escaped = true;
+            }
+        });
+        closer.start();
+        open();
+        QTRY_VERIFY2(escaped, what);
+        QTRY_VERIFY2(!QApplication::activePopupWidget() && !QApplication::activeModalWidget(),
+                     what);
+        // The window keeps the control that had the focus; activation gives it back. Which
+        // window the platform activates after a dialog closes is not ours (the offscreen
+        // platform activates none), so the test activates the main window; windowSwitch
+        // tests the activation itself.
+        QVERIFY2(f.window.focusWidget() == expected, what);
+        f.window.activateWindow();
+        QTRY_VERIFY2(QApplication::activeWindow() == &f.window, what);
+        QTRY_VERIFY2(QApplication::focusWidget() == expected,
+                     qPrintable(QStringLiteral("%1: the focus is on %2")
+                                        .arg(QLatin1StringView(what))
+                                        .arg(QApplication::focusWidget()
+                                                     ? QApplication::focusWidget()->objectName()
+                                                     : QStringLiteral("nothing"))));
+    };
+    const auto windowSwitch = [&](QWidget *expected) {
+        QWidget other;
+        other.resize(200, 100);
+        other.show();
+        other.activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(&other));
+        f.window.activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(&f.window));
+        QTRY_COMPARE(QApplication::focusWidget(), expected);
+    };
+    QPushButton *addRule = f.window.rulePanel()->addRuleButton();
+    auto *presets = f.window.findChild<QToolButton *>(QStringLiteral("toolBarPresets"));
+    QVERIFY(addRule && presets);
+    const auto openAll = [&](QWidget *expected) {
+        closesTo("Add Rule menu", [&] { addRule->click(); }, expected);
+        closesTo("Presets menu", [&] { presets->showMenu(); }, expected);
+        closesTo("Preferences", [&] { f.window.actions().preferences->trigger(); }, expected);
+        closesTo("History", [&] { f.window.actions().history->trigger(); }, expected);
+        windowSwitch(expected);
+    };
+
+    // An empty list: the empty state.
+    auto *empty = f.window.findChild<EmptyState *>();
+    QTRY_COMPARE(QApplication::focusWidget(), empty);
+    openAll(empty);
+
+    // Items: the table. a1.txt and a2.txt get one new name, so Skip and Rename asks first.
+    f.window.itemAdder().addPaths({f.tree.file(QStringLiteral("a1.txt"), "x"),
+                                   f.tree.file(QStringLiteral("a2.txt"), "x"),
+                                   f.tree.file(QStringLiteral("c1d.txt"), "x")});
+    QTRY_COMPARE(QApplication::focusWidget(), f.window.tableView());
+    openAll(f.window.tableView());
+    f.window.ruleModel().insertRule(0, replaceRule(QStringLiteral("1"), QString()));
+    f.window.ruleModel().insertRule(1, replaceRule(QStringLiteral("2"), QString()));
+    QTRY_VERIFY(f.window.previewIsCurrent());
+    QVERIFY(f.window.actions().skipAndRename->isEnabled());
+    QTRY_COMPARE(QApplication::focusWidget(), f.window.tableView());
+    closesTo(
+            "rename confirmation", [&] { f.window.actions().skipAndRename->trigger(); },
+            f.window.tableView());
+    QVERIFY(f.exists(QStringLiteral("c1d.txt"))); // Escape is Cancel
+
+    // A text field that the user clicked keeps the focus.
+    auto *filter = f.window.findChild<QLineEdit *>(QStringLiteral("filterField"));
+    QTest::mouseClick(filter, Qt::LeftButton);
+    QTRY_COMPARE(QApplication::focusWidget(), filter);
+    openAll(filter);
 }
 
 void TestHistory::noStatusBarLayoutStable()

@@ -73,8 +73,8 @@ EmptyState::EmptyState(const Actions &actions, QWidget *parent)
     setAcceptDrops(true);
     setAutoFillBackground(true);
     setBackgroundRole(QPalette::Base);
-    // ui-design 14 "Start focus" (O11): the start focus with an empty list. A plain widget draws
-    // no focus ring; the first Tab goes on to Add Files....
+    // ui-design 14 "Focus ring rule" 5 (O11): the start focus with an empty list. A plain widget
+    // draws no focus ring; the first Tab goes on to Add Files....
     setFocusPolicy(Qt::StrongFocus);
     setAccessibleName(tr("Empty list"));
 
