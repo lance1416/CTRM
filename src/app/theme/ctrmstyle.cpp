@@ -3,19 +3,25 @@
 
 #include "theme/colors.h"
 #include "theme/icons.h"
+#include "theme/keyboardmode.h"
 #include "theme/tokens.h"
 
+#include <QAbstractItemView>
 #include <QAbstractSpinBox>
 #include <QApplication>
+#include <QComboBox>
 #include <QEvent>
 #include <QFocusFrame>
 #include <QImage>
+#include <QLabel>
 #include <QLineEdit>
 #include <QPainter>
 #include <QPushButton>
 #include <QStyleOption>
 #include <QToolBar>
 #include <QToolButton>
+
+#include <optional>
 
 namespace ctrm::app {
 
@@ -72,10 +78,25 @@ void drawFocusRing(QPainter *painter, const QRect &rect, const QPalette &palette
     painter->restore();
 }
 
-bool keyboardFocus(const QStyleOption *option)
+// ui-design 14 "Focus ring" (O11): the control of option has the focus and shows its ring. A
+// text entry shows it always, an item view never, the other controls only in keyboard mode.
+bool showsFocus(const QStyleOption *option, const QWidget *widget)
 {
-    return (option->state & QStyle::State_HasFocus) &&
-           (option->state & QStyle::State_KeyboardFocusChange);
+    if (!(option->state & QStyle::State_HasFocus))
+        return false;
+    return widget ? KeyboardMode::showsRing(widget) : KeyboardMode::isOn();
+}
+
+// A copy of option with no State_HasFocus, when the control has the focus but shows no ring.
+template <class Option>
+std::optional<Option> hiddenFocus(const QStyleOption *option, const QWidget *widget)
+{
+    const auto *typed = qstyleoption_cast<const Option *>(option);
+    if (!typed || !(option->state & QStyle::State_HasFocus) || showsFocus(option, widget))
+        return std::nullopt;
+    Option copy = *typed;
+    copy.state &= ~QStyle::State_HasFocus;
+    return copy;
 }
 
 // A chevron (icon-xs) in colour, in the centre of rect; up turns it 180 degrees.
@@ -241,7 +262,9 @@ QColor pushButtonText(const QStyleOptionButton *button)
 
 CtrmStyle::CtrmStyle(const QString &baseKey)
     : QProxyStyle(baseKey)
-{}
+{
+    KeyboardMode::instance();
+}
 
 CtrmStyle::~CtrmStyle() = default;
 
@@ -284,10 +307,17 @@ void CtrmStyle::polish(QWidget *widget)
     const bool button = qobject_cast<QPushButton *>(widget) || qobject_cast<QToolButton *>(widget);
     if (button || qobject_cast<QAbstractSpinBox *>(widget))
         widget->setAttribute(Qt::WA_Hover);
-    // ui-design 14 "Start focus" (O11): a click does not focus a button, so it leaves no ring.
-    // A button is a Tab stop only when the system keyboard navigation setting is on (macOS).
-    if (button && widget->focusPolicy() == Qt::StrongFocus)
+    // ui-design 14 "Start focus" and "Focus ring" (O11): a click does not focus a button, a check
+    // box, a radio button, a pop-up combo box or a link, so it leaves no ring. They are Tab stops
+    // only when the system keyboard navigation setting is on (macOS).
+    const auto *combo = qobject_cast<QComboBox *>(widget);
+    if ((qobject_cast<QAbstractButton *>(widget) && widget->focusPolicy() == Qt::StrongFocus) ||
+        (qobject_cast<QLabel *>(widget) && widget->focusPolicy() == Qt::StrongFocus) ||
+        (combo && !combo->isEditable() && (widget->focusPolicy() & Qt::ClickFocus)))
         widget->setFocusPolicy(Qt::TabFocus);
+    // Lists and tables show no focus ring (rule 4).
+    if (qobject_cast<QAbstractItemView *>(widget))
+        widget->setAttribute(Qt::WA_MacShowFocusRect, false);
 }
 
 void CtrmStyle::unpolish(QWidget *widget)
@@ -325,13 +355,22 @@ void CtrmStyle::drawPrimitive(PrimitiveElement element, const QStyleOption *opti
             return; // the spin box draws the fill
         if (isFramedLineEdit(option, widget)) {
             fillRounded(painter, option->rect, fieldFill(option), tokens::radiusControl);
-            if (!macBase() && keyboardFocus(option))
+            // A text field shows its ring also after a click (O11 rule 2).
+            if (!macBase() && (option->state & State_HasFocus))
                 drawFocusRing(painter, option->rect, option->palette, tokens::radiusControl);
             return;
         }
     }
     if (element == PE_FrameLineEdit && isFramedLineEdit(option, widget))
         return; // no border lines (design-tokens 4.4)
+    if (element == PE_FrameFocusRect && widget && !KeyboardMode::showsRing(widget))
+        return;
+    if (element == PE_PanelItemViewItem) {
+        if (auto item = hiddenFocus<QStyleOptionViewItem>(option, widget)) {
+            QProxyStyle::drawPrimitive(element, &*item, painter, widget);
+            return;
+        }
+    }
     QProxyStyle::drawPrimitive(element, option, painter, widget);
 }
 
@@ -357,6 +396,8 @@ void CtrmStyle::drawControl(ControlElement element, const QStyleOption *option, 
         // QMacStyle shows a focus frame around the focus widget.
         const auto *frame = qobject_cast<const QFocusFrame *>(widget);
         const QWidget *target = frame ? frame->widget() : nullptr;
+        if (target && !KeyboardMode::showsRing(target))
+            return; // O11: only text entries show the ring out of keyboard mode
         // A push button and a spin box get the text field ring: one ring, around the full
         // control. (The native ring of a push button has the native button shape and position.)
         const auto *spin = qobject_cast<const QAbstractSpinBox *>(target);
@@ -381,6 +422,22 @@ void CtrmStyle::drawControl(ControlElement element, const QStyleOption *option, 
             painter->setClipRect(header->rect, Qt::IntersectClip);
             QProxyStyle::drawControl(element, &wide, painter, widget);
             painter->restore();
+            return;
+        }
+    }
+    if (element == CE_CheckBox || element == CE_RadioButton) {
+        if (auto toggle = hiddenFocus<QStyleOptionButton>(option, widget)) {
+            drawControl(element, &*toggle, painter, widget);
+            return;
+        }
+    }
+    if (element == CE_ItemViewItem) {
+        // Lists and tables show no focus ring. In keyboard mode the current row has an outline.
+        if (const auto *item = qstyleoption_cast<const QStyleOptionViewItem *>(option)) {
+            QStyleOptionViewItem noFocus = *item;
+            noFocus.state &= ~State_HasFocus;
+            QProxyStyle::drawControl(element, &noFocus, painter, widget);
+            drawCurrentRowOutline(painter, *item);
             return;
         }
     }
@@ -415,7 +472,7 @@ void CtrmStyle::drawControl(ControlElement element, const QStyleOption *option, 
         label.rect = proxy()->subElementRect(SE_PushButtonContents, button, widget);
         proxy()->drawControl(CE_PushButtonLabel, &label, painter, widget);
         // On macOS the focus frame draws the ring (CE_FocusFrame).
-        if (!macBase() && keyboardFocus(button))
+        if (!macBase() && showsFocus(button, widget))
             drawFocusRing(painter, button->rect, button->palette, pushButtonRadius(button));
         return;
     }
@@ -495,6 +552,28 @@ void CtrmStyle::drawControl(ControlElement element, const QStyleOption *option, 
 void CtrmStyle::drawComplexControl(ComplexControl control, const QStyleOptionComplex *option,
                                    QPainter *painter, const QWidget *widget) const
 {
+    // O11: a pop-up combo box or a tool button shows its focus only in keyboard mode. An editable
+    // combo box is a text entry: it has the keyboard look after a click too.
+    if (control == CC_ComboBox) {
+        if (auto combo = hiddenFocus<QStyleOptionComboBox>(option, widget)) {
+            drawComplexControl(control, &*combo, painter, widget);
+            return;
+        }
+        const auto *combo = qstyleoption_cast<const QStyleOptionComboBox *>(option);
+        if (combo && combo->editable && (combo->state & State_HasFocus) &&
+            !(combo->state & State_KeyboardFocusChange)) {
+            QStyleOptionComboBox keyboard = *combo;
+            keyboard.state |= State_KeyboardFocusChange;
+            drawComplexControl(control, &keyboard, painter, widget);
+            return;
+        }
+    }
+    if (control == CC_ToolButton) {
+        if (auto tool = hiddenFocus<QStyleOptionToolButton>(option, widget)) {
+            drawComplexControl(control, &*tool, painter, widget);
+            return;
+        }
+    }
     if (control == CC_SpinBox) {
         if (const QStyleOptionSpinBox *spin = framedSpinBox(option)) {
             const CtrmColors c = CtrmColors::fromPalette(spin->palette);
@@ -516,7 +595,7 @@ void CtrmStyle::drawComplexControl(ComplexControl control, const QStyleOptionCom
                                 colour, part == SC_SpinBoxUp, spin->palette);
                 }
             }
-            if (!macBase() && keyboardFocus(spin))
+            if (!macBase() && (spin->state & State_HasFocus)) // a text entry (O11 rule 2)
                 drawFocusRing(painter, spin->rect, spin->palette, tokens::radiusControl);
             return;
         }
@@ -565,7 +644,7 @@ void CtrmStyle::drawComplexControl(ComplexControl control, const QStyleOptionCom
                 fillRounded(painter, fillRect, c.fillPressed, radius);
             else if (hover)
                 fillRounded(painter, fillRect, c.fillHover, radius);
-            if (keyboardFocus(tool))
+            if (showsFocus(tool, widget))
                 drawFocusRing(painter, fillRect, tool->palette, radius);
 
             drawToolBarLabel(painter, tool, widget);

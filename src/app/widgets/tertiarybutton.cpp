@@ -3,6 +3,7 @@
 
 #include "theme/colors.h"
 #include "theme/icons.h"
+#include "theme/keyboardmode.h"
 #include "theme/tokens.h"
 
 #include <QPainter>
@@ -82,8 +83,8 @@ void TertiaryButton::paintEvent(QPaintEvent * /*event*/)
         fillRounded(painter, rect(), c.fillPressed);
     else if (hover)
         fillRounded(painter, rect(), c.fillHover);
-    if ((option.state & QStyle::State_HasFocus) &&
-        (option.state & QStyle::State_KeyboardFocusChange)) {
+    // O11: the ring only in keyboard mode (the Chain options header is a tertiary button).
+    if ((option.state & QStyle::State_HasFocus) && KeyboardMode::isOn()) {
         painter.setPen(QPen(palette().color(QPalette::Accent), kFocusRingWidth));
         painter.setBrush(Qt::NoBrush);
         const qreal half = kFocusRingWidth / 2;

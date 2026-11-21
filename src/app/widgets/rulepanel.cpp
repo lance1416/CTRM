@@ -16,6 +16,7 @@
 #include "rules/unsupportedrule.h"
 #include "theme/colors.h"
 #include "theme/icons.h"
+#include "theme/keyboardmode.h"
 #include "theme/surface.h"
 #include "theme/tokens.h"
 #include "theme/typography.h"
@@ -44,7 +45,6 @@
 #include <QScrollBar>
 #include <QSplitter>
 #include <QStackedWidget>
-#include <QStyleOptionFocusRect>
 #include <QStyleOptionViewItem>
 #include <QStyledItemDelegate>
 #include <QTimer>
@@ -139,14 +139,8 @@ public:
         if (hasError)
             stateIcon(StateIcon::Error, CtrmColors::fromPalette(opt.palette))
                     .paint(painter, row.icon);
-        if (opt.state & QStyle::State_HasFocus) {
-            QStyleOptionFocusRect focus;
-            focus.QStyleOption::operator=(opt);
-            focus.rect = opt.rect;
-            focus.backgroundColor =
-                    opt.palette.color(selected ? QPalette::Highlight : QPalette::Base);
-            style->drawPrimitive(QStyle::PE_FrameFocusRect, &focus, painter, widget);
-        }
+        // A list shows no focus ring; in keyboard mode the current row has an outline (O11).
+        drawCurrentRowOutline(painter, opt);
     }
 };
 

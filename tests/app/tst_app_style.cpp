@@ -7,6 +7,7 @@
 #include "theme/colors.h"
 #include "theme/ctrmstyle.h"
 #include "theme/icons.h"
+#include "theme/keyboardmode.h"
 #include "theme/tokens.h"
 #include "widgets/menutoolbutton.h"
 #include "widgets/tertiarybutton.h"
@@ -626,8 +627,11 @@ void TestAppStyle::toolBarFirstIconAtInset()
 void TestAppStyle::oneFocusRing()
 {
     // Area D check: one focus ring. On macOS the focus frame draws the text field ring around a
-    // spin box and a push button (not the square ring, not a second ring in the button).
+    // spin box and a push button (not the square ring, not a second ring in the button). The
+    // push button shows its ring only in keyboard mode (O11).
     Styled s;
+    KeyboardMode::instance()->setOn(true);
+    const auto off = qScopeGuard([] { KeyboardMode::instance()->setOn(false); });
     auto *edit = s.add(new QLineEdit);
     auto *spin = s.add(new QSpinBox);
     auto *button = s.add(new QPushButton(QStringLiteral("Roll Back")));

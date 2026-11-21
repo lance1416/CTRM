@@ -25,7 +25,8 @@ elseif(WIN32)
     set(CTRM_NATIVE_STYLE windows11)
 endif()
 if(CTRM_NATIVE_STYLE)
-    foreach(test_name tst_app_forms tst_app_editors1 tst_app_editors2 tst_app_rulepanel tst_app_style)
+    foreach(test_name tst_app_forms tst_app_editors1 tst_app_editors2 tst_app_rulepanel tst_app_style
+            tst_app_keyboardmode)
         add_test(NAME ${test_name}_native COMMAND ${test_name} -style ${CTRM_NATIVE_STYLE})
         set_tests_properties(${test_name}_native PROPERTIES
             ENVIRONMENT "QT_QPA_PLATFORM=offscreen"

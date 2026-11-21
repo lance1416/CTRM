@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "itemviewpaint.h"
 
+#include "theme/keyboardmode.h"
+
 #include <QApplication>
 #include <QPainter>
 #include <QStyle>
@@ -31,8 +33,10 @@ void paintItemViewItem(QPainter *painter, const QStyleOptionViewItem &option)
         rest.rect.setRight(rest.rect.right() - (without - with));
     else
         rest.rect.setLeft(rest.rect.left() + (with - without));
-    // The background is drawn: no second selection or brush on the contents.
+    // The background is drawn: no second selection or brush on the contents. No outline of the
+    // current row either (it needs the full rect): it is drawn below, from option.
     rest.backgroundBrush = Qt::NoBrush;
+    rest.index = QModelIndex();
     if (option.state & QStyle::State_Selected) {
         rest.state &= ~QStyle::State_Selected;
         rest.palette.setColor(QPalette::Text, option.palette.color(QPalette::HighlightedText));
@@ -57,6 +61,7 @@ void paintItemViewItem(QPainter *painter, const QStyleOptionViewItem &option)
     painter->translate(check.topLeft());
     style->drawPrimitive(QStyle::PE_IndicatorItemViewItemCheck, &indicator, painter, widget);
     painter->restore();
+    drawCurrentRowOutline(painter, option);
 }
 
 } // namespace ctrm::app
