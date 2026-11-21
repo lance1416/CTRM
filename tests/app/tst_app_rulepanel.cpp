@@ -112,9 +112,11 @@ private slots:
     void editorsShareLabelColumn();
     void tertiaryButtonsAccessible();
     void emptyStates();
-    void chainOptionsAtBottom();
+    void chainOptionsUnderPage();
     void chainOptionsForwarded();
-    void chainOptionsStableAndTitleAligned();
+    void upperPartsStableAndTitleAligned();
+    void openChainOptionsScrollsIntoView();
+    void chainOptionsOpenChangedOnce();
     void setChainResetsEditor();
     void numberedCountForwarded();
     void inactiveSelectionContrast();
@@ -445,30 +447,64 @@ void TestAppRulePanel::emptyStates()
     QVERIFY(text->isVisible());
 }
 
-void TestAppRulePanel::chainOptionsAtBottom()
+void TestAppRulePanel::chainOptionsUnderPage()
 {
-    Fixture f({"replace"});
-    f.select(0);
-    QApplication::processEvents();
+    // O13 (ui-design 4.4, 8.10): Chain options is in the editor scroll content, space-4 under
+    // the last row of the current page, with the separator line in that gap. The free height is
+    // under it, with nothing in it.
+    const QStringList types{"replace",   "insert",    "remove", "changeCase",
+                            "numbering", "extension", "cleanup"};
+    Fixture f(types);
+    f.window.resize(400, 1000); // each page fits
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
     auto *chain = f.panel->findChild<ChainOptionsWidget *>();
-    QVERIFY(chain->isVisible());
-    // Below the splitter with the list and the editor, and not in the scroll area.
-    auto *splitter = f.panel->findChild<QSplitter *>();
-    QVERIFY(splitter);
-    QCOMPARE(splitter->orientation(), Qt::Vertical);
-    QVERIFY(!splitter->isAncestorOf(chain));
-    QVERIFY(chain->mapTo(f.panel, QPoint(0, 0)).y() >=
-            splitter->mapTo(f.panel, QPoint(0, splitter->height())).y());
-    auto *scroll = f.panel->findChild<QScrollArea *>();
-    QVERIFY(scroll && splitter->isAncestorOf(scroll));
-    QVERIFY(scroll->isAncestorOf(f.panel->currentEditor()));
-    QVERIFY(splitter->isAncestorOf(f.panel->ruleList()));
+    auto *scroll = f.panel->findChild<QScrollArea *>(QStringLiteral("editorScroll"));
+    QVERIFY(chain && scroll);
+    QVERIFY(scroll->widget()->isAncestorOf(chain));
+    auto *header = chain->findChild<QToolButton *>(QStringLiteral("chainOptionsHeader"));
+    auto *line = chain->findChild<QWidget *>(QStringLiteral("chainOptionsSeparator"));
+    auto *fade = scroll->findChild<QWidget *>(QStringLiteral("editorFade"));
+    QVERIFY(header && line && fade);
+    for (int row = 0; row < types.size(); ++row) {
+        f.select(row);
+        QApplication::processEvents();
+        auto *editor = qobject_cast<RuleEditor *>(f.panel->currentEditor());
+        QVERIFY(editor);
+        QFormLayout *form = editor->form();
+        int last = -1; // the bottom of the last visible row
+        for (int r = 0; r < form->rowCount(); ++r) {
+            if (!form->isRowVisible(r))
+                continue;
+            for (const auto role :
+                 {QFormLayout::LabelRole, QFormLayout::FieldRole, QFormLayout::SpanningRole}) {
+                if (QLayoutItem *item = form->itemAt(r, role))
+                    last = std::max(last, form->parentWidget()
+                                                  ->mapTo(f.panel, item->geometry().bottomLeft())
+                                                  .y());
+            }
+        }
+        const int headerTop = header->mapTo(f.panel, QPoint()).y();
+        const int lineY = line->mapTo(f.panel, QPoint()).y();
+        const QString at = QStringLiteral("%1: last row %2, line %3, header %4")
+                                   .arg(types.at(row))
+                                   .arg(last)
+                                   .arg(lineY)
+                                   .arg(headerTop);
+        QVERIFY2(headerTop - (last + 1) == tokens::space4, qPrintable(at));
+        QVERIFY2(lineY > last && lineY < headerTop, qPrintable(at));
+        // The free height is under Chain options, in the viewport: no scroll, no fade.
+        const int chainBottom = chain->mapTo(scroll->viewport(), QPoint(0, chain->height())).y();
+        QVERIFY2(chainBottom < scroll->viewport()->height(), qPrintable(at));
+        QCOMPARE(scroll->verticalScrollBar()->maximum(), 0);
+        QVERIFY(!fade->isVisible());
+    }
 }
 
-void TestAppRulePanel::chainOptionsStableAndTitleAligned()
+void TestAppRulePanel::upperPartsStableAndTitleAligned()
 {
-    // M19: Chain options has the body font and does not move when another editor shows. The
-    // editor title starts on the line of the "Rules" header.
+    // O13, R1-01 (ui-design 4.4): when the user selects another rule, the list, the rule tools
+    // and the top of the editor do not move; only the place of Chain options changes. M19: the
+    // Chain options header has the body font. The editor title starts on the line of "Rules".
     const QStringList types{"replace",   "insert",    "remove", "changeCase",
                             "numbering", "extension", "cleanup"};
     // The macOS platform theme gives tool buttons a smaller font.
@@ -493,26 +529,65 @@ void TestAppRulePanel::chainOptionsStableAndTitleAligned()
     }
     QVERIFY(rules);
     const int rulesX = rules->mapTo(f.panel, QPoint()).x();
-    for (const int height : {800, 420}) {
+    auto *scroll = f.panel->findChild<QScrollArea *>(QStringLiteral("editorScroll"));
+    auto *tools = f.panel->findChild<QToolButton *>(QStringLiteral("deleteButton"));
+    QVERIFY(scroll && tools);
+    const auto upper = [&] {
+        return QList<QRect>{
+                QRect(f.panel->ruleList()->mapTo(f.panel, QPoint()), f.panel->ruleList()->size()),
+                QRect(tools->mapTo(f.panel, QPoint()), tools->size()),
+                QRect(scroll->mapTo(f.panel, QPoint()), scroll->size())};
+    };
+    for (const int height : {1000, 800, 560, 420}) {
         f.window.resize(f.window.width(), height);
         QApplication::processEvents();
-        int headerY = -1;
+        QList<QRect> before;
+        QSet<int> headerYs;
         for (int row = 0; row < types.size(); ++row) {
             f.select(row);
             QApplication::processEvents();
-            const int y = header->mapTo(f.panel, QPoint()).y();
-            if (headerY < 0)
-                headerY = y;
-            QVERIFY2(
-                    y == headerY,
-                    qPrintable(
-                            QStringLiteral("%1: %2 != %3").arg(types.at(row)).arg(y).arg(headerY)));
+            if (before.isEmpty())
+                before = upper();
+            QVERIFY2(upper() == before,
+                     qPrintable(QStringLiteral("%1 at height %2").arg(types.at(row)).arg(height)));
+            headerYs.insert(header->mapTo(f.panel, QPoint()).y());
             auto *title = f.panel->currentEditor()->findChild<QLabel *>(
                     QStringLiteral("ruleEditorTitle"));
             QVERIFY(title);
             QCOMPARE(title->mapTo(f.panel, QPoint()).x(), rulesX);
         }
+        if (height == 1000) // the pages have different heights: Chain options follows the page
+            QVERIFY(headerYs.size() > 1);
     }
+}
+
+void TestAppRulePanel::openChainOptionsScrollsIntoView()
+{
+    // O13 (ui-design 4.4): in a low panel the content scrolls with the fade; when the user opens
+    // Chain options, the editor scrolls so that the open area shows in full.
+    Fixture f({"numbering", "replace"});
+    f.window.resize(400, 560);
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    f.select(0);
+    QApplication::processEvents();
+    auto *scroll = f.panel->findChild<QScrollArea *>(QStringLiteral("editorScroll"));
+    auto *chain = f.panel->findChild<ChainOptionsWidget *>();
+    auto *fade = scroll->findChild<QWidget *>(QStringLiteral("editorFade"));
+    QVERIFY(scroll && chain && fade);
+    QTRY_VERIFY(scroll->verticalScrollBar()->maximum() > 0);
+    QVERIFY(fade->isVisible());
+    QCOMPARE(scroll->verticalScrollBar()->value(), 0);
+    const int listHeight = f.panel->ruleList()->height();
+    chain->findChild<QToolButton *>(QStringLiteral("chainOptionsHeader"))->click();
+    auto *last = chain->findChild<QCheckBox *>(QStringLiteral("folderExtensions"));
+    QVERIFY(last);
+    const auto shown = [&] {
+        const QRect r(last->mapTo(scroll->viewport(), QPoint()), last->size());
+        return scroll->viewport()->rect().contains(r);
+    };
+    QTRY_VERIFY(shown());
+    QVERIFY(scroll->verticalScrollBar()->value() > 0);
+    QCOMPARE(f.panel->ruleList()->height(), listHeight); // C06
 }
 
 void TestAppRulePanel::chainOptionsForwarded()
@@ -801,6 +876,22 @@ void TestAppRulePanel::ruleRowDisabledDimmed()
             red += c.red() > 150 && c.green() < 80 && c.blue() < 80;
         }
     QVERIFY2(red > 20, qPrintable(QString::number(red)));
+}
+
+void TestAppRulePanel::chainOptionsOpenChangedOnce()
+{
+    // openChanged comes one time for each change, from a call and from a click.
+    ChainOptionsWidget chain(nullptr);
+    QSignalSpy spy(&chain, &ChainOptionsWidget::openChanged);
+    chain.setOpen(true);
+    QCOMPARE(spy.size(), 1);
+    chain.setOpen(true);
+    QCOMPARE(spy.size(), 1);
+    chain.setOpen(false);
+    QCOMPARE(spy.size(), 2);
+    chain.findChild<QToolButton *>(QStringLiteral("chainOptionsHeader"))->click();
+    QCOMPARE(spy.size(), 3);
+    QCOMPARE(spy.last().first().toBool(), true);
 }
 
 QTEST_MAIN(TestAppRulePanel)

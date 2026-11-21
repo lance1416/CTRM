@@ -10,7 +10,7 @@ class QToolButton;
 
 namespace ctrm::app {
 
-// The "Chain options" area at the bottom of the rule panel (ui-design 8.10). Closed by default.
+// The "Chain options" area under the rule editor page (ui-design 8.10). Closed by default.
 class ChainOptionsWidget : public QWidget
 {
     Q_OBJECT
@@ -19,12 +19,13 @@ public:
     void setOptions(const ctrm::ChainOptions &o); // does not emit optionsChanged()
     ctrm::ChainOptions options() const;
     void setOpen(bool open);
-    // The height that the open check boxes now add to the closed area. 0 when closed. The rule list
-    // height does not count it (C06).
-    int openHeight() const;
+    // The height of the closed area: the gap with the separator line, and the header.
+    int closedHeight() const;
+    QWidget *lastOption() const; // the last check box
 
 signals:
     void optionsChanged(const ctrm::ChainOptions &o);
+    void openChanged(bool open);
 
 protected:
     void changeEvent(QEvent *event) override;

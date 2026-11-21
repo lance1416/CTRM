@@ -342,6 +342,21 @@ public:
         return pageSize([](const QWidget *w) { return w->minimumSizeHint(); });
     }
 
+    // The height for width of the current page. QStackedLayout gives the largest of all pages:
+    // a short page would then have the empty space of a tall page under it (O13).
+    bool hasHeightForWidth() const override
+    {
+        const QWidget *current = currentWidget();
+        return current && current->hasHeightForWidth();
+    }
+    int heightForWidth(int width) const override
+    {
+        const QWidget *current = currentWidget();
+        if (!current || !current->hasHeightForWidth())
+            return -1;
+        return std::max(current->heightForWidth(width), current->minimumSize().height());
+    }
+
 private:
     template <typename Hint>
     QSize pageSize(Hint hint) const
@@ -357,22 +372,37 @@ private:
     }
 };
 
+// The layout item of the editor pages. QWidgetItem asks the layout of a widget for its height
+// for width, and QStackedLayout gives the largest of all pages: this item asks EditorStack, which
+// gives the current page.
+class EditorStackItem : public QWidgetItem
+{
+public:
+    using QWidgetItem::QWidgetItem;
+
+    int heightForWidth(int width) const override
+    {
+        return isEmpty() ? -1 : widget()->heightForWidth(width);
+    }
+};
+
 // The rule list over the editor (ui-design 4.4). The list is as high as its rows (at least 3)
 // and the editor gets the rest. When the editor page does not fit, the list gives its empty rows
 // to the editor first (M06). After the user moves the handle, the splitter keeps the sizes.
 class RuleSplitter : public PlainSplitter
 {
 public:
-    // editor is a scroll area with pages: QScrollArea keeps an old size hint of its widget, so
-    // the splitter asks the pages.
-    // openHeight: the height that the open Chain options take from this splitter. The list
-    // height does not count it: the editor gives it up (C06).
-    RuleSplitter(QWidget *listPage, QListView *list, QScrollArea *editor,
-                 std::function<int()> openHeight)
+    // editor is a scroll area with the pages and Chain options: QScrollArea keeps an old size
+    // hint of its widget, so the splitter asks the pages.
+    // underPages: the height of the closed Chain options under the page. Open Chain options do
+    // not count: the editor scrolls, and the list keeps its height (C06, O13).
+    RuleSplitter(QWidget *listPage, QListView *list, QScrollArea *editor, QStackedWidget *pages,
+                 std::function<int()> underPages)
         : PlainSplitter(Qt::Vertical)
         , m_list(list)
         , m_editor(editor)
-        , m_openHeight(std::move(openHeight))
+        , m_pages(pages)
+        , m_underPages(std::move(underPages))
     {
         setChildrenCollapsible(false);
         setHandleWidth(kRuleHandleWidth);
@@ -421,14 +451,14 @@ private:
         if (m_userSizes || count() != 2)
             return;
         const int total = height() - handleWidth();
-        // The height as if Chain options were closed.
-        const int planned = total + (m_openHeight ? m_openHeight() : 0);
+        const int planned = total;
         QWidget *list = widget(0);
         const int listMin = list->minimumSizeHint().height();
         const int listHint = std::max(listMin, list->sizeHint().height());
         // The tallest page, not the current one: the list height does not change when the
         // user selects another rule (R1-01).
-        const int editorHint = tallestPage() + 2 * m_editor->frameWidth();
+        const int editorHint =
+                tallestPage() + (m_underPages ? m_underPages() : 0) + 2 * m_editor->frameWidth();
         int listHeight = wholeRows(planned - editorHint, listMin, listHint, editorHint, planned);
         // The editor keeps its minimum: then the list gives up height, in whole rows.
         const int editorMin = m_editor->minimumSizeHint().height();
@@ -472,9 +502,7 @@ private:
 
     int tallestPage() const
     {
-        auto *pages = qobject_cast<QStackedWidget *>(m_editor->widget());
-        if (!pages)
-            return m_editor->widget() ? m_editor->widget()->sizeHint().height() : 0;
+        QStackedWidget *pages = m_pages;
         int tallest = 0;
         for (int i = 0; i < pages->count(); ++i)
             tallest = std::max(tallest, pages->widget(i)
@@ -486,7 +514,8 @@ private:
 
     QListView *m_list;
     QScrollArea *m_editor;
-    std::function<int()> m_openHeight;
+    QStackedWidget *m_pages;
+    std::function<int()> m_underPages;
     bool m_userSizes = false;
 };
 
@@ -538,7 +567,7 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     , m_editors(new EditorStack)
     , m_noRulePage(new QWidget)
     , m_unsupportedPage(new QWidget)
-    , m_chainOptions(new ChainOptionsWidget(nullptr)) // the layout adds it last: tab order
+    , m_chainOptions(new ChainOptionsWidget(nullptr)) // the scroll content adds it: tab order
 
     , m_labelSync(new LabelColumnSync(this))
 {
@@ -672,28 +701,40 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     if (auto *replace =
                 qobject_cast<ReplaceEditor *>(m_editorByType.value(QStringLiteral("replace"))))
         connect(replace, &ReplaceEditor::syntaxHelpRequested, actions.regexHelp, &QAction::trigger);
+    // The scroll content: the current page, Chain options directly under it, and the free height
+    // at the bottom, with nothing in it (O13, ui-design 4.4, 8.10). Chain options is last: tab
+    // order.
+    m_editors->setObjectName(QStringLiteral("editorPages"));
+    auto *content = new QWidget;
+    content->setObjectName(QStringLiteral("editorContent"));
+    auto *contentLayout = new QVBoxLayout(content);
+    contentLayout->setContentsMargins(0, 0, 0, 0);
+    contentLayout->setSpacing(0);
+    m_editors->setParent(content);
+    contentLayout->addItem(new EditorStackItem(m_editors));
+    contentLayout->addWidget(m_chainOptions);
+    contentLayout->addStretch(1);
     m_scroll = new EditorScrollArea;
-    m_scroll->setWidget(m_editors);
+    m_scroll->setWidget(content);
     // O06b: no box. The editor is on the panel surface (design-tokens 4.6: a scroll area never
     // paints a background of its own). setWidget turns the fill of the widget on.
-    m_editors->setAutoFillBackground(false);
+    content->setAutoFillBackground(false);
     m_scroll->setBackgroundRole(QPalette::Window);
     m_scroll->viewport()->setBackgroundRole(QPalette::Window);
     m_scroll->viewport()->setAutoFillBackground(false);
 
-    m_splitter = new RuleSplitter(listPage, m_list, m_scroll,
-                                  [this] { return m_chainOptions->openHeight(); });
+    m_splitter = new RuleSplitter(listPage, m_list, m_scroll, m_editors,
+                                  [this] { return m_chainOptions->closedHeight(); });
 
     auto *layout = new QVBoxLayout(this);
     // The panel inset space-3 on each side; space-2 under the header row, as under the filter
-    // row (O06b, C08, design-tokens 4.2). Chain options has its own gap (ui-design 8.10).
+    // row (O06b, C08, design-tokens 4.2).
     layout->setContentsMargins(tokens::space3, tokens::space3, tokens::space3, tokens::space3);
     layout->setSpacing(0);
     layout->addWidget(header);
     layout->addSpacing(tokens::space2);
     layout->addWidget(m_emptyPage, 1);
     layout->addWidget(m_splitter, 1);
-    layout->addWidget(m_chainOptions); // under the editor, outside the scroll area (ui-design 8.10)
 
     fillAddRuleMenu();
 
@@ -740,6 +781,16 @@ RulePanel::RulePanel(RuleListModel &model, const Actions &actions, QWidget *pare
     // Chain options.
     m_chainOptions->setOptions(m_model.chain().options);
     applyChainOptions(m_model.chain().options);
+    // Open: the editor scrolls so that the open area shows in full (ui-design 4.4).
+    connect(m_chainOptions, &ChainOptionsWidget::openChanged, this, [this](bool open) {
+        if (!open)
+            return;
+        QTimer::singleShot(0, this, [this] {
+            // The new content height first, so that the scroll range has the open area.
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::LayoutRequest);
+            m_scroll->ensureWidgetVisible(m_chainOptions->lastOption());
+        });
+    });
     connect(m_chainOptions, &ChainOptionsWidget::optionsChanged, this,
             [this](const ChainOptions &o) {
                 m_model.setChainOptions(o);

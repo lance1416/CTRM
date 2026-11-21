@@ -9,10 +9,9 @@
 
 #include <QCheckBox>
 #include <QEvent>
+#include <QSignalBlocker>
 #include <QToolButton>
 #include <QVBoxLayout>
-
-#include <algorithm>
 
 namespace ctrm::app {
 
@@ -103,16 +102,26 @@ ctrm::ChainOptions ChainOptionsWidget::options() const
 
 void ChainOptionsWidget::setOpen(bool open)
 {
-    m_header->setChecked(open);
+    const bool changed = m_body->isHidden() == open;
+    {
+        // The header calls setOpen on toggled: no second call from here.
+        const QSignalBlocker block(m_header);
+        m_header->setChecked(open);
+    }
     m_body->setVisible(open);
     updateIcon();
+    if (changed)
+        emit openChanged(open);
 }
 
-int ChainOptionsWidget::openHeight() const
+int ChainOptionsWidget::closedHeight() const
 {
-    // The current geometry, not the hints: while the layout changes, the splitter height still
-    // has the old open height in it.
-    return std::max(0, height() - m_top->height());
+    return m_top->sizeHint().height();
+}
+
+QWidget *ChainOptionsWidget::lastOption() const
+{
+    return m_folderExtensions;
 }
 
 void ChainOptionsWidget::changeEvent(QEvent *event)

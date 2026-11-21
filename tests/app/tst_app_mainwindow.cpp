@@ -28,6 +28,7 @@
 #include "widgets/tertiarybutton.h"
 
 #include <QAction>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QElapsedTimer>
 #include <QFile>
@@ -138,6 +139,7 @@ private slots:
     void editorGetsHeightAtMinimum();
     void listHeightStableOnSelect();
     void listWholeRows();
+    void chainOptionsScrollsIntoViewAtSmallWindow();
     void rulePanelWidthStable();
     void editorPagesFitAtDefault();
     void splitterDoubleClickRefits();
@@ -915,7 +917,7 @@ void TestMainWindow::barsShareLeftEdge()
 void TestMainWindow::editorGetsHeightAtMinimum()
 {
     // M06: at the minimum window the rule list gives its empty rows to the editor, and the
-    // editor scrolls only over the current page.
+    // editor scrolls only over the current page and the closed Chain options (O13).
     Fixture f;
     f.window.show();
     f.window.resize(f.window.minimumSize());
@@ -996,8 +998,9 @@ void TestMainWindow::listWholeRows()
     QApplication::processEvents();
     auto *list = f.child<QListView>("ruleList");
     auto *scroll = f.child<QScrollArea>("editorScroll");
-    auto *pages = qobject_cast<QStackedWidget *>(scroll->widget());
-    QVERIFY(list && pages);
+    auto *pages = f.child<QStackedWidget>("editorPages");
+    auto *chain = f.window.rulePanel()->findChild<ChainOptionsWidget *>();
+    QVERIFY(list && pages && chain);
     const int row = list->sizeHintForRow(0);
     const int frames = 2 * list->frameWidth();
     int tallest = 0;
@@ -1006,6 +1009,7 @@ void TestMainWindow::listWholeRows()
                                             ->sizeHint()
                                             .expandedTo(pages->widget(i)->minimumSize())
                                             .height()); // as RuleSplitter
+    tallest += chain->closedHeight(); // O13: the closed Chain options is under the page
     bool keptCut = false;
     for (int h = f.window.minimumHeight(); h <= 1100; h += 7) {
         f.window.resize(1200, h);
@@ -1023,6 +1027,35 @@ void TestMainWindow::listWholeRows()
             QVERIFY2(cut <= 0, qPrintable(at)); // more rows only when the page fits
     }
     QVERIFY(keptCut);
+}
+
+void TestMainWindow::chainOptionsScrollsIntoViewAtSmallWindow()
+{
+    // O13 (ui-design 4.4): at 900 x 560 the page and Chain options scroll with the fade. Open
+    // Chain options shows in full; the list keeps 2 rows or more and its height.
+    Fixture f;
+    f.window.show();
+    f.window.resize(900, 560);
+    QVERIFY(QTest::qWaitForWindowExposed(&f.window));
+    for (const char *type : {"numbering", "replace", "insert", "remove"})
+        f.addRuleAction(QString::fromLatin1(type))->trigger();
+    auto *list = f.child<QListView>("ruleList");
+    auto *scroll = f.child<QScrollArea>("editorScroll");
+    auto *chain = f.window.rulePanel()->findChild<ChainOptionsWidget *>();
+    QVERIFY(list && scroll && chain);
+    list->setCurrentIndex(list->model()->index(0, 0)); // Numbering, the tallest page
+    QApplication::processEvents();
+    QVERIFY(scroll->widget()->isAncestorOf(chain));
+    QTRY_VERIFY(scroll->verticalScrollBar()->maximum() > 0);
+    QVERIFY(f.child<QWidget>("editorFade")->isVisible());
+    const int listHeight = list->height();
+    QVERIFY(listHeight >= 2 * list->sizeHintForRow(0) + 2 * list->frameWidth()); // R6-06
+    f.child<QToolButton>("chainOptionsHeader")->click();
+    auto *last = chain->findChild<QCheckBox *>(QStringLiteral("folderExtensions"));
+    QVERIFY(last);
+    QTRY_VERIFY(scroll->viewport()->rect().contains(
+            QRect(last->mapTo(scroll->viewport(), QPoint()), last->size())));
+    QCOMPARE(list->height(), listHeight);
 }
 
 void TestMainWindow::editorPagesFitAtDefault()
