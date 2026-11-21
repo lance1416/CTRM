@@ -83,6 +83,8 @@ private slots:
     void preferencesSections();
     void aboutRowGaps();
     void savePresetWidth();
+    void savePresetNoteHeight_data();
+    void savePresetNoteHeight();
     void skipConfirmBox();
 };
 
@@ -237,6 +239,42 @@ void TestAppDialogs::savePresetWidth()
 
     edit->setText(QStringLiteral("Photo Trip")); // the note shows
     QApplication::processEvents();
+    d.layout()->activate();
+    QVERIFY(note->isVisible());
+    QCOMPARE(note->width(), tokens::fieldWMax);
+    QCOMPARE(note->height(), note->heightForWidth(note->width()));
+}
+
+void TestAppDialogs::savePresetNoteHeight_data()
+{
+    // The width of the note text, as a part of field-w-max.
+    QTest::addColumn<double>("textPart");
+    QTest::newRow("oneLine") << 0.9; // QLabel's own size hint wraps this text at half the width
+    QTest::newRow("twoLines") << 1.5;
+}
+
+// The note row is as high as the note text at the field width: no empty line under one line of
+// text, and a long text wraps at field-w-max (audit R6-07, Windows CI 44804410991).
+void TestAppDialogs::savePresetNoteHeight()
+{
+    QFETCH(double, textPart);
+    SavePresetDialog d({QStringLiteral("Photo Trip")}, {}, QStringLiteral("Photo Trip"), nullptr);
+    auto *note = d.findChild<QLabel *>(QStringLiteral("presetNameNote"));
+    QVERIFY(note && !note->text().isEmpty());
+    QFont font = d.font();
+    int best = 0;
+    for (int px = 6; px <= 40; ++px) {
+        font.setPixelSize(px);
+        const int width = QFontMetrics(font).horizontalAdvance(note->text());
+        if (qAbs(width - textPart * tokens::fieldWMax) <
+            qAbs(best - textPart * tokens::fieldWMax)) {
+            best = width;
+            d.setFont(font);
+        }
+    }
+    d.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&d));
+    QApplication::processEvents(); // the form rhythm follows the font change
     d.layout()->activate();
     QVERIFY(note->isVisible());
     QCOMPARE(note->width(), tokens::fieldWMax);

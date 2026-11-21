@@ -2,6 +2,7 @@
 #include "dialogs/savepresetdialog.h"
 
 #include "dialogs/dialoglayout.h"
+#include "theme/tokens.h"
 #include "widgets/buttonstyle.h"
 #include "widgets/formutils.h"
 
@@ -14,6 +15,24 @@
 
 namespace ctrm::app {
 
+namespace {
+
+// A word-wrapped QLabel gives a size hint at half its width when its text fits on one line, and
+// QFormLayout makes the row at least that high: an empty line under the note. The note wraps at
+// field-w-max, so its size hint is the text at that width.
+class FieldNote : public QLabel
+{
+public:
+    using QLabel::QLabel;
+
+    QSize sizeHint() const override
+    {
+        return {tokens::fieldWMax, heightForWidth(tokens::fieldWMax)};
+    }
+};
+
+} // namespace
+
 SavePresetDialog::SavePresetDialog(const QStringList &userNames, const QStringList &builtInNames,
                                    const QString &suggested, QWidget *parent)
     : QDialog(parent)
@@ -21,7 +40,7 @@ SavePresetDialog::SavePresetDialog(const QStringList &userNames, const QStringLi
     , m_builtInNames(builtInNames)
     , m_edit(new QLineEdit(suggested, this))
     , m_form(new QFormLayout)
-    , m_note(new QLabel(this))
+    , m_note(new FieldNote(this))
     , m_save(nullptr)
 {
     setObjectName(QStringLiteral("savePresetDialog"));
