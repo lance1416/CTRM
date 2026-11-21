@@ -16,6 +16,7 @@
 #include "rules/numberingrule.h"
 #include "rules/replacerule.h"
 #include "temptree.h"
+#include "theme/keyboardmode.h"
 #include "theme/tokens.h"
 #include "ui/windowstate.h"
 #include "widgets/actionbar.h"
@@ -135,6 +136,8 @@ class TestMainWindow : public QObject
 {
     Q_OBJECT
 private slots:
+    void programFocusKeepsKeyboardModeOff();
+    void focusShortcutsTurnKeyboardModeOn();
     void contextStores();
     void editorGetsHeightAtMinimum();
     void listHeightStableOnSelect();
@@ -1306,6 +1309,103 @@ void TestMainWindow::toolbarPresetsArrowOnTextLine()
     for (QAction *a : {f.window.actions().addFiles, f.window.actions().addFolder})
         QCOMPARE(bar->widgetForAction(a)->font().pointSizeF(), body);
     QCOMPARE(presets->font().pointSizeF(), body);
+}
+
+void TestMainWindow::programFocusKeepsKeyboardModeOff()
+{
+    // R8-01, ui-design 14 rule 5: a focus change by the program, or after a mouse click, never
+    // turns keyboard mode on (no ring, no row outline).
+    KeyboardMode::instance()->setOn(false);
+    Fixture f;
+    f.window.show();
+    QVERIFY(QTest::qWaitForWindowActive(&f.window));
+    QTableView *table = f.window.tableView();
+    const auto check = [&](const char *path, QWidget *focus) {
+        QTRY_VERIFY2(QApplication::focusWidget() == focus, path);
+        QVERIFY2(!KeyboardMode::isOn(), path);
+    };
+
+    // A drop on the empty list, Clear List, and Add Files (the dialog adds with addPaths).
+    auto *empty = f.window.findChild<EmptyState *>();
+    QTRY_COMPARE(QApplication::focusWidget(), empty);
+    emit empty->pathsDropped(f.files({QStringLiteral("a1.txt")}));
+    check("drop", table);
+    f.window.actions().clearList->trigger();
+    check("Clear List", empty);
+    f.addFiles({QStringLiteral("a1.txt"), QStringLiteral("a2.txt"), QStringLiteral("b.txt")});
+    check("Add Files", table);
+
+    // Show: Problems with no problem hides the table: the focus goes to the Filter field.
+    f.window.actions().showProblemsOnly->trigger();
+    check("no match", f.window.findChild<QLineEdit *>(QStringLiteral("filterField")));
+    f.window.actions().showAllItems->trigger();
+
+    // A filter with no match, then the Clear Filter link.
+    auto *filter = f.window.findChild<QLineEdit *>(QStringLiteral("filterField"));
+    QTest::mouseClick(filter, Qt::LeftButton);
+    QTest::keyClicks(filter, QStringLiteral("zzz"));
+    check("filter with no match", filter);
+    auto *clearLink = f.window.findChild<QLabel *>(QStringLiteral("clearFilterLink"));
+    QTRY_VERIFY(clearLink->isVisible());
+    emit clearLink->linkActivated(QStringLiteral("clear"));
+    check("Clear Filter", table);
+
+    // A mouse click on the problem arrows of the action bar. The press turns the mode off; the
+    // focus change after the release must not turn it on again.
+    f.window.ruleModel().insertRule(0, regexRemoveDigits());
+    QTRY_VERIFY(f.window.actions().nextProblem->isEnabled());
+    for (const char *name : {"nextProblemButton", "previousProblemButton"}) {
+        QTest::mouseClick(filter, Qt::LeftButton);
+        check("click in the filter", filter);
+        auto *arrow = f.window.actionBar()->findChild<QAbstractButton *>(QLatin1StringView(name));
+        QVERIFY2(arrow && arrow->isVisible(), name);
+        QTest::mouseClick(arrow, Qt::LeftButton);
+        check(name, table);
+    }
+
+    // The menu items of the focus actions (no shortcut key).
+    for (QAction *action : {f.window.actions().find, f.window.actions().focusRules,
+                            f.window.actions().focusTable, f.window.actions().nextProblem}) {
+        action->trigger();
+        QVERIFY2(!KeyboardMode::isOn(), qPrintable(action->objectName()));
+    }
+}
+
+void TestMainWindow::focusShortcutsTurnKeyboardModeOn()
+{
+    // R8-01, ui-design 14 rule 1: a shortcut key that moves the focus turns keyboard mode on.
+    KeyboardMode *mode = KeyboardMode::instance();
+    Fixture f;
+    f.window.show();
+    QVERIFY(QTest::qWaitForWindowActive(&f.window));
+    f.addFiles({QStringLiteral("a1.txt"), QStringLiteral("a2.txt"), QStringLiteral("b.txt")});
+    f.window.ruleModel().insertRule(0, regexRemoveDigits());
+    QTRY_VERIFY(f.window.actions().nextProblem->isEnabled());
+    auto *filter = f.window.findChild<QLineEdit *>(QStringLiteral("filterField"));
+    QTableView *table = f.window.tableView();
+    struct Step
+    {
+        QAction *action;
+        QWidget *from;
+        QWidget *to;
+    };
+    const QList<Step> steps = {
+            {f.window.actions().find, table, filter},
+            {f.window.actions().focusTable, filter, table},
+            {f.window.actions().focusRules, table, f.window.rulePanel()->ruleList()},
+            {f.window.actions().nextProblem, filter, table},
+            {f.window.actions().previousProblem, filter, table},
+    };
+    for (const Step &step : steps) {
+        const QByteArray name = step.action->objectName().toLatin1();
+        step.from->setFocus(Qt::OtherFocusReason);
+        QTRY_COMPARE(QApplication::focusWidget(), step.from);
+        mode->setOn(false);
+        QTest::keySequence(&f.window, step.action->shortcut());
+        QTRY_VERIFY2(QApplication::focusWidget() == step.to, name.constData());
+        QVERIFY2(KeyboardMode::isOn(), name.constData());
+    }
+    mode->setOn(false);
 }
 
 QTEST_MAIN(TestMainWindow)

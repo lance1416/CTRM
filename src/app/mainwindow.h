@@ -72,8 +72,9 @@ protected:
     // Updates the tool icons. Activation also reads the folders again: files can change
     // while CTRM is not active.
     void changeEvent(QEvent *e) override;
-    void closeEvent(QCloseEvent *e) override; // saves geometry, state, splitters
-    void showEvent(QShowEvent *e) override;   // the start focus (ui-design 10.3)
+    void closeEvent(QCloseEvent *e) override;                   // saves geometry, state, splitters
+    bool eventFilter(QObject *watched, QEvent *event) override; // marks shortcut triggers
+    void showEvent(QShowEvent *e) override;                     // the start focus (ui-design 10.3)
 
 private:
     void buildMenus();
@@ -98,8 +99,11 @@ private:
     void refresh();
     void clearList();
     void removeFromList();
-    void focusRules();
-    void focusTable();
+    // ui-design 14 rule 5: Qt::ShortcutFocusReason only when a key press moved the focus (it
+    // turns keyboard mode on); a focus change by the program uses Qt::OtherFocusReason.
+    Qt::FocusReason takeFocusReason();
+    void focusRules(Qt::FocusReason reason);
+    void focusTable(Qt::FocusReason reason);
     void focusEditor();
 
     AppContext &m_ctx;
@@ -110,6 +114,7 @@ private:
     mutable FolderCache m_folderCache; // currentPreviewInput() fills the cache
     PreviewScheduler m_scheduler;
     ItemAdder *m_itemAdder;
+    bool m_shortcutTriggered = false; // the next focus action came from its shortcut key
     ctrm::PreviewResult m_preview;
     quint64 m_previewGeneration = 0;
     WindowStateInfo m_state;

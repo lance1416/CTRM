@@ -33,6 +33,7 @@
 #include <QMetaMethod>
 #include <QPushButton>
 #include <QScopedValueRollback>
+#include <QShortcutEvent>
 #include <QShowEvent>
 #include <QSizePolicy>
 #include <QSplitter>
@@ -66,11 +67,13 @@ QWidget *makeSlot(const char *objectName, QWidget *parent)
     return slot;
 }
 
-// The first widget in the focus chain of parent that takes focus with Tab.
-void focus(QWidget *w)
+// A focus change by the program uses Qt::OtherFocusReason, so it does not turn keyboard mode on
+// (ui-design 14 rule 5). Only a focus action started by its shortcut key passes
+// Qt::ShortcutFocusReason.
+void focus(QWidget *w, Qt::FocusReason reason = Qt::OtherFocusReason)
 {
     if (w)
-        w->setFocus(Qt::ShortcutFocusReason);
+        w->setFocus(reason);
 }
 
 } // namespace
@@ -134,7 +137,7 @@ void MainWindow::showEvent(QShowEvent *e)
     // shows before the user uses the keyboard. A focus set before the first show is lost.
     if (!m_startFocusSet) {
         m_startFocusSet = true;
-        focusTable();
+        focusTable(Qt::OtherFocusReason);
     }
 }
 
@@ -706,7 +709,7 @@ void MainWindow::connectActions()
         updateTablePage();
     });
     connect(a.find, &QAction::triggered, this, [this] {
-        focus(m_filter);
+        focus(m_filter, takeFocusReason());
         m_filter->selectAll();
     });
     connect(a.showAllItems, &QAction::triggered, this, [this] { setShowMode(ShowMode::All); });
@@ -726,14 +729,18 @@ void MainWindow::connectActions()
     // Problems and focus.
     connect(a.nextProblem, &QAction::triggered, this, [this] {
         m_table->selectNextProblem(true);
-        focus(m_table);
+        focus(m_table, takeFocusReason());
     });
     connect(a.previousProblem, &QAction::triggered, this, [this] {
         m_table->selectNextProblem(false);
-        focus(m_table);
+        focus(m_table, takeFocusReason());
     });
-    connect(a.focusRules, &QAction::triggered, this, &MainWindow::focusRules);
-    connect(a.focusTable, &QAction::triggered, this, &MainWindow::focusTable);
+    connect(a.focusRules, &QAction::triggered, this, [this] { focusRules(takeFocusReason()); });
+    connect(a.focusTable, &QAction::triggered, this, [this] { focusTable(takeFocusReason()); });
+    // A shortcut key sends QEvent::Shortcut to the action before it triggers; a click on a
+    // button or a menu item does not.
+    for (QAction *action : {a.find, a.nextProblem, a.previousProblem, a.focusRules, a.focusTable})
+        action->installEventFilter(this);
     connect(a.focusEditor, &QAction::triggered, this, &MainWindow::focusEditor);
     connect(m_table->selectionModel(), &QItemSelectionModel::selectionChanged, this,
             &MainWindow::updateListActions);
@@ -905,19 +912,26 @@ int MainWindow::offNumberingRule() const
 void MainWindow::updateTablePage()
 {
     const bool empty = m_itemModel.rowCount() == 0;
-    // When a page hides, Qt gives its focus to the next widget: the Filter field, or a button.
-    // The focus goes to the item area of the new page instead (audit R6-04, O11): the table, or
+    // When a page hides, Qt gives its focus to the next widget (a button or the Filter field)
+    // with Qt::TabFocusReason, and that turns keyboard mode on (R8-01). So the focus is cleared
+    // first, and then goes to the item area of the new page (audit R6-04, O11): the table, or
     // the empty state, which draws no focus ring.
     QWidget *focused = QApplication::focusWidget();
     const bool focusInEmptyState = m_emptyState == focused || m_emptyState->isAncestorOf(focused);
     const bool focusInTablePage = m_tablePage->isAncestorOf(focused);
+    const bool toTable = focusInEmptyState && !empty;
+    const bool toEmptyState = focusInTablePage && empty;
+    if (toTable || toEmptyState)
+        focused->clearFocus();
     m_tablePages->setCurrentWidget(empty ? static_cast<QWidget *>(m_emptyState) : m_tablePage);
-    if (focusInEmptyState && !empty)
+    if (toTable)
         focus(m_table);
-    else if (focusInTablePage && empty)
+    else if (toEmptyState)
         focus(m_emptyState);
     const bool noMatch = !empty && m_proxy.rowCount() == 0;
     const bool hadFocus = m_table->hasFocus();
+    if (noMatch && hadFocus)
+        m_table->clearFocus();
     m_tableOrNoMatch->setCurrentWidget(noMatch ? m_noMatch : static_cast<QWidget *>(m_table));
     if (noMatch && hadFocus)
         focus(m_filter);
@@ -971,12 +985,26 @@ void MainWindow::refresh()
     requestPreview();
 }
 
-void MainWindow::focusRules()
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if (event->type() == QEvent::Shortcut && qobject_cast<QAction *>(watched) &&
+        !static_cast<QShortcutEvent *>(event)->isAmbiguous())
+        m_shortcutTriggered = true;
+    return QMainWindow::eventFilter(watched, event);
+}
+
+Qt::FocusReason MainWindow::takeFocusReason()
+{
+    return std::exchange(m_shortcutTriggered, false) ? Qt::ShortcutFocusReason
+                                                     : Qt::OtherFocusReason;
+}
+
+void MainWindow::focusRules(Qt::FocusReason reason)
 {
     if (m_ruleModel.rowCount() > 0)
-        focus(m_rulePanel->ruleList());
+        focus(m_rulePanel->ruleList(), reason);
     else
-        focus(m_rulePanel->addRuleButton());
+        focus(m_rulePanel->addRuleButton(), reason);
 }
 
 void MainWindow::showShortMessage(const QString &text, bool warning)
@@ -990,14 +1018,14 @@ void MainWindow::showShortMessage(const QString &text, bool warning)
         m_messageBar->showNote(text);
 }
 
-void MainWindow::focusTable()
+void MainWindow::focusTable(Qt::FocusReason reason)
 {
     if (m_itemModel.rowCount() == 0)
-        focus(m_emptyState);
+        focus(m_emptyState, reason);
     else if (m_tableOrNoMatch->currentWidget() == m_table)
-        focus(m_table);
+        focus(m_table, reason);
     else
-        focus(m_filter);
+        focus(m_filter, reason);
 }
 
 void MainWindow::focusEditor()
