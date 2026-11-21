@@ -33,3 +33,12 @@ if(CTRM_NATIVE_STYLE)
             FAIL_REGULAR_EXPRESSION "invalid style override")
     endforeach()
 endif()
+# QMacStyle draws focus rings only with the Cocoa platform (offscreen it draws nothing). This test
+# paints focus frames with no shown window, so it can run with Cocoa (O11 rule 3 on macOS).
+if(CTRM_NATIVE_STYLE STREQUAL "macOS")
+    add_test(NAME tst_app_keyboardmode_cocoa
+        COMMAND tst_app_keyboardmode macFocusFrameRules -platform cocoa -style macOS)
+    set_tests_properties(tst_app_keyboardmode_cocoa PROPERTIES
+        FAIL_REGULAR_EXPRESSION "invalid style override;SKIP"
+        TIMEOUT 60)
+endif()

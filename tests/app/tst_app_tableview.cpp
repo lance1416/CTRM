@@ -15,10 +15,13 @@
 #include <QLabel>
 #include <QMenu>
 #include <QMimeData>
+#include <QPainter>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QStyleHints>
 #include <QtTest>
+
+#include <cmath>
 
 using namespace ctrm;
 using namespace ctrm::app;
@@ -64,6 +67,13 @@ QStringList oldNames(const ItemTableModel &m)
     for (const Item &it : m.items())
         out.append(it.name);
     return out;
+}
+
+bool near(const QColor &a, const QColor &b, int tolerance)
+{
+    return std::abs(a.red() - b.red()) <= tolerance &&
+           std::abs(a.green() - b.green()) <= tolerance &&
+           std::abs(a.blue() - b.blue()) <= tolerance;
 }
 
 QImage image(const QIcon &icon)
@@ -147,7 +157,8 @@ private slots:
     void emptyStateDrop();
     void accessibleRowText();
     void stateIconInEveryRow();
-    void neutralStateIconsSelected();
+    void selectedRowStateIcons_data();
+    void selectedRowStateIcons();
     void stateColumnFixedWidth();
     void unchangedStateTexts();
 };
@@ -657,30 +668,110 @@ void TestAppTableView::stateIconInEveryRow()
             image(stateIcon(StateIcon::Excluded, colors)));
 }
 
-void TestAppTableView::neutralStateIconsSelected()
+void TestAppTableView::selectedRowStateIcons_data()
 {
-    // O12: in a selected row the neutral icons (same, dash, rolled back) use the highlighted text
-    // colour; the state colours stay.
-    Fixture f({QStringLiteral("a.txt"), QStringLiteral("b.txt"), QStringLiteral("c.txt")});
+    QTest::addColumn<bool>("dark");
+    QTest::newRow("light") << false;
+    QTest::newRow("dark") << true;
+}
+
+void TestAppTableView::selectedRowStateIcons()
+{
+    // R8-02 (ui-design 7.2): in an active selected row the line icons (same, change arrow, done
+    // check, dash, rolled back) use the highlighted text colour; the filled icons (error,
+    // warning, conflict) keep their colour. In an inactive selection all icons keep their colours.
+    QFETCH(bool, dark);
+    Fixture f({QStringLiteral("a.txt"), QStringLiteral("b.txt"), QStringLiteral("c.txt"),
+               QStringLiteral("d.jpg"), QStringLiteral("e.txt"), QStringLiteral("f.txt"),
+               QStringLiteral("g.txt"), QStringLiteral("h.txt")});
+    QPalette palette = f.view->palette();
+    for (const auto group : {QPalette::Active, QPalette::Inactive}) {
+        palette.setColor(group, QPalette::Window, dark ? QColor(0x2B2B2D) : QColor(0xFFFFFF));
+        palette.setColor(group, QPalette::Base, dark ? QColor(0x1E1E1E) : QColor(0xFFFFFF));
+        palette.setColor(group, QPalette::Text, dark ? QColor(0xE3E3E3) : QColor(0x1D1D1F));
+        palette.setColor(group, QPalette::Accent, dark ? QColor(0x0F51CF) : QColor(0x0A60FF));
+        palette.setColor(group, QPalette::HighlightedText, QColor(0xFFFFFF));
+    }
+    palette.setColor(QPalette::Active, QPalette::Highlight,
+                     dark ? QColor(0x0640C6) : QColor(0x0A60FF));
+    palette.setColor(QPalette::Inactive, QPalette::Highlight,
+                     dark ? QColor(0x464646) : QColor(0xDCDCDC));
+    palette.setColor(QPalette::Inactive, QPalette::HighlightedText, palette.color(QPalette::Text));
+    f.view->setPalette(palette);
+
     setPreview(f.model, {row(Status::Unchanged, QStringLiteral("a.txt")),
                          row(Status::Changed, QStringLiteral("x.txt")),
-                         row(Status::Changed, QStringLiteral("y.txt"))});
-    f.model.setIncluded({f.model.items()[2].id}, false);
+                         row(Status::Changed, QStringLiteral("y.txt")),
+                         row(Status::Changed, QStringLiteral("d.png"), {},
+                             {diag(DiagCode::ExtensionChanged)}),
+                         row(Status::Conflict, QStringLiteral("z.txt"),
+                             {diag(DiagCode::DuplicateInBatch, {}, 1)}),
+                         row(Status::Invalid, QString(), {diag(DiagCode::EmptyName)}),
+                         row(Status::Changed, QStringLiteral("q.txt")),
+                         row(Status::Changed, QStringLiteral("r.txt"))});
+    const QList<Item> items = f.model.items();
+    f.model.setIncluded({items[2].id}, false);
+    f.model.setPostRun(
+            {{items[6].id, {PostRun::Renamed, {}}}, {items[7].id, {PostRun::RolledBack, {}}}});
+    const QList<StateIcon> icons{StateIcon::Same,    StateIcon::Change,    StateIcon::Excluded,
+                                 StateIcon::Warning, StateIcon::Conflict,  StateIcon::Error,
+                                 StateIcon::Done,    StateIcon::RolledBack};
+    const QSet<StateIcon> filled{StateIcon::Error, StateIcon::Warning, StateIcon::Conflict};
+
     const CtrmColors colors = CtrmColors::fromPalette(f.view->palette());
-    CtrmColors selected = colors;
-    selected.stateNeutral = f.view->palette().color(QPalette::HighlightedText);
-    const auto selectedOption = [&](int r) {
+    CtrmColors onSelection = colors;
+    const QColor highlighted = palette.color(QPalette::Active, QPalette::HighlightedText);
+    onSelection.stateNeutral = highlighted;
+    onSelection.stateChange = highlighted;
+    onSelection.stateDone = highlighted;
+    const auto selectedOption = [&](int r, bool active) {
         QStyleOptionViewItem opt;
         opt.initFrom(f.view);
+        opt.state &= ~QStyle::State_Active;
         opt.state |= QStyle::State_Selected;
+        if (active)
+            opt.state |= QStyle::State_Active;
         auto *delegate = qobject_cast<ItemDelegate *>(f.view->itemDelegate());
         delegate->initStyleOption(&opt, f.view->model()->index(r, ItemTableModel::State));
         return opt;
     };
-    QCOMPARE(image(selectedOption(0).icon), image(stateIcon(StateIcon::Same, selected)));
-    QCOMPARE(image(selectedOption(1).icon), image(stateIcon(StateIcon::Change, colors)));
-    QCOMPARE(image(selectedOption(2).icon), image(stateIcon(StateIcon::Excluded, selected)));
-    QVERIFY(image(selectedOption(0).icon) != image(stateIcon(StateIcon::Same, colors)));
+    for (int r = 0; r < icons.size(); ++r) {
+        const StateIcon icon = icons[r];
+        const QString name = QString::number(r);
+        QCOMPARE(ItemDelegate::rowStateIcon(f.view->model()->index(r, 0)), icon);
+        const QImage active = image(selectedOption(r, true).icon);
+        if (filled.contains(icon)) {
+            QVERIFY2(active == image(stateIcon(icon, colors)), qPrintable(name));
+        } else {
+            QVERIFY2(active == image(stateIcon(icon, onSelection)), qPrintable(name));
+            QVERIFY2(active != image(stateIcon(icon, colors)), qPrintable(name));
+        }
+        QVERIFY2(image(selectedOption(r, false).icon) == image(stateIcon(icon, colors)),
+                 qPrintable(name));
+    }
+
+    // As painted: the style draws a selected icon in QIcon::Selected mode. It must not tint the
+    // white arrow with the selection colour.
+    const auto paintedHas = [&](int r, bool active, const QColor &colour) {
+        QStyleOptionViewItem opt = selectedOption(r, active);
+        const QRect cell(0, 0, 28, 24);
+        opt.rect = cell;
+        QImage canvas(cell.size(), QImage::Format_ARGB32_Premultiplied);
+        canvas.fill(
+                palette.color(active ? QPalette::Active : QPalette::Inactive, QPalette::Highlight));
+        QPainter painter(&canvas);
+        f.view->itemDelegate()->paint(&painter, opt,
+                                      f.view->model()->index(r, ItemTableModel::State));
+        painter.end();
+        for (int y = 0; y < canvas.height(); ++y)
+            for (int x = 0; x < canvas.width(); ++x)
+                if (near(canvas.pixelColor(x, y), colour, 6))
+                    return true;
+        return false;
+    };
+    QVERIFY(paintedHas(1, true, highlighted));       // the change arrow, white
+    QVERIFY(paintedHas(5, true, colors.stateError)); // the error icon keeps its red
+    QVERIFY(paintedHas(1, false, colors.stateChange));
 }
 
 void TestAppTableView::stateColumnFixedWidth()

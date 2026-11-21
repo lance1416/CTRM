@@ -114,11 +114,19 @@ void ItemDelegate::initStyleOption(QStyleOptionViewItem *option, const QModelInd
 
     if (column == ItemTableModel::State) {
         option->text.clear();
-        // Each row has an icon (O12). In a selected row the neutral icons use the highlighted
-        // text colour; the state colours stay (ui-design 7.2).
+        // Each row has an icon (O12). In an active selected row the line icons (same, change
+        // arrow, done check, dash, rolled back) use the highlighted text colour: an accent arrow
+        // on the accent selection is almost invisible. The filled icons (error, warning,
+        // conflict) keep their colours. An inactive selection keeps all colours (ui-design 7.2,
+        // R8-02).
         CtrmColors colors = m_colors;
-        if (option->state & QStyle::State_Selected)
-            colors.stateNeutral = option->palette.color(QPalette::HighlightedText);
+        if ((option->state & QStyle::State_Selected) && (option->state & QStyle::State_Active)) {
+            const QColor highlighted =
+                    option->palette.color(QPalette::Active, QPalette::HighlightedText);
+            colors.stateNeutral = highlighted;
+            colors.stateChange = highlighted;
+            colors.stateDone = highlighted;
+        }
         option->icon = stateIcon(rowStateIcon(index), colors);
         option->features |= QStyleOptionViewItem::HasDecoration;
         option->decorationAlignment = Qt::AlignCenter;

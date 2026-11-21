@@ -92,8 +92,13 @@ QIcon coloredIcon(const QString &name, const QColor &color)
         // The canvas of the file is the icon size: icon-s (16) or icon-xs (12).
         const int size =
                 renderer.defaultSize().width() > 0 ? renderer.defaultSize().width() : kIconSize;
-        for (const qreal ratio : kPixelRatios)
-            icon.addPixmap(render(renderer, size, ratio, color.alphaF()));
+        // The same pixmap in the Selected mode: the style must not tint the colour of the icon
+        // with the selection colour (R8-02: a white arrow on the accent selection).
+        for (const qreal ratio : kPixelRatios) {
+            const QPixmap pixmap = render(renderer, size, ratio, color.alphaF());
+            icon.addPixmap(pixmap, QIcon::Normal);
+            icon.addPixmap(pixmap, QIcon::Selected);
+        }
     }
     cache.insert(key, icon);
     return icon;

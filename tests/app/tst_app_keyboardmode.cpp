@@ -168,6 +168,7 @@ private slots:
     void itemViewsNoRing();
     void currentRowOutline();
     void macFocusFrameRules();
+    void clickLeavesNoRing();
 };
 
 void TestKeyboardMode::tabTurnsOnMouseTurnsOff()
@@ -526,6 +527,7 @@ void TestKeyboardMode::macFocusFrameRules()
         QSKIP("The other styles draw the rings in the control (the tests above).");
     QWidget parent;
     parent.setStyle(&style);
+    parent.setPalette(testPalette());
     auto *edit = new QLineEdit(&parent);
     auto *button = new QPushButton(QStringLiteral("Rename"), &parent);
     const QSize size(80, tokens::controlH);
@@ -547,10 +549,81 @@ void TestKeyboardMode::macFocusFrameRules()
     empty.fill(Qt::transparent);
     if (fieldRing == empty)
         QSKIP("QMacStyle draws rings only with Cocoa: run with -platform cocoa -style macOS.");
-    QCOMPARE(ring(button), empty);
+    // Rule 3 for each other control type: no ring out of keyboard mode, a ring in it. A link
+    // gets a focus frame from the app style (polish).
+    auto *link = new QLabel(QStringLiteral("<a href=\"x\">Clear Filter</a>"), &parent);
+    link->setTextInteractionFlags(Qt::TextBrowserInteraction);
+    link->setStyle(&style);
+    link->ensurePolished();
+    QVERIFY(link->testAttribute(Qt::WA_MacShowFocusRect));
+    auto *plain = new QLabel(QStringLiteral("Text"), &parent);
+    plain->setStyle(&style);
+    plain->ensurePolished();
+    QVERIFY(!plain->testAttribute(Qt::WA_MacShowFocusRect)); // a plain label takes no focus
+    const QList<QWidget *> others{button, new QCheckBox(QStringLiteral("Recursive"), &parent),
+                                  new QRadioButton(QStringLiteral("Name"), &parent), link};
+    // A pop-up combo box has no focus frame: QMacStyle draws its ring in the control.
+    auto *popup = new QComboBox(&parent);
+    popup->addItem(QStringLiteral("Name only"));
+    popup->setStyle(&style);
+    const auto comboRing = [&] {
+        QStyleOptionComboBox option;
+        option.initFrom(popup);
+        option.rect = QRect(QPoint(4, 4), size);
+        option.currentText = popup->currentText();
+        option.state = QStyle::State_Enabled | QStyle::State_Active | QStyle::State_HasFocus;
+        QImage image(size + QSize(8, 8), QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::transparent);
+        QPainter painter(&image);
+        style.drawComplexControl(QStyle::CC_ComboBox, &option, &painter, popup);
+        return image;
+    };
+    const QImage comboOff = comboRing();
+    for (QWidget *w : others)
+        QVERIFY2(ring(w) == empty, w->metaObject()->className());
     KeyboardMode::instance()->setOn(true);
     QCOMPARE(ring(edit), fieldRing);
-    QCOMPARE(ring(button), fieldRing);
+    QCOMPARE(ring(button), fieldRing); // the text field ring, not the native button ring
+    for (QWidget *w : others)
+        QVERIFY2(ring(w) != empty, w->metaObject()->className());
+    QVERIFY(comboRing() != comboOff);
+}
+
+void TestKeyboardMode::clickLeavesNoRing()
+{
+    // Rule 3 as the user does it: a click on a check box, a radio button, a pop-up combo box or
+    // a button does not take the focus and leaves no ring; Tab to it shows the ring.
+    Window w;
+    auto *edit = w.add(new QLineEdit);
+    auto *popup = w.add(new QComboBox);
+    popup->addItem(QStringLiteral("Name only"));
+    const QList<QWidget *> others{w.add(new QCheckBox(QStringLiteral("Recursive"))),
+                                  w.add(new QRadioButton(QStringLiteral("Name"))),
+                                  w.add(new QPushButton(QStringLiteral("Rename"))),
+                                  w.add(new TertiaryButton), popup}; // popup last: see below
+    w.show();
+    for (QWidget *target : others) {
+        QTest::mouseClick(edit, Qt::LeftButton);
+        QCOMPARE(QApplication::focusWidget(), edit);
+        QVERIFY(KeyboardMode::showsRing(edit)); // rule 2
+        QTest::mousePress(target, Qt::LeftButton);
+        QTest::mouseRelease(target, Qt::LeftButton);
+        if (auto *combo = qobject_cast<QComboBox *>(target))
+            combo->hidePopup(); // a click opens the list
+        QApplication::processEvents();
+        QVERIFY2(!target->hasFocus(), target->metaObject()->className());
+        QVERIFY(!KeyboardMode::isOn());
+        QVERIFY(!KeyboardMode::showsRing(target));
+        // The offscreen platform keeps the closed list as the active window: no Tab step after
+        // the pop-up (ringRules covers the combo box in keyboard mode).
+        if (target == popup)
+            break;
+
+        target->setFocus(Qt::TabFocusReason); // as the Tab key does
+        QVERIFY2(target->hasFocus(), target->metaObject()->className());
+        QVERIFY(KeyboardMode::isOn());
+        QVERIFY(KeyboardMode::showsRing(target));
+    }
 }
 
 QTEST_MAIN(TestKeyboardMode)

@@ -315,6 +315,9 @@ void CtrmStyle::polish(QWidget *widget)
         (qobject_cast<QLabel *>(widget) && widget->focusPolicy() == Qt::StrongFocus) ||
         (combo && !combo->isEditable() && (widget->focusPolicy() & Qt::ClickFocus)))
         widget->setFocusPolicy(Qt::TabFocus);
+    // A link has no focus frame of its own on macOS; it gets one, shown in keyboard mode only.
+    if (qobject_cast<QLabel *>(widget) && widget->focusPolicy() == Qt::TabFocus)
+        widget->setAttribute(Qt::WA_MacShowFocusRect);
     // Lists and tables show no focus ring (rule 4).
     if (qobject_cast<QAbstractItemView *>(widget))
         widget->setAttribute(Qt::WA_MacShowFocusRect, false);
@@ -398,10 +401,12 @@ void CtrmStyle::drawControl(ControlElement element, const QStyleOption *option, 
         const QWidget *target = frame ? frame->widget() : nullptr;
         if (target && !KeyboardMode::showsRing(target))
             return; // O11: only text entries show the ring out of keyboard mode
-        // A push button and a spin box get the text field ring: one ring, around the full
-        // control. (The native ring of a push button has the native button shape and position.)
+        // A push button, a spin box and a link get the text field ring: one ring, around the
+        // full control. (The native ring of a push button has the native button shape and
+        // position; QMacStyle draws no ring for a label.)
         const auto *spin = qobject_cast<const QAbstractSpinBox *>(target);
-        if (qobject_cast<const QPushButton *>(target) || (spin && spin->hasFrame())) {
+        if (qobject_cast<const QPushButton *>(target) || qobject_cast<const QLabel *>(target) ||
+            (spin && spin->hasFrame())) {
             QProxyStyle::drawControl(element, option, painter, textFieldFocusFrame());
             return;
         }
