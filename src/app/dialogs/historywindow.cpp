@@ -182,6 +182,8 @@ HistoryWindow::HistoryWindow(HistoryStore &store, QWidget *parent)
     connect(m_clear, &QPushButton::clicked, this, &HistoryWindow::clearHistoryClicked);
     connect(m_showFile, &QPushButton::clicked, this, &HistoryWindow::showFile);
     selectionChanged();
+    m_batches->setFocus(); // The focus at open: no ring before the user acts (ui-design 14, focus
+                           // ring rule 6).
 }
 
 void HistoryWindow::refresh()

@@ -310,6 +310,8 @@ RecoveryDialog::RecoveryDialog(const RecoveryInfo &info, QWidget *parent)
     // Mark as Complete is never the default (ui-design 9.10).
     setPrimary(mark, false);
     setPrimary(primary, true);
+    primary->setFocus(); // The focus at open: no ring before the user acts (ui-design 14, focus
+                         // ring rule 6).
 
     QVBoxLayout *layout = makeDialogLayout(this);
     layout->addLayout(top);

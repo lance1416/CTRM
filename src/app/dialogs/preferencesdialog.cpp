@@ -12,6 +12,7 @@
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QLabel>
+#include <QPushButton>
 #include <QSpinBox>
 #include <QVBoxLayout>
 
@@ -102,12 +103,17 @@ PreferencesDialog::PreferencesDialog(Settings &settings, ApplyMode mode, QWidget
     m_keepCount->setFixedWidth(spinWidth);
     m_keepDays->setFixedWidth(spinWidth);
 
+    // The focus at open is not in a spin box or on a combo box: no ring before the user acts
+    // (ui-design 14, focus ring rule 6, Re-check 6 d03).
     if (m_mode == ApplyMode::OnAccept) {
         auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
         buttons->setObjectName(QStringLiteral("buttons"));
         connect(buttons, &QDialogButtonBox::accepted, this, &PreferencesDialog::accept);
         connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
         addButtonRow(layout, buttons);
+        buttons->button(QDialogButtonBox::Ok)->setFocus();
+    } else {
+        setFocus(); // no buttons: the dialog itself, which draws no ring
     }
     layout->setSizeConstraint(QLayout::SetFixedSize);
 

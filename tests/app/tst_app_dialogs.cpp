@@ -20,6 +20,7 @@
 #include "theme/tokens.h"
 
 #include <QApplication>
+#include <QComboBox>
 #include <QDialog>
 #include <QFormLayout>
 #include <QHeaderView>
@@ -27,11 +28,14 @@
 #include <QLayout>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSettings>
+#include <QSignalSpy>
 #include <QSpinBox>
 #include <QTableView>
 #include <QTemporaryDir>
+#include <QTextEdit>
 #include <QtTest>
 
 #include <functional>
@@ -65,6 +69,34 @@ QRect itemRect(QLayoutItem *item)
     return item->geometry();
 }
 
+// A control that shows the focus ring each time it has the focus (ui-design 14, focus ring rule 2).
+bool isTextEntry(const QWidget *w)
+{
+    const auto *combo = qobject_cast<const QComboBox *>(w);
+    return qobject_cast<const QLineEdit *>(w) || qobject_cast<const QAbstractSpinBox *>(w) ||
+           qobject_cast<const QPlainTextEdit *>(w) || qobject_cast<const QTextEdit *>(w) ||
+           (combo && combo->isEditable());
+}
+
+QPushButton *defaultButton(const QWidget *dialog)
+{
+    for (QPushButton *b : dialog->findChildren<QPushButton *>()) {
+        if (b->isDefault() && b->isVisible())
+            return b;
+    }
+    return nullptr;
+}
+
+std::unique_ptr<QMessageBox> makeSkipBox()
+{
+    SkipQuestion q;
+    q.skipCount = 2;
+    q.renameCount = 4;
+    q.conflicts = 2;
+    q.cascadeCount = 1;
+    return makeSkipConfirmBox(nullptr, q);
+}
+
 bool isContent(QLayoutItem *item)
 {
     return !item->spacerItem() && !item->isEmpty();
@@ -86,6 +118,10 @@ private slots:
     void savePresetNoteHeight_data();
     void savePresetNoteHeight();
     void skipConfirmBox();
+    void openFocus_data();
+    void openFocus();
+    void openKeys_data();
+    void openKeys();
 };
 
 void TestAppDialogs::insets_data()
@@ -285,12 +321,7 @@ void TestAppDialogs::savePresetNoteHeight()
 // R6-08: the Skip and Rename question has the app icon, and its text is not narrow.
 void TestAppDialogs::skipConfirmBox()
 {
-    SkipQuestion q;
-    q.skipCount = 2;
-    q.renameCount = 4;
-    q.conflicts = 2;
-    q.cascadeCount = 1;
-    const std::unique_ptr<QMessageBox> box = makeSkipConfirmBox(nullptr, q);
+    const std::unique_ptr<QMessageBox> box = makeSkipBox();
     QCOMPARE(box->buttonRole(box->defaultButton()), QMessageBox::AcceptRole); // Skip and Rename
     QCOMPARE(box->buttonRole(box->escapeButton()), QMessageBox::RejectRole);
     QCOMPARE(box->icon(), QMessageBox::NoIcon);
@@ -301,6 +332,172 @@ void TestAppDialogs::skipConfirmBox()
     auto *info = box->findChild<QLabel *>(QStringLiteral("qt_msgbox_informativelabel"));
     QVERIFY(info);
     QVERIFY2(info->width() >= tokens::fieldWMax, qPrintable(QString::number(info->width())));
+}
+
+void TestAppDialogs::openFocus_data()
+{
+    // The focus at open (ui-design 14, focus ring rule 6, owner item O11): only a dialog made for
+    // typing focuses its field; the others focus the default button or the first list, and never
+    // a text entry control, which shows the ring each time it has the focus. "#default" is the
+    // default button, "#dialog" the dialog itself (no control).
+    QTest::addColumn<Maker>("make");
+    QTest::addColumn<QString>("expected");
+    QTest::addColumn<bool>("escapeCloses");
+    const auto add = [](const char *name, Maker make, const char *expected) {
+        // The failure dialog ignores Escape: the app must not choose for the user (9.6).
+        QTest::newRow(name) << std::move(make) << QString::fromLatin1(expected)
+                            << (qstrcmp(name, "failure") != 0);
+    };
+    add("about", [] { return std::make_unique<AboutDialog>(nullptr); }, "#default");
+    add(
+            "failure",
+            [] {
+                FailureInfo info;
+                info.done = 1;
+                info.total = 2;
+                return std::make_unique<FailureDialog>(info, nullptr);
+            },
+            "rollBack");
+    add(
+            "folderDrop",
+            [] {
+                return std::make_unique<FolderDropDialog>(
+                        FolderDropQuestion{{QStringLiteral("Trip")}}, nullptr);
+            },
+            "#default");
+    add(
+            "history", [] { return std::make_unique<HistoryWindow>(stores().history, nullptr); },
+            "historyBatches");
+    add(
+            "managePresets",
+            [] { return std::make_unique<ManagePresetsDialog>(stores().presets, nullptr); },
+            "presetList");
+    add(
+            "preferencesOnAccept",
+            [] {
+                return std::make_unique<PreferencesDialog>(
+                        stores().settings, PreferencesDialog::ApplyMode::OnAccept, nullptr);
+            },
+            "#default");
+    add(
+            "preferencesImmediately",
+            [] {
+                return std::make_unique<PreferencesDialog>(
+                        stores().settings, PreferencesDialog::ApplyMode::Immediately, nullptr);
+            },
+            "#dialog");
+    add(
+            "recovery",
+            [] {
+                RecoveryInfo info;
+                info.batchId = QStringLiteral("b1");
+                info.started = QDateTime::currentDateTime();
+                info.done = 1;
+                info.total = 2;
+                info.doneItems = 1;
+                info.folders = {QStringLiteral("/tmp")};
+                return std::make_unique<RecoveryDialog>(info, nullptr);
+            },
+            "rollBack");
+    add(
+            "report",
+            [] {
+                return std::make_unique<ReportDialog>(FinishResult{}, QDateTime::currentDateTime(),
+                                                      nullptr);
+            },
+            "#default");
+    add(
+            "reportProblem",
+            [] { return std::make_unique<ReportProblemDialog>(QStringLiteral("CTRM"), nullptr); },
+            "#default");
+    add(
+            "savePreset",
+            [] {
+                return std::make_unique<SavePresetDialog>(QStringList{}, QStringList{},
+                                                          QStringLiteral("My Rules"), nullptr);
+            },
+            "presetNameEdit");
+    add("skipConfirm", [] { return makeSkipBox(); }, "#default");
+    add(
+            "undoPreview",
+            [] { return std::make_unique<UndoPreviewDialog>(UndoPreview{}, nullptr); },
+            "undoTable");
+}
+
+void TestAppDialogs::openFocus()
+{
+    QFETCH(Maker, make);
+    QFETCH(QString, expected);
+    std::unique_ptr<QWidget> dialog = make();
+    // The dialog sets the focus itself: the Tab chain differs on macOS (no buttons or combo boxes
+    // when Keyboard navigation is off). A QMessageBox focuses its default button when it shows.
+    if (!qobject_cast<QMessageBox *>(dialog.get())) {
+        QWidget *set = dialog->focusWidget();
+        QVERIFY(set);
+        if (expected == QStringLiteral("#default"))
+            QVERIFY(qobject_cast<QPushButton *>(set)); // the default button is set at show
+        else
+            QCOMPARE(set == dialog.get() ? QStringLiteral("#dialog") : set->objectName(), expected);
+    }
+    dialog->show();
+    dialog->activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(dialog.get()));
+    QWidget *focus = QApplication::focusWidget();
+    QVERIFY(focus);
+    const QString name = focus->metaObject()->className() + QLatin1Char(' ') + focus->objectName();
+    if (expected == QStringLiteral("#dialog")) {
+        QVERIFY2(focus == dialog.get(), qPrintable(name));
+    } else if (expected == QStringLiteral("#default")) {
+        QVERIFY(defaultButton(dialog.get()));
+        QVERIFY2(focus == defaultButton(dialog.get()), qPrintable(name));
+    } else {
+        QCOMPARE(focus->objectName(), expected);
+    }
+    if (auto *edit = qobject_cast<QLineEdit *>(focus)) {
+        // The typing dialog: the name is selected, so typing replaces it.
+        QVERIFY(!edit->text().isEmpty());
+        QCOMPARE(edit->selectedText(), edit->text());
+    } else {
+        QVERIFY2(!isTextEntry(focus), qPrintable(name));
+    }
+}
+
+void TestAppDialogs::openKeys_data()
+{
+    // Return clicks the default button and Escape cancels, also with no ring (rule 6).
+    openFocus_data();
+}
+
+void TestAppDialogs::openKeys()
+{
+    QFETCH(Maker, make);
+    QFETCH(bool, escapeCloses);
+    for (const Qt::Key key : {Qt::Key_Escape, Qt::Key_Return}) {
+        std::unique_ptr<QWidget> dialog = make();
+        auto *asDialog = qobject_cast<QDialog *>(dialog.get());
+        QVERIFY(asDialog);
+        dialog->show();
+        dialog->activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(dialog.get()));
+        QPushButton *def = defaultButton(dialog.get());
+        if (key == Qt::Key_Return && (!def || !def->isEnabled()))
+            continue; // no default button that works: Return does nothing
+        QSignalSpy finished(asDialog, &QDialog::finished);
+        std::unique_ptr<QSignalSpy> clicked;
+        if (def)
+            clicked = std::make_unique<QSignalSpy>(def, &QPushButton::clicked);
+        QTest::keyClick(QApplication::focusWidget(), key);
+        if (key == Qt::Key_Return) {
+            QCOMPARE(clicked->size(), 1);
+        } else if (escapeCloses) {
+            // QMessageBox on macOS clicks its Escape button with an animation.
+            QTRY_COMPARE(finished.size(), 1);
+            QVERIFY(!clicked || clicked->isEmpty());
+        } else {
+            QTest::qWait(200);
+            QVERIFY(finished.isEmpty());
+        }
+    }
 }
 
 QTEST_MAIN(TestAppDialogs)

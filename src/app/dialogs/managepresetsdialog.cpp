@@ -83,6 +83,9 @@ ManagePresetsDialog::ManagePresetsDialog(PresetStore &store, QWidget *parent)
     layout->addLayout(top, 1);
     layout->addLayout(buttons);
     addButtonRow(layout, box);
+    // The focus at open: no ring before the user acts (ui-design 14, focus ring rule 6). After the
+    // layout: the list is in the dialog only now.
+    m_list->setFocus();
 
     connect(m_list, &QListWidget::currentRowChanged, this, &ManagePresetsDialog::updateSelection);
     connect(m_rename, &QPushButton::clicked, this, &ManagePresetsDialog::rename);

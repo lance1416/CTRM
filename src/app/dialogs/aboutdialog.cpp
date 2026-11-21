@@ -65,6 +65,8 @@ AboutDialog::AboutDialog(QWidget *parent)
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
     QPushButton *close = buttons->button(QDialogButtonBox::Close);
     close->setDefault(true);
+    // The focus at open: no ring before the user acts (ui-design 14, focus ring rule 6).
+    close->setFocus();
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
     QVBoxLayout *layout = makeDialogLayout(this);

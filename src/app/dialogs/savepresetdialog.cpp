@@ -29,6 +29,9 @@ SavePresetDialog::SavePresetDialog(const QStringList &userNames, const QStringLi
     setWindowTitle(tr("Save Preset"));
     m_edit->setObjectName(QStringLiteral("presetNameEdit"));
     m_edit->selectAll();
+    // A dialog made for typing: the name field has the focus at open, with the ring (ui-design 14,
+    // focus ring rule 6).
+    m_edit->setFocus();
     m_note->setObjectName(QStringLiteral("presetNameNote"));
     m_note->setTextFormat(Qt::PlainText);
     m_note->setForegroundRole(QPalette::PlaceholderText);

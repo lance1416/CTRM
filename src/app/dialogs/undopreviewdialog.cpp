@@ -168,6 +168,8 @@ UndoPreviewDialog::UndoPreviewDialog(const UndoPreview &preview, QWidget *parent
             QDialogButtonBox::AcceptRole);
     run->setObjectName(QStringLiteral("undoRun"));
     run->setDefault(true);
+    table->setFocus(); // The focus at open: no ring before the user acts (ui-design 14, focus ring
+                       // rule 6).
     run->setEnabled(preview.passCount > 0);
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);

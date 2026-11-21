@@ -43,6 +43,9 @@ ReportProblemDialog::ReportProblemDialog(const QString &info, QWidget *parent)
     QPushButton *open = buttons->addButton(tr("Open Issue Page"), QDialogButtonBox::AcceptRole);
     open->setObjectName(QStringLiteral("openIssuePage"));
     setPrimary(open, true);
+    // The focus at open is the default button, not the information text: a text area shows the
+    // ring each time it has the focus (ui-design 14, focus ring rule 6).
+    open->setFocus();
     QPushButton *close = buttons->addButton(QDialogButtonBox::Close);
     close->setAutoDefault(false);
 
