@@ -333,6 +333,12 @@ void TestAppEditors1::removeModeRows()
 {
     Fixture<RemoveEditor, RemoveRule> f;
     RemoveEditor *e = f.editor.get();
+    // The rule panel gives the label column the width of the widest label, hidden rows too
+    // (ui-design 6.1 rule 9). Without it, the field edge follows the widest visible label, and
+    // that changes with the mode and the font ("Remove:" is wider than "Apply to:" in Segoe UI).
+    LabelColumnSync sync;
+    sync.addForm(e->form());
+    sync.sync();
     auto *from = child<QSpinBox>(e, "from");
     auto *count = child<QSpinBox>(e, "count");
     auto *digits = child<QCheckBox>(e, "digits");
@@ -355,6 +361,7 @@ void TestAppEditors1::removeModeRows()
     selectData(child<QComboBox>(e, "mode"), int(RemoveRule::Mode::Between));
     QVERIFY(!rowVisible(e, digits) && rowVisible(e, open) && rowVisible(e, keep));
     QApplication::processEvents();
+    QCOMPARE(ctrm::test::visualLeft(applyTo, e), edge);
     QVERIFY(oneFieldEdge(e));
 }
 
